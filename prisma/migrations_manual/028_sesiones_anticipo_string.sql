@@ -1,0 +1,13 @@
+-- El anticipo que declara el cliente pasa a guardarse como TEXTO, no como número.
+-- El bot preguntaba "¿Con cuánto contás para entregar de anticipo?" y hasta ahora
+-- se quedaba solo con los dígitos (Decimal), perdiendo respuestas como
+-- "2 palos", "un millón y medio" o "todavía no sé". Igual criterio que
+-- `vehiculo_cliente.precio_pedido` / el precio de venta (VarChar), que se guardan
+-- crudos a propósito.
+--
+-- Los valores históricos (Decimal) quedan como su representación string
+-- ("2000000.00"); no se limpian.
+--
+-- Rollback (solo si todas las filas son numéricas):
+--   ALTER TABLE `sesiones` MODIFY COLUMN `anticipo` DECIMAL(12,2) NULL;
+ALTER TABLE `sesiones` MODIFY COLUMN `anticipo` VARCHAR(40) NULL;
