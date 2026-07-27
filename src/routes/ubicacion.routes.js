@@ -4,8 +4,8 @@ import { requireAuth, requireRole } from "../middlewares/auth.js";
 
 const router = Router();
 
-// Lectura: cualquier usuario autenticado.
-router.get("/", requireAuth, getUbicacion);
+// Lectura PUBLICA (la web usa el nombre/dirección de la agencia sin login).
+router.get("/", getUbicacion);
 // Escritura: SOLO admin.
 router.put("/", requireAuth, requireRole("admin"), putUbicacion);
 
