@@ -23,6 +23,22 @@ import { opcionesCors } from "./lib/cors.js";
 export function crearApp() {
   const app = express();
 
+  // Detrás de un reverse proxy (Caddy): confiar en el primer salto para que
+  // `req.ip` sea la IP real del cliente (la usa el rate limiter), sin permitir
+  // que un cliente directo falsifique X-Forwarded-For.
+  app.set("trust proxy", 1);
+  app.disable("x-powered-by"); // no revelar que corre Express
+
+  // Cabeceras de seguridad para la API. La CSP fuerte vive en el front; en una
+  // API JSON detrás de HTTPS lo relevante es no dejar adivinar el tipo de
+  // contenido, forzar HTTPS y no filtrar el referer.
+  app.use((req, res, next) => {
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Strict-Transport-Security", "max-age=63072000; includeSubDomains");
+    res.setHeader("Referrer-Policy", "no-referrer");
+    next();
+  });
+
   app.use(cors(opcionesCors()));
   app.use(express.json());
   app.use(morgan("dev"));

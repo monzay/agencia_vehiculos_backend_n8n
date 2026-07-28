@@ -134,9 +134,11 @@ export async function obtenerFinanciacion(id) {
   return f ? mapFinanciacion(f) : null;
 }
 
-// Vista pública (sin datos de contacto) para la consulta por DNI del cliente.
-function aPublico(f) {
-  const { telefono, email, clienteId, ...resto } = f;
+// Vista pública para la consulta por DNI: devuelve SOLO el plan de cuotas, sin
+// ningún dato de identidad ni de contacto. Así, aunque alguien enumere DNIs, no
+// obtiene PII (nombre/teléfonos/email/dni) de las personas, únicamente números.
+export function aPublico(f) {
+  const { telefono, telefonoAlt, email, clienteId, nombre, dni, ...resto } = f;
   return resto;
 }
 

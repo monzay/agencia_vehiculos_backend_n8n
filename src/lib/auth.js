@@ -1,7 +1,15 @@
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 
-const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-inseguro";
+// El secreto NO tiene fallback: sin uno fuerte, la app no arranca (fail-closed).
+// Un fallback embebido permitiría forjar tokens de admin si la env faltara.
+// Generá uno con: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET || JWT_SECRET.length < 32) {
+  throw new Error(
+    "JWT_SECRET ausente o demasiado corto (mínimo 32 caracteres). Configuralo en el entorno antes de iniciar."
+  );
+}
 const JWT_EXPIRES = process.env.JWT_EXPIRES || "8h";
 
 // ── Passwords ──
