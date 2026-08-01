@@ -4,8 +4,9 @@ import { requireAuth, requireRole } from "../middlewares/auth.js";
 
 const router = Router();
 
-// Lectura: cualquier usuario autenticado.
-router.get("/", requireAuth, getHorarios);
+// LECTURA pública: el home muestra los horarios de atención sin sesión. No
+// expone datos personales, solo el horario comercial de cada día.
+router.get("/", getHorarios);
 // Escritura: SOLO admin.
 router.put("/", requireAuth, requireRole("admin"), putHorarios);
 

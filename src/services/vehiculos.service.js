@@ -12,6 +12,14 @@ const SIN_CONSIGNACION_CERRADA = {
 
 // Tope de `autos.stock` (SMALLINT UNSIGNED en la DB).
 const STOCK_MAX = 65535;
+// Tope de `autos.precio` (DECIMAL(12,2): 10 enteros + 2 decimales).
+const PRECIO_MAX = 9999999999.99;
+// Tope de `autos.kms` (INT UNSIGNED).
+const KMS_MAX = 4294967295;
+
+// Los tres son limites de la COLUMNA, no del negocio: sin validarlos aca, MySQL
+// rechaza el INSERT y Prisma tira P2020 ("Out of range value"), que sale como un
+// 500 en vez de un error de formulario que el admin pueda entender y corregir.
 
 function limpiar(v) {
   return typeof v === "string" ? v.trim() : v;
@@ -69,9 +77,18 @@ function construirData(body, parcial = false) {
   if (!parcial || body.precio !== undefined) {
     const precio = Number(body.precio);
     if (!(precio >= 0)) throw error("El precio no es valido");
+    if (precio > PRECIO_MAX) {
+      throw error(`El precio no puede superar $${PRECIO_MAX.toLocaleString("es-AR")}`);
+    }
     data.precio = precio;
   }
-  if (body.kms !== undefined) data.kms = Number(body.kms) || 0;
+  if (body.kms !== undefined) {
+    const kms = Number(body.kms) || 0;
+    if (kms < 0 || kms > KMS_MAX) {
+      throw error(`Los kilometros deben estar entre 0 y ${KMS_MAX.toLocaleString("es-AR")}`);
+    }
+    data.kms = Math.round(kms);
+  }
   if (body.stock !== undefined) {
     const stock = Number(body.stock);
     if (!Number.isInteger(stock) || stock < 0 || stock > STOCK_MAX) {
