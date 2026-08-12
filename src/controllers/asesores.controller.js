@@ -1,10 +1,25 @@
 import {
   listarAsesores,
   obtenerAsesor,
+  obtenerAsesorPorSlug,
   crearAsesor,
   actualizarAsesor,
   eliminarAsesor,
 } from "../services/asesores.service.js";
+
+// Público: lo llama la ruta /a/<slug> del sitio para validar un link de
+// captación antes de atribuirle la visita.
+export async function getAsesorPorSlug(req, res, next) {
+  try {
+    const asesor = await obtenerAsesorPorSlug(req.params.slug);
+    if (!asesor) {
+      return res.status(404).json({ ok: false, error: "Link no válido" });
+    }
+    res.json({ ok: true, data: asesor });
+  } catch (err) {
+    next(err);
+  }
+}
 
 export async function getAsesores(req, res, next) {
   try {

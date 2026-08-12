@@ -25,6 +25,43 @@ function error(mensaje, status = 400) {
   return e;
 }
 
+// Slug del link de captación: minúsculas, sin tildes, con guiones. Si ya existe
+// —incluso en un asesor dado de baja, para no reciclar links publicados— se
+// desempata con un sufijo numérico.
+async function generarSlug(nombre) {
+  const base =
+    nombre
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 36) || "asesor";
+
+  for (let i = 0; ; i++) {
+    const slug = i === 0 ? base : `${base}-${i}`;
+    const tomado = await prisma.vendedores.findFirst({ where: { slug } });
+    if (!tomado) return slug;
+  }
+}
+
+// Resuelve el slug de un link de captación. Es PÚBLICO: lo consulta la ruta
+// `/a/<slug>` del sitio, que visita alguien sin sesión. Devuelve lo mínimo
+// —nombre para saludar, slug para la cookie—, nunca teléfono, email ni id.
+//
+// Exige `activo`, pero NO `recibe_consultas`: ese flag decide si le tocan leads
+// del reparto general; los que trae por su propio link son suyos igual.
+export async function obtenerAsesorPorSlug(slug) {
+  const limpio = limpiar(slug);
+  if (!limpio) return null;
+
+  const v = await prisma.vendedores.findFirst({
+    where: { slug: limpio, activo: true, ...VIGENTE },
+    select: { nombre: true, slug: true },
+  });
+  return v || null;
+}
+
 function normalizarTelegram(valor) {
   const t = limpiar(valor);
   if (!t) return null;
@@ -144,6 +181,7 @@ export async function crearAsesor(body = {}) {
   const v = await prisma.vendedores.create({
     data: {
       nombre,
+      slug: await generarSlug(nombre),
       telefono,
       telegram_id: telegram,
       email,

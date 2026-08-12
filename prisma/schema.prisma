@@ -68,6 +68,7 @@ model chat_estado {
   auto_id          Int?                         @db.UnsignedInt
   origen           String?                      @db.VarChar(20)
   vendedor_id      Int?                         @db.UnsignedInt
+  atribuido        Boolean                      @default(false)
   bot_pausado      Boolean                      @default(false)
   atendido_at      DateTime?                    @db.DateTime(0)
   atendido_por     String?                      @db.VarChar(120)
@@ -183,6 +184,7 @@ model leads_pendientes {
 model vendedores {
   id               Int       @id @default(autoincrement()) @db.UnsignedInt
   nombre           String    @db.VarChar(120)
+  slug             String?   @unique(map: "uq_vendedores_slug") @db.VarChar(40)
   telefono         String?   @db.VarChar(30)
   telegram_id      String?   @db.VarChar(60)
   email            String?   @db.VarChar(180)

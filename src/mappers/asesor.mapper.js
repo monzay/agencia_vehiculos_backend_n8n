@@ -14,6 +14,8 @@ export function mapVendedorToAsesor(v, cuenta = null) {
   return {
     id: v.id,
     nombre: v.nombre,
+    // Identificador público de su link de captación (`/a/<slug>`).
+    slug: v.slug ?? "",
     telefono: v.telefono ?? "",
     telegramId: v.telegram_id ?? "",
     // Si tiene cuenta, el email de login manda (es el que usa para entrar).
