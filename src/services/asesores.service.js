@@ -28,7 +28,7 @@ function error(mensaje, status = 400) {
 // Slug del link de captación: minúsculas, sin tildes, con guiones. Si ya existe
 // —incluso en un asesor dado de baja, para no reciclar links publicados— se
 // desempata con un sufijo numérico.
-async function generarSlug(nombre) {
+async function generarSlug(nombre, excluirId = null) {
   const base =
     nombre
       .normalize("NFD")
@@ -40,7 +40,11 @@ async function generarSlug(nombre) {
 
   for (let i = 0; ; i++) {
     const slug = i === 0 ? base : `${base}-${i}`;
-    const tomado = await prisma.vendedores.findFirst({ where: { slug } });
+    // Se excluye al propio asesor: si no, al renombrarlo chocaría con su slug
+    // anterior y terminaría con un sufijo inútil (`agustina-1`).
+    const tomado = await prisma.vendedores.findFirst({
+      where: excluirId ? { slug, NOT: { id: Number(excluirId) } } : { slug },
+    });
     if (!tomado) return slug;
   }
 }
@@ -226,6 +230,11 @@ export async function actualizarAsesor(id, body = {}) {
     const n = limpiar(body.nombre);
     if (!n) throw error("El nombre no puede quedar vacio");
     data.nombre = n;
+    // El slug SIGUE al nombre: si cambia el nombre, cambia el link de captación.
+    // Es una decisión con costo — los links ya publicados en redes dejan de
+    // funcionar y esas consultas pasan a repartirse — y por eso el panel avisa
+    // antes de guardar.
+    if (n !== existe.nombre) data.slug = await generarSlug(n, id);
   }
   if (body.telefono !== undefined) {
     const tel = limpiar(body.telefono) || null;
