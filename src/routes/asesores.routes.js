@@ -11,14 +11,15 @@ import { requireAuth, requireRole } from "../middlewares/auth.js";
 
 const router = Router();
 
-// Gestión de asesores: SOLO admin. Un asesor no puede ver ni administrar el
-// roster (crear/editar/eliminar otros asesores). CRUD completo reservado a admin.
+// Gestión de asesores: el asesor puede VER el roster (solo lectura). Crear,
+// editar y eliminar queda reservado a admin.
 // Excepción PÚBLICA: resolver el slug de un link de captación. Lo consulta un
 // visitante sin sesión y solo devuelve nombre + slug (ver el service).
 router.get("/slug/:slug", getAsesorPorSlug);
 
 const soloAdmin = [requireAuth, requireRole("admin")];
-router.get("/", ...soloAdmin, getAsesores);
+const adminOAsesor = [requireAuth, requireRole("admin", "asesor")];
+router.get("/", ...adminOAsesor, getAsesores);
 router.get("/:id", ...soloAdmin, getAsesor);
 router.post("/", ...soloAdmin, postAsesor);
 router.patch("/:id", ...soloAdmin, patchAsesor);
