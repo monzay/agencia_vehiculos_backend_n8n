@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { provinciaDeTelefono, PROVINCIAS } from "./provincias.js";
+import { provinciaDeTelefono, telefonoLocal, PROVINCIAS } from "./provincias.js";
 
 const prov = (n) => provinciaDeTelefono(n)?.provincia ?? null;
 
@@ -70,4 +70,24 @@ test("devuelve null en vez de adivinar", () => {
   assert.equal(prov("123"), null, "demasiado corto");
   assert.equal(prov("5215512345678"), null, "número de México");
   assert.equal(prov("5491145"), null, "área conocida pero sin abonado válido");
+});
+
+test("telefonoLocal saca el prefijo de país y separa el área", () => {
+  assert.equal(telefonoLocal("5493886567587"), "388 656-7587");
+  assert.equal(telefonoLocal("5493884708347"), "388 470-8347");
+  // Áreas de otro largo: el corte tiene que seguir al área, no a una posición fija.
+  assert.equal(telefonoLocal("5491145678901"), "11 4567-8901", "área de 2 dígitos");
+  assert.equal(telefonoLocal("5492954123456"), "2954 12-3456", "área de 4 dígitos");
+});
+
+test("telefonoLocal normaliza los otros formatos de la base", () => {
+  for (const n of ["5493886567587", "03886567587", "3886567587", "0388156567587"]) {
+    assert.equal(telefonoLocal(n), "388 656-7587", `falló con "${n}"`);
+  }
+});
+
+test("telefonoLocal no recorta lo que no reconoce", () => {
+  assert.equal(telefonoLocal("5215512345678"), "5215512345678", "número de México, se muestra entero");
+  assert.equal(telefonoLocal(""), null);
+  assert.equal(telefonoLocal(null), null);
 });

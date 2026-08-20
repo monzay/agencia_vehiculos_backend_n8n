@@ -314,8 +314,9 @@ function sinQuince(resto) {
 }
 
 /**
- * Provincia del número, o `null` si no se puede determinar (número extranjero,
- * vacío, o código de área fuera de la tabla).
+ * Descompone el número en `{ provincia, area, abonado }`, o `null` si no se
+ * puede determinar (número extranjero, vacío, o código de área fuera de la
+ * tabla).
  *
  * Acepta cualquiera de los formatos que aparecen en la base: `5493886567587`,
  * `03886567587`, `388 656-7587`, `3886567587`.
@@ -328,12 +329,32 @@ export function provinciaDeTelefono(valor) {
     const area = n.slice(0, largo);
     const provincia = AREAS[area];
     if (!provincia) continue;
+    const abonado = sinQuince(n.slice(largo));
     // El resto tiene que alcanzar para un número de abonado real; así un
     // prefijo corto no se "come" un número mal formado.
-    if (sinQuince(n.slice(largo)).length < 6) continue;
-    return { provincia, area };
+    if (abonado.length < 6) continue;
+    return { provincia, area, abonado };
   }
   return null;
+}
+
+/**
+ * El número como se escribe dentro del país: código de área, espacio, y el
+ * abonado con guión antes de los últimos cuatro dígitos.
+ *
+ *   5493886567587 → "388 656-7587"
+ *   5491145678901 → "11 4567-8901"
+ *   5492954123456 → "2954 12-3456"
+ *
+ * Si el número no se puede descomponer (extranjero, o área desconocida) se
+ * devuelve tal cual vino: es preferible mostrarlo entero que recortarlo mal.
+ */
+export function telefonoLocal(valor) {
+  const d = provinciaDeTelefono(valor);
+  if (!d) return String(valor ?? "").trim() || null;
+  const { area, abonado } = d;
+  const conGuion = abonado.length > 4 ? `${abonado.slice(0, -4)}-${abonado.slice(-4)}` : abonado;
+  return `${area} ${conGuion}`;
 }
 
 // Las jurisdicciones que la tabla puede devolver (para tests y filtros).
