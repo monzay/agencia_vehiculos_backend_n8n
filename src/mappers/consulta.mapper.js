@@ -4,7 +4,18 @@
 // La LISTA es liviana (sin mensajes): vehículo, cliente, teléfono y hora.
 // El DETALLE (al hacer click) trae las respuestas del cliente de esa sesión.
 
+import { provinciaDeTelefono } from "../lib/provincias.js";
+
 const PREGUNTA_NOMBRE = "¿A nombre de quién registramos la consulta?";
+
+// De qué provincia escribe el cliente, según el código de área. Se prioriza
+// `canal_id` (el id de WhatsApp, que siempre viene completo con el código de
+// país) sobre `telefono`, que en filas viejas puede estar en formato local o
+// vacío. `null` = no se pudo determinar; el panel lo muestra como "—".
+const provinciaDe = (cliente) =>
+  provinciaDeTelefono(cliente?.canal_id)?.provincia ??
+  provinciaDeTelefono(cliente?.telefono)?.provincia ??
+  null;
 
 // Nombre a mostrar: el del perfil de WhatsApp (`clientes.nombre`, que el bot
 // refresca en cada mensaje entrante) identifica a quien realmente escribe. El
@@ -20,6 +31,7 @@ export function mapConsultaResumen(sesion, cliente, auto, vendedor) {
     nombre: nombreDe(sesion, cliente),
     telefono: cliente?.telefono ?? "",
     canal: cliente?.canal ?? "",
+    provincia: provinciaDe(cliente),
     vehiculo: auto
       ? { ref: auto.ref, marca: auto.marca, modelo: auto.modelo, anio: auto.anio }
       : null,
