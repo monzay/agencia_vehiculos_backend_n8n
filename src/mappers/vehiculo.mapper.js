@@ -48,6 +48,20 @@ function todasLasFotos(fotosJson) {
   return Array.isArray(fotosJson) ? fotosJson.map(normalizarFoto) : [];
 }
 
+// Consignación vigente del auto, si la consulta la incluyó. El panel la usa
+// para saber que el auto es de un tercero y ofrecer "vendido / retirado".
+function mapConsignacionDeAuto(consignaciones) {
+  const c = Array.isArray(consignaciones) ? consignaciones[0] : null;
+  if (!c) return null;
+  return {
+    id: c.id,
+    estado: c.estado,
+    duenio_nombre: c.duenio_nombre,
+    precio_pactado: Number(c.precio_pactado),
+    comision: Number(c.comision),
+  };
+}
+
 export function mapAutoToVehiculo(auto) {
   // Fuente normalizada (1NF): columnas atómicas `tipo_vehiculo` / `combustible`.
   // Fallback al parser de `descripcion` para filas viejas sin backfill.
@@ -85,5 +99,13 @@ export function mapAutoToVehiculo(auto) {
     imagenes: todasLasFotos(auto.fotos_json), // array completo (para editar en el panel)
     descripcion: auto.descripcion ?? "",
     disponible: Boolean(auto.disponible),
+
+    // Datos de gestión: solo llegan con valor en el listado del panel, que es
+    // el único que los pide. En el catálogo público quedan en null/false.
+    costo: auto.costo != null ? Number(auto.costo) : null,
+    precio_venta: auto.precio_venta != null ? Number(auto.precio_venta) : null,
+    vendido_at: auto.vendido_at ?? null,
+    vendido: auto.vendido_at != null,
+    consignacion: mapConsignacionDeAuto(auto.consignaciones),
   };
 }

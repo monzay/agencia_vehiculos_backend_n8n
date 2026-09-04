@@ -6,7 +6,11 @@ import {
   crearVehiculo,
   actualizarVehiculo,
   eliminarVehiculo,
+  marcarVendido,
+  deshacerVenta,
+  cerrarConsignacion,
 } from "../services/vehiculos.service.js";
+import { registrarVista } from "../services/vistas.service.js";
 
 export async function getVehiculos(req, res, next) {
   try {
@@ -17,10 +21,59 @@ export async function getVehiculos(req, res, next) {
   }
 }
 
+// Registra una visita a la ficha pública del vehículo (interés por vehículo).
+//
+// Responde 204 SIEMPRE, pase lo que pase: es telemetría, el visitante no tiene
+// nada que hacer con el resultado. Devolver si la ref existía convertiría este
+// endpoint público en una forma de enumerar el catálogo.
+export async function postVistaVehiculo(req, res, next) {
+  try {
+    // Asesores y admin no cuentan: sería medir el trabajo del equipo como si
+    // fuera interés de clientes. `usuarioOpcional` ya resolvió el token.
+    if (!req.usuario) await registrarVista(req.params.ref);
+    res.status(204).end();
+  } catch (err) {
+    next(err);
+  }
+}
+
+// Marca el vehículo como vendido. Body: { precio_venta?, vendido_at? }.
+export async function postVentaVehiculo(req, res, next) {
+  try {
+    const ok = await marcarVendido(req.params.ref, req.body ?? {});
+    if (!ok) return res.status(404).json({ ok: false, error: "Vehiculo no encontrado" });
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// Deshace la venta (se marcó por error).
+export async function deleteVentaVehiculo(req, res, next) {
+  try {
+    const ok = await deshacerVenta(req.params.ref);
+    if (!ok) return res.status(404).json({ ok: false, error: "Ese vehiculo no figura como vendido" });
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// Cierra la consignación desde la ficha del auto. Body: { estado: vendido|retirado }.
+export async function postConsignacionVehiculo(req, res, next) {
+  try {
+    const ok = await cerrarConsignacion(req.params.ref, req.body?.estado);
+    if (!ok) return res.status(404).json({ ok: false, error: "Vehiculo no encontrado" });
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+}
+
 // Listado para el panel admin (incluye no disponibles). Requiere sesion.
 export async function getVehiculosAdmin(req, res, next) {
   try {
-    const vehiculos = await listarVehiculosAdmin();
+    const vehiculos = await listarVehiculosAdmin({ vendidos: req.query.vendidos });
     res.json({ ok: true, total: vehiculos.length, data: vehiculos });
   } catch (err) {
     next(err);

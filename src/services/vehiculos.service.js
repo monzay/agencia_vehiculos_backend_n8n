@@ -10,6 +10,10 @@ const SIN_CONSIGNACION_CERRADA = {
   consignaciones: { none: { deleted_at: null, estado: { in: ["vendido", "retirado"] } } },
 };
 
+// Sigue a la venta: `vendido_at` NULL. Es el único campo que decide si un auto
+// se vendió —propio o consignado—, así "cuántos vendí" es una sola pregunta.
+const A_LA_VENTA = { vendido_at: null };
+
 // Tope de `autos.stock` (SMALLINT UNSIGNED en la DB).
 const STOCK_MAX = 65535;
 // Tope de `autos.precio` (DECIMAL(12,2): 10 enteros + 2 decimales).
@@ -82,6 +86,20 @@ function construirData(body, parcial = false) {
     }
     data.precio = precio;
   }
+  // Lo que PAGÓ la agencia. Opcional: sin costo el auto se vende igual, solo
+  // que aporta 0 a la ganancia en vez de contar la venta entera como ganada.
+  if (body.costo !== undefined) {
+    if (body.costo === null || body.costo === "") {
+      data.costo = null;
+    } else {
+      const costo = Number(body.costo);
+      if (!(costo >= 0)) throw error("El costo no es valido");
+      if (costo > PRECIO_MAX) {
+        throw error(`El costo no puede superar $${PRECIO_MAX.toLocaleString("es-AR")}`);
+      }
+      data.costo = costo;
+    }
+  }
   if (body.kms !== undefined) {
     const kms = Number(body.kms) || 0;
     if (kms < 0 || kms > KMS_MAX) {
@@ -120,7 +138,7 @@ function construirData(body, parcial = false) {
 // Catalogo PUBLICO: disponibles y no eliminados.
 export async function listarVehiculos() {
   const autos = await prisma.autos.findMany({
-    where: { ...VIGENTE, disponible: true, ...SIN_CONSIGNACION_CERRADA },
+    where: { ...VIGENTE, ...A_LA_VENTA, disponible: true, ...SIN_CONSIGNACION_CERRADA },
     orderBy: { id: "desc" },
     include: { descuentos: true, auto_promociones: { include: { promociones: true } } },
   });
@@ -128,11 +146,23 @@ export async function listarVehiculos() {
 }
 
 // Listado ADMIN: todos los no eliminados (incluye no disponibles).
-export async function listarVehiculosAdmin() {
+// `vendidos`: "no" (por defecto) solo los que siguen a la venta, "si" solo los
+// vendidos, "todos" ambos. Por defecto NO se ven los vendidos: el panel es para
+// trabajar sobre el stock, y los vendidos solo estorban.
+export async function listarVehiculosAdmin({ vendidos = "no" } = {}) {
+  const porVenta =
+    vendidos === "si" ? { vendido_at: { not: null } } : vendidos === "todos" ? {} : A_LA_VENTA;
+
   const autos = await prisma.autos.findMany({
-    where: VIGENTE,
+    where: { ...VIGENTE, ...porVenta },
     orderBy: { id: "desc" },
-    include: { descuentos: true, auto_promociones: { include: { promociones: true } } },
+    include: {
+      descuentos: true,
+      auto_promociones: { include: { promociones: true } },
+      // Solo la consignación VIGENTE: el panel necesita saber si el auto es de
+      // un tercero para ofrecer "vendido / retirado" en vez de la venta propia.
+      consignaciones: { where: { deleted_at: null }, orderBy: { id: "desc" }, take: 1 },
+    },
   });
   return autos.map(mapAutoToVehiculo);
 }
@@ -141,7 +171,7 @@ export async function listarVehiculosAdmin() {
 // ya vendido/retirado no lo sigue mostrando.
 export async function obtenerVehiculoPorRef(ref) {
   const auto = await prisma.autos.findFirst({
-    where: { ref: String(ref), ...VIGENTE, ...SIN_CONSIGNACION_CERRADA },
+    where: { ref: String(ref), ...VIGENTE, ...A_LA_VENTA, ...SIN_CONSIGNACION_CERRADA },
     include: { descuentos: true, auto_promociones: { include: { promociones: true } } },
   });
   return auto ? mapAutoToVehiculo(auto) : null;
@@ -149,7 +179,7 @@ export async function obtenerVehiculoPorRef(ref) {
 
 export async function listarMarcas() {
   const filas = await prisma.autos.findMany({
-    where: { ...VIGENTE, disponible: true, ...SIN_CONSIGNACION_CERRADA },
+    where: { ...VIGENTE, ...A_LA_VENTA, disponible: true, ...SIN_CONSIGNACION_CERRADA },
     distinct: ["marca"],
     select: { marca: true },
     orderBy: { marca: "asc" },
@@ -179,6 +209,111 @@ export async function actualizarVehiculo(ref, body = {}) {
 }
 
 // Soft delete.
+// Marca el auto como VENDIDO. No lo borra: la fila queda para la contabilidad.
+//
+// `precio_venta` es el cierre real, no el de lista — es lo que después se suma
+// como facturación. Si no lo mandan, se toma el de lista como mejor estimación.
+//
+// Si el auto es de un tercero (consignación vigente), además se cierra esa
+// consignación como vendida: el auto y el trato son el mismo hecho comercial y
+// dejarlos desincronizados hace que el auto siga apareciendo a la venta.
+export async function marcarVendido(ref, { precio_venta, vendido_at } = {}) {
+  const auto = await prisma.autos.findFirst({
+    where: { ref: String(ref), ...VIGENTE },
+    include: { consignaciones: { where: { deleted_at: null }, orderBy: { id: "desc" }, take: 1 } },
+  });
+  if (!auto) return null;
+  if (auto.vendido_at) throw error("Ese vehículo ya figura como vendido.");
+
+  let precio = precio_venta === undefined || precio_venta === null || precio_venta === ""
+    ? Number(auto.precio)
+    : Number(precio_venta);
+  if (!(precio >= 0)) throw error("El precio de venta no es valido");
+  if (precio > PRECIO_MAX) {
+    throw error(`El precio de venta no puede superar $${PRECIO_MAX.toLocaleString("es-AR")}`);
+  }
+
+  const fecha = vendido_at ? new Date(vendido_at) : new Date();
+  if (Number.isNaN(fecha.getTime())) throw error("La fecha de venta no es valida");
+  if (fecha > new Date()) throw error("La fecha de venta no puede ser futura.");
+
+  const consignacion = auto.consignaciones[0];
+
+  // Transacción: el auto y su consignación se cierran juntos o no se cierra
+  // nada. Si solo pasara una de las dos, el auto quedaría vendido con el trato
+  // abierto (o al revés) y la contabilidad contaría mal.
+  await prisma.$transaction(async (tx) => {
+    await tx.autos.update({
+      where: { id: auto.id },
+      data: { vendido_at: fecha, precio_venta: precio, disponible: false, updated_at: new Date() },
+    });
+    if (consignacion && consignacion.estado === "en_venta") {
+      await tx.consignaciones.update({
+        where: { id: consignacion.id },
+        data: { estado: "vendido", updated_at: new Date() },
+      });
+    }
+  });
+  return true;
+}
+
+// Deshace la marca de vendido (se marcó por error).
+// La venta es el único cierre irreversible del panel, así que necesita salida:
+// sin esto, un click equivocado ensucia la contabilidad para siempre.
+export async function deshacerVenta(ref) {
+  const auto = await prisma.autos.findFirst({
+    where: { ref: String(ref), ...VIGENTE },
+    include: { consignaciones: { where: { deleted_at: null }, orderBy: { id: "desc" }, take: 1 } },
+  });
+  if (!auto || !auto.vendido_at) return false;
+
+  const consignacion = auto.consignaciones[0];
+  await prisma.$transaction(async (tx) => {
+    await tx.autos.update({
+      where: { id: auto.id },
+      data: { vendido_at: null, precio_venta: null, disponible: true, updated_at: new Date() },
+    });
+    if (consignacion && consignacion.estado === "vendido") {
+      await tx.consignaciones.update({
+        where: { id: consignacion.id },
+        data: { estado: "en_venta", updated_at: new Date() },
+      });
+    }
+  });
+  return true;
+}
+
+// Cierra la consignación de un auto de tercero desde la ficha del vehículo.
+// "vendido" es una venta y marca el auto; "retirado" NO lo es —el dueño se lo
+// llevó, no hubo operación— así que solo lo saca del catálogo.
+export async function cerrarConsignacion(ref, estado) {
+  if (!["vendido", "retirado"].includes(estado)) {
+    throw error("El estado debe ser 'vendido' o 'retirado'.");
+  }
+  const auto = await prisma.autos.findFirst({
+    where: { ref: String(ref), ...VIGENTE },
+    include: { consignaciones: { where: { deleted_at: null }, orderBy: { id: "desc" }, take: 1 } },
+  });
+  if (!auto) return null;
+
+  const consignacion = auto.consignaciones[0];
+  if (!consignacion) throw error("Ese vehículo no está en consignación.");
+
+  if (estado === "vendido") return marcarVendido(ref, { precio_venta: consignacion.precio_pactado });
+
+  await prisma.$transaction(async (tx) => {
+    await tx.consignaciones.update({
+      where: { id: consignacion.id },
+      data: { estado: "retirado", updated_at: new Date() },
+    });
+    await tx.autos.update({
+      where: { id: auto.id },
+      data: { disponible: false, updated_at: new Date() },
+    });
+  });
+  return true;
+}
+
 export async function eliminarVehiculo(ref) {
   const existe = await prisma.autos.findFirst({ where: { ref: String(ref), ...VIGENTE } });
   if (!existe) return false;

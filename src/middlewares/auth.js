@@ -17,6 +17,27 @@ export function requireAuth(req, res, next) {
   }
 }
 
+// Igual que requireAuth pero NO corta el pedido: si viene un token válido deja
+// el payload en req.usuario, y si no viene (o está vencido/falso) sigue con
+// req.usuario undefined.
+//
+// Es para endpoints PÚBLICOS que igual necesitan saber si quien llama es del
+// staff. Un token inválido se trata como visitante anónimo a propósito: el
+// endpoint es público, no hay nada que proteger, solo a quién atribuir.
+export function usuarioOpcional(req, res, next) {
+  const header = req.headers.authorization || "";
+  const token = header.startsWith("Bearer ") ? header.slice(7) : null;
+  if (token) {
+    try {
+      const payload = verificarToken(token);
+      req.usuario = { id: payload.sub, rol: payload.rol, nombre: payload.nombre };
+    } catch {
+      // Token vencido o adulterado: visitante anónimo.
+    }
+  }
+  next();
+}
+
 // Exige uno de los roles indicados. Usar SIEMPRE despues de requireAuth.
 export function requireRole(...roles) {
   return (req, res, next) => {

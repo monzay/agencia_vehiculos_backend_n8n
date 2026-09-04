@@ -1,5 +1,7 @@
 import { prisma } from "../lib/prisma.js";
 import { sqlSesionUtil, sqlClienteUtil } from "../lib/consultas-utiles.js";
+import { topVehiculosVistos, totalVistas, vistasHoy, vistasPorBucket } from "./vistas.service.js";
+import { PERIODOS, bucketsPorPeriodo, etiquetaBucket } from "../lib/periodos.js";
 
 // Métricas del panel Resumen: totales del día, fluctuación temporal de clientes
 // y consultas, y top de autos más consultados por período.
@@ -9,35 +11,14 @@ import { sqlSesionUtil, sqlClienteUtil } from "../lib/consultas-utiles.js";
 const num = (v) => Number(v ?? 0);
 const raw = (sql) => prisma.$queryRawUnsafe(sql);
 
-// Etiqueta corta de una fecha (dd/mm) para los ejes de los gráficos.
-// Se formatea en UTC: MySQL devuelve DATE() como medianoche UTC, y así la
-// etiqueta coincide con el día que agrupan los KPIs (DATE(...)=CURDATE()).
-function ddmm(fecha) {
-  if (!fecha) return "";
-  return new Date(fecha).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", timeZone: "UTC" });
-}
-
-// Buckets temporales por período (clave string estable para poder fusionar
-// clientes y consultas sobre el mismo eje). `col` = columna de fecha.
-const bucketsPorPeriodo = (col) => ({
-  dia:    { g: `DATE_FORMAT(${col}, '%Y-%m-%d')`, where: `${col} >= DATE_SUB(CURDATE(), INTERVAL 13 DAY)` },
-  semana: { g: `DATE_FORMAT(DATE_SUB(DATE(${col}), INTERVAL WEEKDAY(${col}) DAY), '%Y-%m-%d')`, where: `${col} >= DATE_SUB(CURDATE(), INTERVAL 7 WEEK)` },
-  mes:    { g: `DATE_FORMAT(${col}, '%Y-%m')`, where: `${col} >= DATE_SUB(CURDATE(), INTERVAL 11 MONTH)` },
-  anio:   { g: `DATE_FORMAT(${col}, '%Y')`, where: "1=1" },
-});
-
-// Etiqueta legible desde la clave del bucket: dd/mm para día/semana, tal cual
-// para mes ('YYYY-MM') y año ('YYYY').
-const etiquetaBucket = (periodo, clave) =>
-  periodo === "mes" || periodo === "anio" ? clave : ddmm(clave);
-
 // Serie temporal unificada por período: clientes que llegaron + consultas
 // (total y por clasificación), fusionadas sobre el mismo bucket temporal.
 async function fluctuacionSerie() {
   const gCli = bucketsPorPeriodo("created_at");
   const gSes = bucketsPorPeriodo("sesion_inicio");
+  const gVis = bucketsPorPeriodo("created_at"); // sobre auto_vistas
   const salida = {};
-  for (const p of ["dia", "semana", "mes", "anio"]) {
+  for (const p of PERIODOS) {
     const cli = await raw(
       `SELECT ${gCli[p].g} k, COUNT(*) n FROM clientes ` +
         `WHERE ${gCli[p].where} AND ${sqlClienteUtil()} GROUP BY k ORDER BY k`
@@ -49,10 +30,18 @@ async function fluctuacionSerie() {
     );
     const mapa = new Map();
     for (const r of con)
-      mapa.set(r.k, { periodo: etiquetaBucket(p, r.k), clientes: 0, consultas: num(r.total), CALIENTE: num(r.c), TIBIO: num(r.t), FRIO: num(r.f) });
+      mapa.set(r.k, { periodo: etiquetaBucket(p, r.k), clientes: 0, vistas: 0, consultas: num(r.total), CALIENTE: num(r.c), TIBIO: num(r.t), FRIO: num(r.f) });
     for (const r of cli) {
-      const prev = mapa.get(r.k) ?? { periodo: etiquetaBucket(p, r.k), consultas: 0, CALIENTE: 0, TIBIO: 0, FRIO: 0 };
+      const prev = mapa.get(r.k) ?? { periodo: etiquetaBucket(p, r.k), vistas: 0, consultas: 0, CALIENTE: 0, TIBIO: 0, FRIO: 0 };
       prev.clientes = num(r.n);
+      mapa.set(r.k, prev);
+    }
+    // Visitas a fichas del catálogo: otra escala (mirar es gratis), por eso en
+    // el gráfico van contra su propio eje.
+    const vis = await vistasPorBucket(gVis[p].g, gVis[p].where);
+    for (const r of vis) {
+      const prev = mapa.get(r.k) ?? { periodo: etiquetaBucket(p, r.k), clientes: 0, consultas: 0, CALIENTE: 0, TIBIO: 0, FRIO: 0 };
+      prev.vistas = num(r.n);
       mapa.set(r.k, prev);
     }
     salida[p] = [...mapa.entries()]
@@ -89,6 +78,15 @@ export async function metricasResumen() {
 
   const fmtTop = (rows) => rows.map((r) => ({ nombre: `${r.marca} ${r.modelo}`, total: num(r.n) }));
 
+  // ── Interés por vehículo en la WEB (visitas a la ficha) ──
+  // Va aparte de `topAutos`: aquel cuenta consultas por WhatsApp, este miradas
+  // a la ficha. Son señales distintas y dan números muy distintos.
+  const [topVistas, vistasTotal, visitasHoy] = await Promise.all([
+    topVehiculosVistos(),
+    totalVistas(),
+    vistasHoy(),
+  ]);
+
   return {
     hoy: {
       clientes: num(cliHoy.n),
@@ -97,9 +95,12 @@ export async function metricasResumen() {
       tibios: clasifHoy.TIBIO,
       frios: clasifHoy.FRIO,
       ventas: num(ventaHoy.n),
+      vistas: visitasHoy,
     },
     ventasTotal: num(ventaTot.n),
     fluctuacion: fluc,
     topAutos: { dia: fmtTop(topDia), semana: fmtTop(topSemana), mes: fmtTop(topMes) },
+    topVistas,
+    vistasTotal,
   };
 }

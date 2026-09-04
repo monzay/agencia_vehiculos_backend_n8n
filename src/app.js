@@ -17,6 +17,7 @@ import ubicacionRoutes from "./routes/ubicacion.routes.js";
 import horariosRoutes from "./routes/horarios.routes.js";
 import consignacionesRoutes from "./routes/consignaciones.routes.js";
 import entregasRoutes from "./routes/entregas.routes.js";
+import contabilidadRoutes from "./routes/contabilidad.routes.js";
 import { notFound, errorHandler } from "./middlewares/error.js";
 import { opcionesCors } from "./lib/cors.js";
 
@@ -62,6 +63,7 @@ export function crearApp() {
   app.use("/api/novedades", novedadesRoutes);
   app.use("/api/financiaciones", financiacionesRoutes);
   app.use("/api/asesores", asesoresRoutes);
+  app.use("/api/contabilidad", contabilidadRoutes);
 
   // Errores
   app.use(notFound);
