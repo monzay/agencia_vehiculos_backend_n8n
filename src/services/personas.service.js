@@ -1,0 +1,195 @@
+import { prisma } from "../lib/prisma.js";
+
+// Alta y actualización del titular de una consignación sobre las tablas que ya
+// existen: `clientes` + `cliente_perfiles`.
+//
+// No hay tabla de personas nueva a propósito. El consignante es un cliente de
+// la agencia como cualquier otro: si mañana escribe por WhatsApp tiene que ser
+// el mismo, no un duplicado. Por eso el vínculo es siempre `clientes.id`.
+//
+// El DNI es obligatorio y hace de identificador: es `canal_id` para los que
+// llegan al mostrador (canal 'presencial') y la clave de búsqueda para
+// reconocer a alguien que ya está en la base por otro canal.
+
+function error(mensaje, status = 400) {
+  const e = new Error(mensaje);
+  e.status = status;
+  return e;
+}
+
+const limpiar = (v, max) => (typeof v === "string" ? v.trim().replace(/\s+/g, " ").slice(0, max) : null);
+const soloDigitos = (v) => (typeof v === "string" ? v.replace(/\D/g, "") : "");
+
+// Campos del perfil: todo lo que `clientes` no tiene y una consignación sí pide.
+const CAMPOS_PERFIL = [
+  "apellido",
+  "cuit",
+  "domicilio",
+  "localidad",
+  "provincia",
+  "cbu",
+  "alias_cbu",
+  "contacto_alt_telefono",
+  "contacto_alt_vinculo",
+];
+
+// De quién es el teléfono alternativo. Mismos valores que el ENUM de la columna.
+const VINCULOS = ["pareja", "padre_madre", "hermano_a", "hijo_a", "otro"];
+
+// Lo que se lee del perfil. Lo usan la búsqueda de acá y los listados de
+// ingresos: una sola definición para que un campo nuevo no quede afuera de uno.
+export const SELECT_PERFIL = Object.fromEntries(CAMPOS_PERFIL.map((c) => [c, true]));
+
+function validar(datos) {
+  const dni = soloDigitos(datos.dni);
+  if (dni.length < 7 || dni.length > 9) throw error("El DNI debe tener entre 7 y 9 dígitos.");
+
+  const nombre = limpiar(datos.nombre, 120);
+  if (!nombre) throw error("El nombre es obligatorio.");
+
+  const cuit = soloDigitos(datos.cuit);
+  if (datos.cuit && cuit.length !== 11) throw error("El CUIT / CUIL debe tener 11 dígitos.");
+
+  const cbu = soloDigitos(datos.cbu);
+  if (datos.cbu && cbu.length !== 22) throw error("El CBU debe tener 22 dígitos.");
+
+  const email = limpiar(datos.email, 180);
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) throw error("El email no es válido.");
+
+  // Número y vínculo van juntos: un teléfono sin saber de quién es no sirve para
+  // llamar, y la base lo exige con un CHECK.
+  const telefonoAlt = limpiar(datos.contactoAltTelefono, 30) || null;
+  const vinculoAlt = datos.contactoAltVinculo || null;
+  if (Boolean(telefonoAlt) !== Boolean(vinculoAlt)) {
+    throw error("El teléfono alternativo y de quién es van juntos: completá los dos o ninguno.");
+  }
+  if (vinculoAlt && !VINCULOS.includes(vinculoAlt)) {
+    throw error(`El vínculo debe ser uno de: ${VINCULOS.join(", ")}.`);
+  }
+
+  return {
+    dni,
+    nombre,
+    telefono: limpiar(datos.telefono, 30) || null,
+    email: email || null,
+    perfil: {
+      apellido: limpiar(datos.apellido, 120) || null,
+      cuit: cuit || null,
+      domicilio: limpiar(datos.domicilio, 200) || null,
+      localidad: limpiar(datos.localidad, 120) || null,
+      provincia: limpiar(datos.provincia, 80) || null,
+      cbu: cbu || null,
+      alias_cbu: limpiar(datos.aliasCbu, 40) || null,
+      contacto_alt_telefono: telefonoAlt,
+      contacto_alt_vinculo: vinculoAlt,
+    },
+  };
+}
+
+// Busca por DNI en cualquier canal: si la persona ya habló con el bot, esa fila
+// es la buena. El índice de `clientes` es (canal, canal_id), así que este
+// findFirst recorre por `dni`, que no es único — puede haber duplicados previos
+// del bot y en ese caso gana el más viejo, que es el que tiene historial.
+async function buscarPorDni(dni, tx) {
+  return tx.clientes.findFirst({ where: { dni }, orderBy: { id: "asc" }, select: { id: true, nombre: true, telefono: true, email: true } });
+}
+
+// Sobre un cliente que ya existe solo se completan los huecos. El bot pisa
+// `clientes.nombre` con lo que manda WhatsApp; si el panel lo sobrescribiera,
+// los dos se estarían peleando la misma columna en cada mensaje.
+function soloHuecos(existente, datos) {
+  const relleno = {};
+  if (!existente.nombre && datos.nombre) relleno.nombre = datos.nombre;
+  if (!existente.telefono && datos.telefono) relleno.telefono = datos.telefono;
+  if (!existente.email && datos.email) relleno.email = datos.email;
+  return relleno;
+}
+
+// Devuelve el `clientes.id` de la persona, creándola si hace falta.
+// Recibe `tx` para participar de la transacción del ingreso: si el ingreso
+// falla, la persona no queda huérfana.
+export async function registrarPersona(datos, tx = prisma) {
+  const { dni, perfil, ...cliente } = validar(datos);
+
+  const existente = await buscarPorDni(dni, tx);
+
+  let clienteId;
+  if (existente) {
+    clienteId = existente.id;
+    const relleno = soloHuecos(existente, cliente);
+    if (Object.keys(relleno).length) {
+      await tx.clientes.update({ where: { id: clienteId }, data: relleno });
+    }
+  } else {
+    const creado = await tx.clientes.create({
+      data: { ...cliente, dni, canal: "presencial", canal_id: dni },
+      select: { id: true },
+    });
+    clienteId = creado.id;
+  }
+
+  // El perfil sí lo manda el panel entero: es la única fuente que lo escribe.
+  const conValor = Object.fromEntries(CAMPOS_PERFIL.filter((c) => perfil[c] != null).map((c) => [c, perfil[c]]));
+  if (Object.keys(conValor).length) {
+    await tx.cliente_perfiles.upsert({
+      where: { cliente_id: clienteId },
+      create: { cliente_id: clienteId, ...conValor },
+      update: { ...conValor, deleted_at: null },
+    });
+  }
+
+  return clienteId;
+}
+
+// Búsqueda para el alta del panel: escribís un DNI o un nombre y te dice si esa
+// persona ya está, para reusarla en vez de duplicarla.
+export async function buscarPersonas(q = "", limite = 8) {
+  const termino = String(q || "").trim();
+  if (termino.length < 3) return [];
+
+  const digitos = soloDigitos(termino);
+  const filas = await prisma.clientes.findMany({
+    where: {
+      OR: [
+        ...(digitos.length >= 6 ? [{ dni: { contains: digitos } }, { telefono: { contains: digitos } }] : []),
+        { nombre: { contains: termino } },
+      ],
+    },
+    select: {
+      id: true,
+      nombre: true,
+      dni: true,
+      telefono: true,
+      email: true,
+      canal: true,
+      cliente_perfiles: { select: SELECT_PERFIL },
+    },
+    orderBy: { id: "desc" },
+    take: Math.min(20, Math.max(1, Number(limite) || 8)),
+  });
+
+  return filas.map(mapPersona);
+}
+
+export function mapPersona(c) {
+  if (!c) return null;
+  const p = c.cliente_perfiles ?? null;
+  return {
+    id: c.id,
+    nombre: c.nombre ?? null,
+    apellido: p?.apellido ?? null,
+    dni: c.dni ?? null,
+    telefono: c.telefono ?? null,
+    email: c.email ?? null,
+    canal: c.canal,
+    cuit: p?.cuit ?? null,
+    domicilio: p?.domicilio ?? null,
+    localidad: p?.localidad ?? null,
+    provincia: p?.provincia ?? null,
+    cbu: p?.cbu ?? null,
+    aliasCbu: p?.alias_cbu ?? null,
+    contactoAlternativo: p?.contacto_alt_telefono
+      ? { telefono: p.contacto_alt_telefono, vinculo: p.contacto_alt_vinculo }
+      : null,
+  };
+}
