@@ -118,18 +118,21 @@ model vehiculo_cliente {
 }
 
 model clientes {
-  id                 Int                  @id @default(autoincrement()) @db.UnsignedInt
-  nombre             String?              @db.VarChar(120)
-  telefono           String?              @db.VarChar(30)
-  dni                String?              @db.VarChar(20)
-  email              String?              @db.VarChar(180)
-  canal              clientes_canal
-  canal_id           String               @db.VarChar(120)
-  created_at         DateTime?            @default(now()) @db.DateTime(0)
-  alertas_stock      alertas_stock[]
-  financiaciones     financiaciones[]
-  historial_mensajes historial_mensajes[]
-  chat_estado        chat_estado[]
+  id                    Int                     @id @default(autoincrement()) @db.UnsignedInt
+  nombre                String?                 @db.VarChar(120)
+  telefono              String?                 @db.VarChar(30)
+  dni                   String?                 @db.VarChar(20)
+  email                 String?                 @db.VarChar(180)
+  canal                 clientes_canal
+  canal_id              String                  @db.VarChar(120)
+  created_at            DateTime?               @default(now()) @db.DateTime(0)
+  alertas_stock         alertas_stock[]
+  cliente_perfiles      cliente_perfiles?
+  ingresos_como_titular consignacion_ingresos[] @relation("consignacion_ingresos_cliente_idToclientes")
+  ingresos_como_conyuge consignacion_ingresos[] @relation("consignacion_ingresos_conyuge_cliente_idToclientes")
+  financiaciones        financiaciones[]
+  historial_mensajes    historial_mensajes[]
+  chat_estado           chat_estado[]
 
   @@unique([canal, canal_id], map: "uq_canal")
 }
@@ -205,22 +208,24 @@ model vendedores {
 }
 
 model usuarios {
-  id                    Int          @id @default(autoincrement()) @db.UnsignedInt
-  nombre                String       @db.VarChar(120)
-  email                 String       @db.VarChar(180)
-  password_hash         String       @db.VarChar(255)
-  rol                   usuarios_rol @default(asesor)
-  activo                Boolean      @default(true)
-  admin_unico           Int?         @unique(map: "uq_admin_unico") @db.UnsignedTinyInt
-  vendedor_id           Int?         @db.UnsignedInt
-  created_at            DateTime?    @default(now()) @db.DateTime(0)
-  updated_at            DateTime?    @default(now()) @db.DateTime(0)
-  consultas_visto_at    DateTime?    @db.DateTime(0)
-  ventas_visto_at       DateTime?    @db.DateTime(0)
-  financiacion_visto_at DateTime?    @db.DateTime(0)
-  descuentos_visto_at   DateTime?    @db.DateTime(0)
-  clientes_visto_at     DateTime?    @db.DateTime(0)
-  deleted_at            DateTime?    @db.DateTime(0)
+  id                      Int                       @id @default(autoincrement()) @db.UnsignedInt
+  nombre                  String                    @db.VarChar(120)
+  email                   String                    @db.VarChar(180)
+  password_hash           String                    @db.VarChar(255)
+  rol                     usuarios_rol              @default(asesor)
+  activo                  Boolean                   @default(true)
+  admin_unico             Int?                      @unique(map: "uq_admin_unico") @db.UnsignedTinyInt
+  vendedor_id             Int?                      @db.UnsignedInt
+  created_at              DateTime?                 @default(now()) @db.DateTime(0)
+  updated_at              DateTime?                 @default(now()) @db.DateTime(0)
+  consultas_visto_at      DateTime?                 @db.DateTime(0)
+  ventas_visto_at         DateTime?                 @db.DateTime(0)
+  financiacion_visto_at   DateTime?                 @db.DateTime(0)
+  descuentos_visto_at     DateTime?                 @db.DateTime(0)
+  clientes_visto_at       DateTime?                 @db.DateTime(0)
+  deleted_at              DateTime?                 @db.DateTime(0)
+  consignacion_documentos consignacion_documentos[]
+  consignacion_ingresos   consignacion_ingresos[]
 
   @@index([email], map: "idx_email")
   @@index([rol], map: "idx_rol")
@@ -278,19 +283,20 @@ model configuracion {
 }
 
 model consignaciones {
-  id              Int                   @id @default(autoincrement()) @db.UnsignedInt
-  auto_id         Int                   @db.UnsignedInt
-  patente         String?               @db.VarChar(15)
-  duenio_nombre   String                @db.VarChar(120)
-  duenio_telefono String?               @db.VarChar(30)
-  precio_pactado  Decimal               @db.Decimal(12, 2)
-  comision        Decimal               @default(0.00) @db.Decimal(5, 2)
-  estado          consignaciones_estado @default(en_venta)
-  notas           String?               @db.Text
-  created_at      DateTime              @default(now()) @db.DateTime(0)
-  updated_at      DateTime              @default(now()) @db.DateTime(0)
-  deleted_at      DateTime?             @db.DateTime(0)
-  autos           autos                 @relation(fields: [auto_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "consignaciones_auto_fk")
+  id                    Int                    @id @default(autoincrement()) @db.UnsignedInt
+  auto_id               Int                    @db.UnsignedInt
+  patente               String?                @db.VarChar(15)
+  duenio_nombre         String                 @db.VarChar(120)
+  duenio_telefono       String?                @db.VarChar(30)
+  precio_pactado        Decimal                @db.Decimal(12, 2)
+  comision              Decimal                @default(0.00) @db.Decimal(5, 2)
+  estado                consignaciones_estado  @default(en_venta)
+  notas                 String?                @db.Text
+  created_at            DateTime               @default(now()) @db.DateTime(0)
+  updated_at            DateTime               @default(now()) @db.DateTime(0)
+  deleted_at            DateTime?              @db.DateTime(0)
+  consignacion_ingresos consignacion_ingresos?
+  autos                 autos                  @relation(fields: [auto_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "consignaciones_auto_fk")
 
   @@index([estado], map: "idx_estado")
   @@index([deleted_at, estado], map: "idx_vigentes")
@@ -335,6 +341,113 @@ model auto_vistas {
   @@index([auto_id, created_at], map: "idx_auto_created")
 }
 
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model cliente_perfiles {
+  id                    Int                                    @id @default(autoincrement()) @db.UnsignedInt
+  cliente_id            Int                                    @unique(map: "uq_cliente") @db.UnsignedInt
+  apellido              String?                                @db.VarChar(120)
+  cuit                  String?                                @db.VarChar(11)
+  domicilio             String?                                @db.VarChar(200)
+  localidad             String?                                @db.VarChar(120)
+  provincia             String?                                @db.VarChar(80)
+  cbu                   String?                                @db.VarChar(22)
+  alias_cbu             String?                                @db.VarChar(40)
+  contacto_alt_telefono String?                                @db.VarChar(30)
+  contacto_alt_vinculo  cliente_perfiles_contacto_alt_vinculo?
+  created_at            DateTime                               @default(now()) @db.DateTime(0)
+  updated_at            DateTime                               @default(now()) @db.DateTime(0)
+  deleted_at            DateTime?                              @db.DateTime(0)
+  clientes              clientes                               @relation(fields: [cliente_id], references: [id], onDelete: Cascade, map: "cliente_perfiles_cliente_fk")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model consignacion_contratos {
+  id                    Int                                        @id @default(autoincrement()) @db.UnsignedInt
+  ingreso_id            Int                                        @unique(map: "uq_ingreso") @db.UnsignedInt
+  precio_minimo         Decimal                                    @db.Decimal(12, 2)
+  comision_tipo         consignacion_contratos_comision_tipo       @default(porcentaje)
+  comision_valor        Decimal                                    @default(0.00) @db.Decimal(12, 2)
+  comision_incluida     Boolean                                    @default(true)
+  plazo_dias            Int                                        @default(90) @db.UnsignedSmallInt
+  gastos_verificacion   consignacion_contratos_gastos_verificacion @default(cliente)
+  gastos_libre_deuda    consignacion_contratos_gastos_libre_deuda  @default(cliente)
+  gastos_lavado         consignacion_contratos_gastos_lavado       @default(agencia)
+  gastos_publicacion    consignacion_contratos_gastos_publicacion  @default(agencia)
+  retiro_aviso_dias     Int                                        @default(0) @db.UnsignedSmallInt
+  retiro_costo          Decimal                                    @default(0.00) @db.Decimal(12, 2)
+  estado_unidad         String?                                    @db.Text
+  prueba_manejo         Boolean                                    @default(false)
+  prueba_responsable    consignacion_contratos_prueba_responsable?
+  seguro_a_cargo        consignacion_contratos_seguro_a_cargo      @default(cliente)
+  liquidacion_dias      Int                                        @default(0) @db.UnsignedSmallInt
+  liquidacion_forma     consignacion_contratos_liquidacion_forma   @default(transferencia)
+  firmado_at            DateTime?                                  @db.DateTime(0)
+  contrato_json         Json?
+  created_at            DateTime                                   @default(now()) @db.DateTime(0)
+  updated_at            DateTime                                   @default(now()) @db.DateTime(0)
+  deleted_at            DateTime?                                  @db.DateTime(0)
+  consignacion_ingresos consignacion_ingresos                      @relation(fields: [ingreso_id], references: [id], onDelete: Cascade, map: "consignacion_contratos_ingreso_fk")
+}
+
+model consignacion_documentos {
+  id                    Int                              @id @default(autoincrement()) @db.UnsignedInt
+  ingreso_id            Int                              @db.UnsignedInt
+  tipo                  consignacion_documentos_tipo
+  tenencia              consignacion_documentos_tenencia @default(no_recibido)
+  imagenes_json         Json?
+  fecha_carga           DateTime                         @default(now()) @db.DateTime(0)
+  cargado_por           Int?                             @db.UnsignedInt
+  ubicacion_fisica      String?                          @db.VarChar(120)
+  fecha_vencimiento     DateTime?                        @db.Date
+  datos_json            Json?
+  observaciones         String?                          @db.Text
+  created_at            DateTime                         @default(now()) @db.DateTime(0)
+  updated_at            DateTime                         @default(now()) @db.DateTime(0)
+  deleted_at            DateTime?                        @db.DateTime(0)
+  consignacion_ingresos consignacion_ingresos            @relation(fields: [ingreso_id], references: [id], onDelete: Cascade, map: "consignacion_documentos_ingreso_fk")
+  usuarios              usuarios?                        @relation(fields: [cargado_por], references: [id], map: "consignacion_documentos_usuario_fk")
+
+  @@index([cargado_por], map: "consignacion_documentos_usuario_fk")
+  @@index([ingreso_id, tipo, deleted_at], map: "idx_ingreso")
+  @@index([deleted_at, fecha_vencimiento], map: "idx_vencimiento")
+  @@index([deleted_at, tenencia], map: "idx_tenencia")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model consignacion_ingresos {
+  id                      Int                           @id @default(autoincrement()) @db.UnsignedInt
+  cliente_id              Int                           @db.UnsignedInt
+  conyuge_cliente_id      Int?                          @db.UnsignedInt
+  consignacion_id         Int?                          @unique(map: "uq_consignacion") @db.UnsignedInt
+  dominio                 String?                       @db.VarChar(15)
+  marca                   String?                       @db.VarChar(60)
+  modelo                  String?                       @db.VarChar(80)
+  anio                    Int?                          @db.UnsignedSmallInt
+  motor                   String?                       @db.VarChar(40)
+  chasis                  String?                       @db.VarChar(40)
+  origen                  consignacion_ingresos_origen?
+  km_recepcion            Int?                          @db.UnsignedInt
+  estado                  consignacion_ingresos_estado  @default(recepcion)
+  recibido_por            Int?                          @db.UnsignedInt
+  recibido_at             DateTime                      @default(now()) @db.DateTime(0)
+  notas                   String?                       @db.Text
+  created_at              DateTime                      @default(now()) @db.DateTime(0)
+  updated_at              DateTime                      @default(now()) @db.DateTime(0)
+  deleted_at              DateTime?                     @db.DateTime(0)
+  consignacion_contratos  consignacion_contratos?
+  consignacion_documentos consignacion_documentos[]
+  titular                 clientes                      @relation("consignacion_ingresos_cliente_idToclientes", fields: [cliente_id], references: [id], onUpdate: Restrict, map: "consignacion_ingresos_cliente_fk")
+  consignaciones          consignaciones?               @relation(fields: [consignacion_id], references: [id], map: "consignacion_ingresos_consignacion_fk")
+  conyuge                 clientes?                     @relation("consignacion_ingresos_conyuge_cliente_idToclientes", fields: [conyuge_cliente_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "consignacion_ingresos_conyuge_fk")
+  usuarios                usuarios?                     @relation(fields: [recibido_por], references: [id], map: "consignacion_ingresos_usuario_fk")
+
+  @@index([conyuge_cliente_id], map: "consignacion_ingresos_conyuge_fk")
+  @@index([recibido_por], map: "consignacion_ingresos_usuario_fk")
+  @@index([cliente_id], map: "idx_cliente")
+  @@index([dominio], map: "idx_dominio")
+  @@index([deleted_at, estado], map: "idx_vigentes")
+}
+
 enum consignaciones_estado {
   en_venta
   vendido
@@ -355,13 +468,6 @@ enum chat_estado_clasificacion {
   CALIENTE
   TIBIO
   FRIO
-}
-
-enum clientes_canal {
-  whatsapp
-  facebook
-  instagram
-  web
 }
 
 enum alertas_stock_tipo {
@@ -409,4 +515,94 @@ enum descuentos_tipo {
 enum promociones_descuento_tipo {
   porcentaje
   monto
+}
+
+enum consignacion_contratos_comision_tipo {
+  porcentaje
+  monto
+}
+
+enum clientes_canal {
+  whatsapp
+  facebook
+  instagram
+  web
+  presencial
+}
+
+enum consignacion_contratos_gastos_verificacion {
+  agencia
+  cliente
+}
+
+enum consignacion_contratos_gastos_libre_deuda {
+  agencia
+  cliente
+}
+
+enum consignacion_contratos_gastos_lavado {
+  agencia
+  cliente
+}
+
+enum consignacion_contratos_gastos_publicacion {
+  agencia
+  cliente
+}
+
+enum consignacion_ingresos_origen {
+  nacional
+  importado
+}
+
+enum consignacion_ingresos_estado {
+  recepcion
+  publicado
+  retirado
+}
+
+enum consignacion_contratos_prueba_responsable {
+  agencia
+  cliente
+}
+
+enum consignacion_contratos_seguro_a_cargo {
+  agencia
+  cliente
+}
+
+enum consignacion_contratos_liquidacion_forma {
+  transferencia
+  efectivo
+  cheque
+}
+
+enum consignacion_documentos_tenencia {
+  no_recibido
+  copia
+  original
+}
+
+enum cliente_perfiles_contacto_alt_vinculo {
+  pareja
+  padre_madre
+  hermano_a
+  hijo_a
+  otro
+}
+
+enum consignacion_documentos_tipo {
+  titulo
+  cedula_verde
+  libre_deuda_patentes
+  libre_deuda_infracciones
+  vtv
+  verificacion_policial
+  dni_titular
+  dni_conyuge
+  constancia_cuit
+  comprobante_domicilio
+  comprobante_cbu
+  informe_dominio_historico
+  formulario_08
 }
