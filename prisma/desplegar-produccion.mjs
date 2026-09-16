@@ -103,17 +103,31 @@ if (!cierre || creaciones < tablas.size) {
 }
 
 // ── 3. Las migraciones, en orden, parando en la primera que falle ──
+// Se llama al CLI de Prisma por Node, no por npx. Con `shell: true` el
+// interprete de Windows corta la URL en el "&" de "&sslcert="; y sin shell,
+// Node se niega a ejecutar el npx.cmd. Invocar el .js directamente evita las
+// dos cosas: argumentos enteros y ningun shell de por medio.
+const { createRequire } = await import("node:module");
+const PRISMA_CLI = createRequire(import.meta.url).resolve("prisma/build/index.js");
+
 console.log("\nAplicando:");
 for (const archivo of pendientes) {
   try {
-    execFileSync("npx", ["prisma", "db", "execute", "--url", urlConClave, "--file", join(dir, archivo)], {
+    execFileSync(process.execPath, [PRISMA_CLI, "db", "execute", "--url", urlConClave, "--file", join(dir, archivo)], {
       cwd: join(AQUI, ".."),
       stdio: "pipe",
-      shell: true,
     });
     console.log(`  OK    ${archivo}`);
   } catch (e) {
-    const detalle = (e.stderr || e.stdout || "").toString().trim().split("\n").slice(-3).join(" | ");
+    // El mensaje de la excepcion importa tanto como stderr: si el fallo es al
+    // lanzar el proceso, stderr viene vacio y sin esto no se ve nada.
+    const detalle = [e.stderr?.toString(), e.stdout?.toString(), e.message]
+      .filter(Boolean)
+      .join(" | ")
+      .trim()
+      .split("\n")
+      .slice(-4)
+      .join(" | ");
     console.error(`  FALLA ${archivo}\n        ${detalle}`);
     console.error(`\nSe detuvo aca. Las anteriores quedaron aplicadas (son aditivas, el sistema sigue andando).`);
     console.error(`Para volver atras del todo: restaurar ${destino}`);
