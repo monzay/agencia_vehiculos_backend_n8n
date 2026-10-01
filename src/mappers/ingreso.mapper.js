@@ -1,8 +1,10 @@
-// Un ingreso es la toma de un vehículo en consignación: el auto entró al playón
-// y todavía no está publicado. Acá se arma la forma que consume el panel.
+// Un ingreso es la toma de un vehículo: el auto entró al playón en
+// consignación, comprado o en permuta. Acá se arma la forma que consume el panel.
 
 import { CATALOGO, TIPOS, cruzarConIngreso } from "../lib/documentos-catalogo.js";
 import { mapPersona } from "../services/personas.service.js";
+import { mapCompraventa } from "./compraventa.mapper.js";
+import { requisitosContrato } from "../lib/requisitos-contrato.js";
 
 const iso = (d) => (d ? new Date(d).toISOString() : null);
 // Los vencimientos son fecha sin hora: se recortan para que no se corran de día
@@ -55,6 +57,8 @@ export function mapContrato(c) {
   return {
     id: c.id,
     precioMinimo: aNumero(c.precio_minimo),
+    // El de publicación sale en el aviso; el mínimo es el piso para cerrar.
+    precioPublicacion: aNumero(c.precio_publicacion),
     comision: {
       tipo: c.comision_tipo,
       valor: aNumero(c.comision_valor),
@@ -68,7 +72,13 @@ export function mapContrato(c) {
       lavado: c.gastos_lavado,
       publicacion: c.gastos_publicacion,
     },
-    retiroAnticipado: { avisoDias: c.retiro_aviso_dias, costo: aNumero(c.retiro_costo) },
+    retiroAnticipado: {
+      avisoDias: c.retiro_aviso_dias,
+      costo: aNumero(c.retiro_costo),
+      // Lo pactado en palabras. Los contratos firmados antes de la migración 049
+      // no lo traen en su copia congelada: ahí queda null.
+      condiciones: c.retiro_condiciones ?? null,
+    },
     estadoUnidad: c.estado_unidad ?? null,
     pruebaManejo: { permitida: c.prueba_manejo, responsable: c.prueba_responsable ?? null },
     seguroACargo: c.seguro_a_cargo,
@@ -79,6 +89,14 @@ export function mapContrato(c) {
   };
 }
 
+// El contrato que corresponde a la modalidad: la consignación firma sus
+// condiciones; la compra y la permuta, un boleto.
+const contratoDe = (i) =>
+  i.modalidad === "consignacion" ? mapContrato(i.consignacion_contratos) : mapCompraventa(i.compraventa_contratos);
+
+const firmaDe = (i) =>
+  i.modalidad === "consignacion" ? i.consignacion_contratos?.firmado_at : i.compraventa_contratos?.firmado_at;
+
 export function mapIngreso(i, { conDetalle = false } = {}) {
   const vehiculo = datosVehiculo(i);
   const documentos = (i.consignacion_documentos ?? []).map((d) => mapDocumento(d, vehiculo));
@@ -87,9 +105,14 @@ export function mapIngreso(i, { conDetalle = false } = {}) {
 
   const base = {
     id: i.id,
+    modalidad: i.modalidad, // consignacion | compra | permuta
     vehiculo: { ...vehiculo, kmRecepcion: i.km_recepcion ?? null },
+    // Fotos públicas del auto: la primera es la principal.
+    fotos: Array.isArray(i.fotos_json) ? i.fotos_json : [],
     titular: mapPersona(i.titular),
     estado: i.estado, // recepcion | publicado | retirado
+    // Cuándo entró al estado actual. Null en los anteriores a la migración 054.
+    estadoDesde: iso(i.estado_at),
     // Cuando el auto se publica, la venta la maneja `consignaciones`.
     consignacionId: i.consignacion_id ?? null,
     recibidoPor: i.usuarios ? { id: i.usuarios.id, nombre: i.usuarios.nombre } : null,
@@ -108,11 +131,15 @@ export function mapIngreso(i, { conDetalle = false } = {}) {
         (t) => CATALOGO[t].destino === "agencia" && porTipo.get(t)?.tenencia !== "original"
       ),
     },
-    contratoFirmado: Boolean(i.consignacion_contratos?.firmado_at),
+    contratoFirmado: Boolean(firmaDe(i)),
     creado: iso(i.created_at),
     actualizado: iso(i.updated_at),
   };
 
   if (!conDetalle) return base;
-  return { ...base, documentos, contrato: mapContrato(i.consignacion_contratos) };
+  const contrato = contratoDe(i);
+  const detalle = { ...base, documentos, contrato };
+  // Solo la consignación tiene este requisito: compra y permuta firman un boleto.
+  if (i.modalidad !== "consignacion") return detalle;
+  return { ...detalle, requisitosContrato: requisitosContrato(detalle) };
 }

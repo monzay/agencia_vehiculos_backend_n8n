@@ -1,4 +1,4 @@
-// Aplica a la base de PRODUCCION las migraciones que le faltan (035..047).
+// Aplica a la base de PRODUCCION las migraciones que le faltan (048..054).
 //
 // Antes de tocar nada hace un backup y verifica que sirva. Si el backup falla,
 // no sigue. Si una migracion falla, se detiene ahi y te dice cual: las que ya
@@ -50,18 +50,24 @@ const tablas = new Set(columnas.map((r) => r.t));
 const tipo = (t, c) => columnas.find((r) => r.t === t && r.c === c)?.ty ?? "";
 
 // La ultima migracion de la tanda deja esta huella; si ya esta, no hay nada que hacer.
-const yaEsta = tablas.has("consignacion_documentos") && tipo("consignacion_documentos", "tipo").includes("formulario_08");
+const yaEsta = Boolean(tipo("consignacion_ingresos", "estado_at"));
 if (yaEsta) {
-  console.log("La base ya tiene el modulo de consignaciones aplicado. No hay nada que hacer.");
+  console.log("La base ya tiene aplicadas las migraciones 048..054. No hay nada que hacer.");
   await salir(0);
 }
-if (!tipo("autos", "costo")) {
-  console.error("ATENCION: falta la migracion 034 (autos.costo). Esta base no esta donde se espera; revisar antes de seguir.");
+// La tanda anterior (035..047) tiene que estar: si falta, la base no esta donde se espera.
+if (!tipo("consignacion_documentos", "tipo").includes("formulario_08")) {
+  console.error("ATENCION: falta la tanda 035..047. Esta base no esta donde se espera; revisar antes de seguir.");
+  await salir(1);
+}
+// A medio aplicar (alguna de la tanda ya entro) no se reintenta a ciegas.
+if (tipo("consignacion_contratos", "precio_publicacion") || tablas.has("compraventa_contratos")) {
+  console.error("ATENCION: la tanda 048..054 esta aplicada a medias. Revisar a mano cual falta.");
   await salir(1);
 }
 
 const dir = join(AQUI, "migrations_manual");
-const pendientes = readdirSync(dir).filter((f) => /^0(3[5-9]|4[0-7])_.*\.sql$/.test(f)).sort();
+const pendientes = readdirSync(dir).filter((f) => /^0(4[89]|5[0-4])_.*\.sql$/.test(f)).sort();
 
 console.log(`Base: ${BASE} en ${HOST}`);
 console.log(`Tablas hoy: ${tablas.size}`);
@@ -144,13 +150,13 @@ const tablasDespues = new Set(despues.map((r) => r.t));
 const tipoDespues = (t, c) => despues.find((r) => r.t === t && r.c === c)?.ty ?? "";
 
 const controles = [
-  ["clientes.canal tiene presencial", tipoDespues("clientes", "canal").includes("presencial")],
-  ["tabla cliente_perfiles", tablasDespues.has("cliente_perfiles")],
-  ["tabla consignacion_ingresos", tablasDespues.has("consignacion_ingresos")],
-  ["tabla consignacion_contratos", tablasDespues.has("consignacion_contratos")],
-  ["tabla consignacion_documentos", tablasDespues.has("consignacion_documentos")],
-  ["documentos.tenencia", Boolean(despues.find((r) => r.t === "consignacion_documentos" && r.c === "tenencia"))],
-  ["enum con formulario_08", tipoDespues("consignacion_documentos", "tipo").includes("formulario_08")],
+  ["048 contratos.precio_publicacion", Boolean(tipoDespues("consignacion_contratos", "precio_publicacion"))],
+  ["049 contratos.retiro_condiciones", Boolean(tipoDespues("consignacion_contratos", "retiro_condiciones"))],
+  ["050 ingresos.modalidad", tipoDespues("consignacion_ingresos", "modalidad").includes("permuta")],
+  ["051 enum con informe_dominio", tipoDespues("consignacion_documentos", "tipo").includes("'informe_dominio'")],
+  ["052 tabla compraventa_contratos", tablasDespues.has("compraventa_contratos")],
+  ["053 ingresos.fotos_json", Boolean(tipoDespues("consignacion_ingresos", "fotos_json"))],
+  ["054 ingresos.estado_at", Boolean(tipoDespues("consignacion_ingresos", "estado_at"))],
   ["los datos viejos siguen", tablasDespues.has("clientes") && tablasDespues.has("autos") && tablasDespues.has("sesiones")],
 ];
 
@@ -162,6 +168,6 @@ for (const [etiqueta, ok] of controles) {
 }
 
 console.log(`\n${tablas.size} tablas antes -> ${tablasDespues.size} despues`);
-console.log(fallos === 0 ? "\nLISTO. La base quedo preparada para el modulo de consignaciones." : `\n${fallos} PROBLEMAS`);
+console.log(fallos === 0 ? "\nLISTO. La base quedo con las migraciones 048..054." : `\n${fallos} PROBLEMAS`);
 console.log(`Backup guardado en: ${destino}`);
 await salir(fallos === 0 ? 0 : 1);

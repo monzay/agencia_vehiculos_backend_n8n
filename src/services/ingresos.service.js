@@ -1,10 +1,13 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 import { mapIngreso } from "../mappers/ingreso.mapper.js";
+import { MODALIDADES } from "../lib/modalidades.js";
 import { registrarPersona, SELECT_PERFIL } from "./personas.service.js";
 
-// Toma de un vehículo en consignación: el auto entró al playón y todavía no
-// está publicado. `consignaciones` no cubre esta etapa porque exige `auto_id`,
-// y el auto se carga al catálogo recién cuando los papeles están en orden.
+// Toma de un vehículo: el auto entró al playón en consignación, comprado o en
+// permuta. En la consignación todavía no está publicado: `consignaciones` no
+// cubre esta etapa porque exige `auto_id`, y el auto se carga al catálogo
+// recién cuando los papeles están en orden.
 
 const VIGENTE = { deleted_at: null };
 const ESTADOS = ["recepcion", "publicado", "retirado"];
@@ -20,13 +23,17 @@ const PARA_LISTA = {
   titular: PERSONA,
   usuarios: USUARIO,
   consignacion_contratos: { select: { firmado_at: true } },
+  compraventa_contratos: { select: { firmado_at: true } },
   consignacion_documentos: { where: VIGENTE, select: { tipo: true, tenencia: true, fecha_vencimiento: true, datos_json: true } },
 };
 
-const PARA_DETALLE = {
+export const PARA_DETALLE = {
   titular: PERSONA,
   usuarios: USUARIO,
   consignacion_contratos: true,
+  compraventa_contratos: {
+    include: { auto_entregado: { select: { ref: true, marca: true, modelo: true, anio: true, kms: true } } },
+  },
   consignacion_documentos: {
     where: VIGENTE,
     orderBy: { id: "asc" },
@@ -93,8 +100,22 @@ export function datosVehiculo(titulo) {
   };
 }
 
+// Fotos públicas del vehículo: la principal primero y hasta 3 más. Son URLs del
+// store público de imágenes; al publicar pasan tal cual a la ficha del catálogo.
+const MAX_FOTOS = 4;
+
+function fotosValidas(fotos) {
+  if (fotos === null) return Prisma.DbNull;
+  if (!Array.isArray(fotos)) throw error("Las fotos deben ser una lista.");
+  if (fotos.length > MAX_FOTOS) throw error(`Se admiten hasta ${MAX_FOTOS} fotos: la principal y ${MAX_FOTOS - 1} más.`);
+  const urls = fotos.map((f) => (typeof f === "string" ? f.trim() : ""));
+  if (urls.some((u) => !/^https:\/\/\S+$/.test(u) || u.length > 500)) throw error("Cada foto tiene que ser una URL https válida.");
+  return urls.length ? urls : Prisma.DbNull;
+}
+
 // Lo que se carga al recibir el auto y no figura en ningún papel: los km del
-// tablero y las notas. Solo se tocan los campos presentes; "" o null los borran.
+// tablero, las notas y las fotos. Solo se tocan los campos presentes; "" o null
+// los borran.
 function datosRecepcion(body) {
   const data = {};
   if (body.kmRecepcion !== undefined) {
@@ -102,18 +123,20 @@ function datosRecepcion(body) {
       body.kmRecepcion === "" || body.kmRecepcion === null ? null : entero(body.kmRecepcion, "Los kilómetros", { min: 0, max: 9999999 });
   }
   if (body.notas !== undefined) data.notas = typeof body.notas === "string" ? body.notas.trim() || null : null;
+  if (body.fotos !== undefined) data.fotos_json = fotosValidas(body.fotos);
   return data;
 }
 
 // ── Lecturas ──
 
 // `q` busca por dominio, vehículo o por el titular (nombre o DNI).
-export async function listarIngresos({ estado = "", q = "", offset = 0, limite = 10 } = {}) {
+export async function listarIngresos({ modalidad = "", estado = "", q = "", offset = 0, limite = 10 } = {}) {
   const take = Math.max(1, Number(limite) || 10);
   const skip = Math.max(0, Number(offset) || 0);
   const termino = String(q || "").trim();
 
   const filtros = [VIGENTE];
+  if (MODALIDADES.includes(modalidad)) filtros.push({ modalidad });
   if (ESTADOS.includes(estado)) filtros.push({ estado });
   if (termino) {
     const digitos = termino.replace(/\D/g, "");
@@ -155,15 +178,20 @@ export async function obtenerIngreso(id) {
 //
 // El vehículo NO se carga acá: sale del título cuando se sube ese papel. Un
 // ingreso recién creado no tiene dominio, marca ni modelo todavía.
+//
+// La modalidad se fija acá y no se edita: cambiarla dejaría colgado un contrato
+// del tipo equivocado.
 export async function crearIngreso(body = {}, usuarioId = null) {
   const recepcion = datosRecepcion(body);
   if (!body.titular) throw error("Faltan los datos del titular.");
+  const modalidad = body.modalidad ?? "consignacion";
+  if (!MODALIDADES.includes(modalidad)) throw error(`La modalidad debe ser una de: ${MODALIDADES.join(", ")}.`);
 
   return prisma.$transaction(async (tx) => {
     const clienteId = await registrarPersona(body.titular, tx);
 
     const creado = await tx.consignacion_ingresos.create({
-      data: { ...recepcion, cliente_id: clienteId, recibido_por: usuarioId },
+      data: { ...recepcion, modalidad, cliente_id: clienteId, recibido_por: usuarioId },
       include: PARA_DETALLE,
     });
     return mapIngreso(creado, { conDetalle: true });
@@ -185,22 +213,26 @@ export async function actualizarIngreso(id, body = {}) {
 
     // Publicar = vincular con la fila de `consignaciones` que maneja la venta.
     if (body.consignacionId !== undefined) {
+      if (existe.modalidad !== "consignacion") throw error("Solo una consignación se vincula con la venta por cuenta de terceros.", 409);
       if (body.consignacionId === null || body.consignacionId === "") {
         data.consignacion_id = null;
         data.estado = "recepcion";
+        data.estado_at = new Date();
       } else {
         const consignacionId = entero(body.consignacionId, "La consignación", { min: 1 });
         const destino = await tx.consignaciones.findFirst({ where: { id: consignacionId, deleted_at: null }, select: { id: true } });
         if (!destino) throw error("Esa consignación no existe.", 404);
         data.consignacion_id = destino.id;
         data.estado = "publicado";
+        data.estado_at = new Date();
       }
     } else if (body.estado !== undefined) {
-      if (!ESTADOS.includes(body.estado)) throw error(`El estado debe ser uno de: ${ESTADOS.join(", ")}.`);
-      if (body.estado === "publicado" && !existe.consignacion_id) {
-        throw error("Para publicar hay que vincular el ingreso con una consignación.");
-      }
-      data.estado = body.estado;
+      // El estado NO se cambia por acá. Publicar o retirar tiene que apagar o
+      // encender la ficha del catálogo en la misma transacción, y eso vive en
+      // ingreso-publicacion.service.js. Dejar una segunda puerta que solo
+      // escribe la columna terminaría en un auto "retirado" que sigue a la
+      // venta en la web.
+      throw error("El estado se cambia desde la acción de publicar o retirar, no editando el ingreso.", 409);
     }
 
     const actualizado = await tx.consignacion_ingresos.update({ where: { id: existe.id }, data, include: PARA_DETALLE });

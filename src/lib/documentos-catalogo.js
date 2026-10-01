@@ -1,4 +1,5 @@
-// Qué pide cada papel de una consignación.
+// Qué pide cada papel del legajo. Es el mismo para las tres modalidades
+// (consignación, compra y permuta): el auto es el mismo y sus papeles también.
 //
 // Esta es LA fuente: el servicio valida contra estas declaraciones antes de
 // guardar, y el panel dibuja el formulario leyéndolas por API. Un papel nuevo
@@ -77,6 +78,27 @@ export const CATALOGO = {
     campos: [],
   },
 
+  // El estado del auto HOY en el Registro. Es el que se mira antes de pagar:
+  // una inhibición del titular o un embargo trabado ayer no aparecen en el
+  // título que el cliente trae en la mano.
+  informe_dominio: {
+    label: "Informe de dominio",
+    vencimiento: "opcional",
+    destino: "agencia",
+    campos: [
+      TEXTO("registro", "Registro seccional que lo emitió", { requerido: true }),
+      FECHA("fecha_emision", "Fecha de emisión", { requerido: true }),
+      TEXTO("dominio", "Dominio", { max: 15, requerido: true }),
+      TEXTO("titular_registral", "Titular registral"),
+      SI_NO("prenda", "Tiene prenda"),
+      SI_NO("embargo", "Tiene embargo"),
+      SI_NO("inhibicion", "El titular tiene inhibición"),
+      SI_NO("denuncia_robo", "Tiene denuncia de robo o hurto"),
+    ],
+    // Mismo criterio que el histórico: el titular registral no se cruza.
+    cruces: { dominio: "dominio" },
+  },
+
   informe_dominio_historico: {
     label: "Informe de dominio histórico",
     vencimiento: "opcional",
@@ -142,7 +164,8 @@ export const CATALOGO = {
   dni_titular: {
     label: "DNI del titular",
     vencimiento: "opcional",
-    destino: "agencia",
+    // El DNI es del dueño y vuelve con él: la agencia nunca retiene el original.
+    destino: "cliente",
     campos: [
       TEXTO("nombre", "Nombre", { requerido: true }),
       TEXTO("apellido", "Apellido", { requerido: true }),

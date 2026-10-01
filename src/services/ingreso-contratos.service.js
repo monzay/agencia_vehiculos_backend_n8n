@@ -1,45 +1,21 @@
-import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
-import { CATALOGO } from "../lib/documentos-catalogo.js";
+import { error, TOPE_MONTO, numero, opcion, booleano, textoLibre } from "../lib/contrato-campos.js";
 import { mapContrato, mapIngreso } from "../mappers/ingreso.mapper.js";
+import { exigirRequisitosContrato } from "../lib/requisitos-contrato.js";
+import { firmar, desfirmar, impresosDe } from "./legajo-contrato.service.js";
 
-// Las condiciones firmadas de una consignación, y la copia congelada que se
-// imprime. No hay formulario oficial: lo que sí es fijo es la lista de puntos
-// que, si faltan, terminan en discusión.
+// Las condiciones firmadas de una consignación. No hay formulario oficial: lo
+// que sí es fijo es la lista de puntos que, si faltan, terminan en discusión.
 
 const VIGENTE = { deleted_at: null };
 const A_CARGO = ["agencia", "cliente"];
 const COMISION_TIPOS = ["porcentaje", "monto"];
 const LIQUIDACION_FORMAS = ["transferencia", "efectivo", "cheque"];
 
-function error(mensaje, status = 400) {
-  const e = new Error(mensaje);
-  e.status = status;
-  return e;
-}
-
-function numero(valor, campo, { min = 0, max = null } = {}) {
-  const n = Number(valor);
-  if (valor === "" || valor === null || valor === undefined || !Number.isFinite(n)) {
-    throw error(`${campo} debe ser un número.`);
-  }
-  if (n < min) throw error(`${campo} no puede ser menor a ${min}.`);
-  if (max != null && n > max) throw error(`${campo} no puede ser mayor a ${max}.`);
-  return n;
-}
-
-function opcion(valor, campo, validas, porDefecto) {
-  if (valor === undefined) return porDefecto;
-  if (!validas.includes(valor)) throw error(`${campo} debe ser uno de: ${validas.join(", ")}.`);
-  return valor;
-}
-
-const booleano = (valor, porDefecto) => (valor === undefined ? porDefecto : valor === true || valor === "true");
-
 function construirData(body) {
   const comisionTipo = opcion(body.comisionTipo, "El tipo de comisión", COMISION_TIPOS, "porcentaje");
   const comisionValor = numero(body.comisionValor ?? 0, "La comisión", {
-    max: comisionTipo === "porcentaje" ? 100 : null,
+    max: comisionTipo === "porcentaje" ? 100 : TOPE_MONTO,
   });
 
   const pruebaManejo = booleano(body.pruebaManejo, false);
@@ -50,8 +26,19 @@ function construirData(body) {
     : null;
   if (pruebaManejo && !pruebaResponsable) throw error("Si se permiten pruebas de manejo hay que indicar quién responde.");
 
+  const precioMinimo = numero(body.precioMinimo, "El precio mínimo", { max: TOPE_MONTO });
+  const precioPublicacion = numero(body.precioPublicacion, "El precio de publicación", { max: TOPE_MONTO });
+
+  // Publicar por debajo del piso no tiene sentido comercial: el caso real es que
+  // se cargaron los dos campos al revés, y eso se descubre tarde y caro. Se
+  // valida acá y no con un CHECK: es una regla del negocio, no de la tabla.
+  if (precioPublicacion < precioMinimo) {
+    throw error("El precio de publicación no puede ser menor al mínimo autorizado. ¿Están invertidos?");
+  }
+
   return {
-    precio_minimo: numero(body.precioMinimo, "El precio mínimo"),
+    precio_minimo: precioMinimo,
+    precio_publicacion: precioPublicacion,
     comision_tipo: comisionTipo,
     comision_valor: comisionValor,
     comision_incluida: booleano(body.comisionIncluida, true),
@@ -61,8 +48,12 @@ function construirData(body) {
     gastos_lavado: opcion(body.gastosLavado, "Los gastos de lavado", A_CARGO, "agencia"),
     gastos_publicacion: opcion(body.gastosPublicacion, "Los gastos de publicación", A_CARGO, "agencia"),
     retiro_aviso_dias: numero(body.retiroAvisoDias ?? 0, "El aviso de retiro anticipado", { min: 0, max: 365 }),
-    retiro_costo: numero(body.retiroCosto ?? 0, "El costo de retiro anticipado"),
-    estado_unidad: typeof body.estadoUnidad === "string" ? body.estadoUnidad.trim() || null : null,
+    retiro_costo: numero(body.retiroCosto ?? 0, "El costo de retiro anticipado", { max: TOPE_MONTO }),
+    // Lo que se pacta para el retiro anticipado más allá del aviso y el costo:
+    // gastos ya hechos, penalidad, qué pasa si había una seña. Lo redacta la
+    // agencia porque no hay dos contratos que lo resuelvan igual.
+    retiro_condiciones: textoLibre(body.retiroCondiciones, "Lo pactado para el retiro anticipado"),
+    estado_unidad: textoLibre(body.estadoUnidad, "El estado de la unidad"),
     prueba_manejo: pruebaManejo,
     prueba_responsable: pruebaResponsable,
     seguro_a_cargo: opcion(body.seguroACargo, "El seguro", A_CARGO, "cliente"),
@@ -83,13 +74,10 @@ async function ingresoVigente(ingresoId) {
   if (!Number.isInteger(n) || n <= 0) throw error("Ingreso no encontrado.", 404);
   const ingreso = await prisma.consignacion_ingresos.findFirst({ where: { id: n, ...VIGENTE }, include: CON_TODO });
   if (!ingreso) throw error("Ingreso no encontrado.", 404);
+  // La compra y la permuta firman un boleto, no estas condiciones: viven en
+  // ingreso-compraventa.service.js.
+  if (ingreso.modalidad !== "consignacion") throw error("Este ingreso no es una consignación.", 409);
   return ingreso;
-}
-
-// El vehículo del ingreso sale del título. Sin título, el contrato y los
-// recibos no tienen qué auto nombrar.
-function exigirVehiculo(ingreso) {
-  if (!ingreso.dominio) throw error("Cargá el título del automotor: el contrato necesita los datos del vehículo.", 409);
 }
 
 export async function obtenerContrato(ingresoId) {
@@ -97,9 +85,6 @@ export async function obtenerContrato(ingresoId) {
   return mapContrato(ingreso.consignacion_contratos);
 }
 
-// Mientras no esté firmado, el contrato se edita todo lo que haga falta.
-// Firmado, se congela: si cambian las condiciones, se desfirma y se vuelve a
-// imprimir, y así el papel del cliente y el sistema nunca dicen cosas distintas.
 export async function guardarContrato(ingresoId, body = {}) {
   const ingreso = await ingresoVigente(ingresoId);
   if (ingreso.consignacion_contratos?.firmado_at) {
@@ -107,6 +92,10 @@ export async function guardarContrato(ingresoId, body = {}) {
   }
 
   const data = construirData(body);
+  // El CBU se exige según la forma de liquidación que se está guardando ahora.
+  const detalle = mapIngreso(ingreso, { conDetalle: true });
+  exigirRequisitosContrato({ ...detalle, contrato: { liquidacion: { forma: data.liquidacion_forma } } });
+
   const guardado = await prisma.consignacion_contratos.upsert({
     where: { ingreso_id: ingreso.id },
     create: { ingreso_id: ingreso.id, ...data },
@@ -115,89 +104,20 @@ export async function guardarContrato(ingresoId, body = {}) {
   return mapContrato(guardado);
 }
 
-// Lo que se imprime. Antes de firmar se arma en vivo; después sale del snapshot,
-// que es la copia exacta de lo que el cliente tiene en la mano.
 export async function armarImpresos(ingresoId) {
   const ingreso = await ingresoVigente(ingresoId);
-  if (!ingreso.consignacion_contratos) throw error("Todavía no hay condiciones cargadas para este ingreso.", 409);
-  exigirVehiculo(ingreso);
-
-  if (ingreso.consignacion_contratos.firmado_at) return ingreso.consignacion_contratos.contrato_json;
-  return snapshot(ingreso, await agencia());
+  // Firmado, se reimprime la copia congelada tal cual: no se le exige nada.
+  if (!ingreso.consignacion_contratos?.firmado_at) exigirRequisitosContrato(mapIngreso(ingreso, { conDetalle: true }));
+  return impresosDe(ingreso, ingreso.consignacion_contratos);
 }
 
 export async function firmarContrato(ingresoId) {
   const ingreso = await ingresoVigente(ingresoId);
-  const contrato = ingreso.consignacion_contratos;
-  if (!contrato) throw error("Cargá las condiciones antes de firmar.", 409);
-  if (contrato.firmado_at) throw error("El contrato ya está firmado.", 409);
-  exigirVehiculo(ingreso);
-
-  const firmadoAt = new Date();
-  const congelado = { ...snapshot(ingreso, await agencia()), firmado: firmadoAt.toISOString() };
-
-  const guardado = await prisma.consignacion_contratos.update({
-    where: { id: contrato.id },
-    data: { firmado_at: firmadoAt, contrato_json: congelado },
-  });
-  return mapContrato(guardado);
+  exigirRequisitosContrato(mapIngreso(ingreso, { conDetalle: true }));
+  return mapContrato(await firmar(prisma.consignacion_contratos, ingreso, ingreso.consignacion_contratos));
 }
 
-// Desfirmar borra el congelado: un contrato sin firma no tiene copia que
-// preservar, y la base exige que firma y snapshot vayan juntos.
-//
-// `Prisma.DbNull` y no `null`: en una columna JSON, `null` guarda el VALOR json
-// `null`, que para SQL no es NULL y hace saltar el CHECK.
 export async function desfirmarContrato(ingresoId) {
   const ingreso = await ingresoVigente(ingresoId);
-  const contrato = ingreso.consignacion_contratos;
-  if (!contrato?.firmado_at) throw error("Ese contrato no está firmado.", 409);
-
-  const guardado = await prisma.consignacion_contratos.update({
-    where: { id: contrato.id },
-    data: { firmado_at: null, contrato_json: Prisma.DbNull },
-  });
-  return mapContrato(guardado);
-}
-
-const agencia = () => prisma.ubicacion.findFirst({ select: { nombre: true, direccion: true } });
-
-// La copia congelada: todo lo que hace falta para reimprimir el contrato y los
-// dos recibos sin volver a consultar ninguna tabla.
-function snapshot(ingreso, datosAgencia) {
-  const detalle = mapIngreso(ingreso, { conDetalle: true });
-
-  return {
-    version: 1,
-    generado: new Date().toISOString(),
-    agencia: datosAgencia ? { nombre: datosAgencia.nombre, direccion: datosAgencia.direccion } : null,
-    titular: detalle.titular,
-    vehiculo: detalle.vehiculo,
-    condiciones: detalle.contrato,
-    // El recibo de documentación entregada: SOLO los papeles que la agencia
-    // recibió de verdad. Un documento escaneado cuyo original nunca llegó no va
-    // en un recibo — el recibo es la prueba de que el cliente entregó algo, y
-    // firmarlo por algo que no está es el problema que esto evita.
-    papelesEntregados: detalle.documentos
-      .filter((d) => d.tenencia !== "no_recibido")
-      .map((d) => ({
-        tipo: d.tipo,
-        label: CATALOGO[d.tipo]?.label ?? d.tipo,
-        tenencia: d.tenencia, // copia | original
-        ubicacionFisica: d.ubicacionFisica,
-        fechaVencimiento: d.fechaVencimiento,
-        imagenes: d.imagenes.length,
-      })),
-    // Lo que está escaneado pero cuyo papel no está en la agencia. No entra en
-    // el recibo; se imprime aparte como lo que todavía falta traer.
-    papelesPendientes: detalle.documentos
-      .filter((d) => d.tenencia === "no_recibido")
-      .map((d) => ({ tipo: d.tipo, label: CATALOGO[d.tipo]?.label ?? d.tipo })),
-    recepcion: {
-      kmRecepcion: detalle.vehiculo.kmRecepcion,
-      estadoUnidad: detalle.contrato?.estadoUnidad ?? null,
-      recibidoPor: detalle.recibidoPor,
-      recibido: detalle.recibido,
-    },
-  };
+  return mapContrato(await desfirmar(prisma.consignacion_contratos, ingreso.consignacion_contratos));
 }

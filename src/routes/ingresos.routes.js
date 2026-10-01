@@ -12,11 +12,17 @@ import {
   deleteDocumento,
   postExtraccion,
   postFirmaImagenes,
+  postEstado,
   getContrato,
   putContrato,
   postFirma,
   deleteFirma,
   getImpresos,
+  getCompraventa,
+  putCompraventa,
+  postFirmaCompraventa,
+  deleteFirmaCompraventa,
+  getImpresosCompraventa,
 } from "../controllers/ingresos.controller.js";
 import { requireAuth, requireRole } from "../middlewares/auth.js";
 import { rateLimit } from "../middlewares/rateLimit.js";
@@ -57,11 +63,20 @@ router.post("/:id/documentos/extraer", soloAdmin, limiteExtraccion, postExtracci
 router.put("/:id/documentos", soloAdmin, putDocumento);
 router.delete("/:id/documentos/:documentoId", soloAdmin, deleteDocumento);
 
+router.post("/:id/estado", soloAdmin, postEstado);
+
 router.get("/:id/contrato", getContrato);
 router.put("/:id/contrato", soloAdmin, putContrato);
 router.post("/:id/contrato/firma", soloAdmin, postFirma);
 router.delete("/:id/contrato/firma", soloAdmin, deleteFirma);
 
 router.get("/:id/impresos", getImpresos);
+
+// Compra y permuta: el boleto reemplaza al contrato de consignación.
+router.get("/:id/compraventa", getCompraventa);
+router.put("/:id/compraventa", soloAdmin, putCompraventa);
+router.post("/:id/compraventa/firma", soloAdmin, postFirmaCompraventa);
+router.delete("/:id/compraventa/firma", soloAdmin, deleteFirmaCompraventa);
+router.get("/:id/compraventa/impresos", getImpresosCompraventa);
 
 export default router;

@@ -21,32 +21,33 @@ model alertas_stock {
 }
 
 model autos {
-  id               Int                @id @default(autoincrement()) @db.UnsignedInt
-  ref              String             @unique(map: "ref") @db.VarChar(30)
-  marca            String             @db.VarChar(60)
-  modelo           String             @db.VarChar(80)
-  anio             Int                @db.UnsignedSmallInt
+  id               Int                     @id @default(autoincrement()) @db.UnsignedInt
+  ref              String                  @unique(map: "ref") @db.VarChar(30)
+  marca            String                  @db.VarChar(60)
+  modelo           String                  @db.VarChar(80)
+  anio             Int                     @db.UnsignedSmallInt
   tipo             autos_tipo
-  tipo_vehiculo    String?            @db.VarChar(10)
-  combustible      String?            @db.VarChar(10)
-  precio           Decimal            @db.Decimal(12, 2)
-  costo            Decimal?           @db.Decimal(12, 2)
-  precio_venta     Decimal?           @db.Decimal(12, 2)
-  vendido_at       DateTime?          @db.DateTime(0)
-  kms              Int?               @default(0) @db.UnsignedInt
-  stock            Int                @default(1) @db.UnsignedSmallInt
-  descripcion      String?            @db.Text
+  tipo_vehiculo    String?                 @db.VarChar(10)
+  combustible      String?                 @db.VarChar(10)
+  precio           Decimal                 @db.Decimal(12, 2)
+  costo            Decimal?                @db.Decimal(12, 2)
+  precio_venta     Decimal?                @db.Decimal(12, 2)
+  vendido_at       DateTime?               @db.DateTime(0)
+  kms              Int?                    @default(0) @db.UnsignedInt
+  stock            Int                     @default(1) @db.UnsignedSmallInt
+  descripcion      String?                 @db.Text
   fotos_json       Json?
-  disponible       Boolean            @default(true)
+  disponible       Boolean                 @default(true)
   uso              String?
-  created_at       DateTime?          @default(now()) @db.DateTime(0)
-  updated_at       DateTime?          @default(now()) @db.DateTime(0)
-  deleted_at       DateTime?          @db.DateTime(0)
-  descuento_id     Int?               @db.UnsignedInt
+  created_at       DateTime?               @default(now()) @db.DateTime(0)
+  updated_at       DateTime?               @default(now()) @db.DateTime(0)
+  deleted_at       DateTime?               @db.DateTime(0)
+  descuento_id     Int?                    @db.UnsignedInt
   auto_promociones auto_promociones[]
   auto_vistas      auto_vistas[]
-  descuentos       descuentos?        @relation(fields: [descuento_id], references: [id], onUpdate: NoAction, map: "autos_descuento_fk")
+  descuentos       descuentos?             @relation(fields: [descuento_id], references: [id], onUpdate: NoAction, map: "autos_descuento_fk")
   consignaciones   consignaciones[]
+  permutas         compraventa_contratos[]
 
   @@index([disponible], map: "idx_disponible")
   @@index([precio], map: "idx_precio")
@@ -365,6 +366,7 @@ model consignacion_contratos {
   id                    Int                                        @id @default(autoincrement()) @db.UnsignedInt
   ingreso_id            Int                                        @unique(map: "uq_ingreso") @db.UnsignedInt
   precio_minimo         Decimal                                    @db.Decimal(12, 2)
+  precio_publicacion    Decimal                                    @db.Decimal(12, 2)
   comision_tipo         consignacion_contratos_comision_tipo       @default(porcentaje)
   comision_valor        Decimal                                    @default(0.00) @db.Decimal(12, 2)
   comision_incluida     Boolean                                    @default(true)
@@ -375,6 +377,7 @@ model consignacion_contratos {
   gastos_publicacion    consignacion_contratos_gastos_publicacion  @default(agencia)
   retiro_aviso_dias     Int                                        @default(0) @db.UnsignedSmallInt
   retiro_costo          Decimal                                    @default(0.00) @db.Decimal(12, 2)
+  retiro_condiciones    String?                                    @db.Text
   estado_unidad         String?                                    @db.Text
   prueba_manejo         Boolean                                    @default(false)
   prueba_responsable    consignacion_contratos_prueba_responsable?
@@ -415,37 +418,71 @@ model consignacion_documentos {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model consignacion_ingresos {
-  id                      Int                           @id @default(autoincrement()) @db.UnsignedInt
-  cliente_id              Int                           @db.UnsignedInt
-  conyuge_cliente_id      Int?                          @db.UnsignedInt
-  consignacion_id         Int?                          @unique(map: "uq_consignacion") @db.UnsignedInt
-  dominio                 String?                       @db.VarChar(15)
-  marca                   String?                       @db.VarChar(60)
-  modelo                  String?                       @db.VarChar(80)
-  anio                    Int?                          @db.UnsignedSmallInt
-  motor                   String?                       @db.VarChar(40)
-  chasis                  String?                       @db.VarChar(40)
+  id                      Int                             @id @default(autoincrement()) @db.UnsignedInt
+  cliente_id              Int                             @db.UnsignedInt
+  modalidad               consignacion_ingresos_modalidad @default(consignacion)
+  conyuge_cliente_id      Int?                            @db.UnsignedInt
+  consignacion_id         Int?                            @unique(map: "uq_consignacion") @db.UnsignedInt
+  dominio                 String?                         @db.VarChar(15)
+  marca                   String?                         @db.VarChar(60)
+  modelo                  String?                         @db.VarChar(80)
+  anio                    Int?                            @db.UnsignedSmallInt
+  motor                   String?                         @db.VarChar(40)
+  chasis                  String?                         @db.VarChar(40)
   origen                  consignacion_ingresos_origen?
-  km_recepcion            Int?                          @db.UnsignedInt
-  estado                  consignacion_ingresos_estado  @default(recepcion)
-  recibido_por            Int?                          @db.UnsignedInt
-  recibido_at             DateTime                      @default(now()) @db.DateTime(0)
-  notas                   String?                       @db.Text
-  created_at              DateTime                      @default(now()) @db.DateTime(0)
-  updated_at              DateTime                      @default(now()) @db.DateTime(0)
-  deleted_at              DateTime?                     @db.DateTime(0)
+  km_recepcion            Int?                            @db.UnsignedInt
+  fotos_json              Json?
+  estado                  consignacion_ingresos_estado    @default(recepcion)
+  estado_at               DateTime?                       @db.DateTime(0)
+  recibido_por            Int?                            @db.UnsignedInt
+  recibido_at             DateTime                        @default(now()) @db.DateTime(0)
+  notas                   String?                         @db.Text
+  created_at              DateTime                        @default(now()) @db.DateTime(0)
+  updated_at              DateTime                        @default(now()) @db.DateTime(0)
+  deleted_at              DateTime?                       @db.DateTime(0)
   consignacion_contratos  consignacion_contratos?
+  compraventa_contratos   compraventa_contratos?
   consignacion_documentos consignacion_documentos[]
-  titular                 clientes                      @relation("consignacion_ingresos_cliente_idToclientes", fields: [cliente_id], references: [id], onUpdate: Restrict, map: "consignacion_ingresos_cliente_fk")
-  consignaciones          consignaciones?               @relation(fields: [consignacion_id], references: [id], map: "consignacion_ingresos_consignacion_fk")
-  conyuge                 clientes?                     @relation("consignacion_ingresos_conyuge_cliente_idToclientes", fields: [conyuge_cliente_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "consignacion_ingresos_conyuge_fk")
-  usuarios                usuarios?                     @relation(fields: [recibido_por], references: [id], map: "consignacion_ingresos_usuario_fk")
+  titular                 clientes                        @relation("consignacion_ingresos_cliente_idToclientes", fields: [cliente_id], references: [id], onUpdate: Restrict, map: "consignacion_ingresos_cliente_fk")
+  consignaciones          consignaciones?                 @relation(fields: [consignacion_id], references: [id], map: "consignacion_ingresos_consignacion_fk")
+  conyuge                 clientes?                       @relation("consignacion_ingresos_conyuge_cliente_idToclientes", fields: [conyuge_cliente_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "consignacion_ingresos_conyuge_fk")
+  usuarios                usuarios?                       @relation(fields: [recibido_por], references: [id], map: "consignacion_ingresos_usuario_fk")
 
   @@index([conyuge_cliente_id], map: "consignacion_ingresos_conyuge_fk")
   @@index([recibido_por], map: "consignacion_ingresos_usuario_fk")
   @@index([cliente_id], map: "idx_cliente")
   @@index([dominio], map: "idx_dominio")
   @@index([deleted_at, estado], map: "idx_vigentes")
+  @@index([deleted_at, modalidad, estado], map: "idx_modalidad")
+}
+
+model compraventa_contratos {
+  id                    Int                                        @id @default(autoincrement()) @db.UnsignedInt
+  ingreso_id            Int                                        @unique(map: "uq_ingreso") @db.UnsignedInt
+  precio                Decimal                                    @db.Decimal(12, 2)
+  forma_pago            compraventa_contratos_forma_pago           @default(transferencia)
+  pago_en_acto          Decimal                                    @default(0.00) @db.Decimal(12, 2)
+  saldo_fecha           DateTime?                                  @db.Date
+  auto_entregado_id     Int?                                       @db.UnsignedInt
+  entregado_dominio     String?                                    @db.VarChar(15)
+  entregado_motor       String?                                    @db.VarChar(40)
+  entregado_chasis      String?                                    @db.VarChar(40)
+  entregado_valor       Decimal?                                   @db.Decimal(12, 2)
+  entrega_at            DateTime                                   @db.DateTime(0)
+  transferencia_dias    Int                                        @default(30) @db.UnsignedSmallInt
+  gastos_transferencia  compraventa_contratos_gastos_transferencia @default(agencia)
+  estado_unidad         String?                                    @db.Text
+  condiciones           String?                                    @db.Text
+  jurisdiccion          String?                                    @db.VarChar(120)
+  firmado_at            DateTime?                                  @db.DateTime(0)
+  contrato_json         Json?
+  created_at            DateTime                                   @default(now()) @db.DateTime(0)
+  updated_at            DateTime                                   @default(now()) @db.DateTime(0)
+  deleted_at            DateTime?                                  @db.DateTime(0)
+  consignacion_ingresos consignacion_ingresos                      @relation(fields: [ingreso_id], references: [id], onDelete: Cascade, map: "compraventa_contratos_ingreso_fk")
+  auto_entregado        autos?                                     @relation(fields: [auto_entregado_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "compraventa_contratos_auto_fk")
+
+  @@index([auto_entregado_id], map: "idx_auto_entregado")
 }
 
 enum consignaciones_estado {
@@ -605,4 +642,22 @@ enum consignacion_documentos_tipo {
   comprobante_cbu
   informe_dominio_historico
   formulario_08
+  informe_dominio
+}
+
+enum consignacion_ingresos_modalidad {
+  consignacion
+  compra
+  permuta
+}
+
+enum compraventa_contratos_forma_pago {
+  transferencia
+  efectivo
+  cheque
+}
+
+enum compraventa_contratos_gastos_transferencia {
+  agencia
+  cliente
 }

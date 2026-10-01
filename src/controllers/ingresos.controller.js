@@ -5,6 +5,7 @@ import {
   actualizarIngreso,
   eliminarIngreso,
 } from "../services/ingresos.service.js";
+import { cambiarEstadoIngreso } from "../services/ingreso-publicacion.service.js";
 import {
   listarDocumentos,
   guardarDocumento,
@@ -18,6 +19,13 @@ import {
   desfirmarContrato,
   armarImpresos,
 } from "../services/ingreso-contratos.service.js";
+import {
+  obtenerCompraventa,
+  guardarCompraventa,
+  firmarCompraventa,
+  desfirmarCompraventa,
+  armarImpresosCompraventa,
+} from "../services/ingreso-compraventa.service.js";
 import { extraerDatos } from "../services/extraccion.service.js";
 import { buscarPersonas } from "../services/personas.service.js";
 import { CATALOGO } from "../lib/documentos-catalogo.js";
@@ -42,6 +50,7 @@ export async function getPersonas(req, res, next) {
 export async function getIngresos(req, res, next) {
   try {
     const { items, hayMas, total } = await listarIngresos({
+      modalidad: req.query.modalidad,
       estado: req.query.estado,
       q: req.query.q,
       offset: req.query.offset,
@@ -140,6 +149,16 @@ export async function postExtraccion(req, res, next) {
   }
 }
 
+// Publicar, despublicar o retirar. Cambia el estado del ingreso y, con él, si el
+// auto se ve o no en la web: las dos cosas van juntas o no van.
+export async function postEstado(req, res, next) {
+  try {
+    res.json({ ok: true, data: await cambiarEstadoIngreso(req.params.id, req.body?.estado) });
+  } catch (err) {
+    next(err);
+  }
+}
+
 // ── Contrato ──
 
 export async function getContrato(req, res, next) {
@@ -183,3 +202,23 @@ export async function getImpresos(req, res, next) {
     next(err);
   }
 }
+
+// ── Boleto de compraventa / contrato de permuta ──
+// Mismo circuito que el contrato de consignación, para la compra y la permuta.
+
+// Envuelve un servicio (id, body) → dato en el formato de respuesta del módulo.
+const responder = (servicio) => async (req, res, next) => {
+  try {
+    res.json({ ok: true, data: await servicio(req.params.id, req.body) });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const getCompraventa = responder(obtenerCompraventa);
+export const putCompraventa = responder(guardarCompraventa);
+export const postFirmaCompraventa = responder(firmarCompraventa);
+export const deleteFirmaCompraventa = responder(desfirmarCompraventa);
+// Boleto (o permuta) por duplicado, recibo de documentación, recibo de
+// recepción y compromiso de transferencia.
+export const getImpresosCompraventa = responder(armarImpresosCompraventa);
