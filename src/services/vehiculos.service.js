@@ -14,6 +14,22 @@ const SIN_CONSIGNACION_CERRADA = {
 // se vendió —propio o consignado—, así "cuántos vendí" es una sola pregunta.
 const A_LA_VENTA = { vendido_at: null };
 
+// Un auto que entró por una consignación de Documentos solo está en el stock
+// mientras ese ingreso esté publicado: despublicado o retirado, no se lista.
+// Manda el estado del ingreso, no el de `consignaciones`.
+const SOLO_CONSIGNACION_PUBLICADA = {
+  consignaciones: { none: { consignacion_ingresos: { is: { deleted_at: null, estado: { notIn: ["publicado", "vendido"] } } } } },
+};
+
+// El ingreso de Documentos acompaña la venta del auto: vendido al vender,
+// publicado de nuevo si la venta se deshace. Se busca por el auto y no por la
+// consignación vigente, porque esa fila puede haberse archivado.
+const moverIngresoDelAuto = (tx, autoId, desde, hacia) =>
+  tx.consignacion_ingresos.updateMany({
+    where: { deleted_at: null, estado: desde, consignaciones: { is: { auto_id: autoId } } },
+    data: { estado: hacia, estado_at: new Date() },
+  });
+
 // Tope de `autos.stock` (SMALLINT UNSIGNED en la DB).
 const STOCK_MAX = 65535;
 // Tope de `autos.precio` (DECIMAL(12,2): 10 enteros + 2 decimales).
@@ -115,6 +131,12 @@ function construirData(body, parcial = false) {
     data.stock = stock;
   }
   if (body.descripcion !== undefined) data.descripcion = limpiar(body.descripcion) || null;
+  // Identificación de la unidad: la usa el boleto cuando el auto se vende con
+  // parte de pago. Opcional; vacío la borra.
+  const identificacion = (v, max) => String(v ?? "").trim().toUpperCase().slice(0, max) || null;
+  if (body.dominio !== undefined) data.dominio = identificacion(String(body.dominio ?? "").replace(/[\s-]/g, ""), 15);
+  if (body.motor !== undefined) data.motor = identificacion(body.motor, 40);
+  if (body.chasis !== undefined) data.chasis = identificacion(body.chasis, 40);
   // Columnas atómicas (1NF): tipo de vehículo (auto/moto) y combustible.
   if (body.tipoVehiculo !== undefined || body.tipo_vehiculo !== undefined) {
     const tv = limpiar(body.tipoVehiculo ?? body.tipo_vehiculo);
@@ -154,7 +176,7 @@ export async function listarVehiculosAdmin({ vendidos = "no" } = {}) {
     vendidos === "si" ? { vendido_at: { not: null } } : vendidos === "todos" ? {} : A_LA_VENTA;
 
   const autos = await prisma.autos.findMany({
-    where: { ...VIGENTE, ...porVenta },
+    where: { ...VIGENTE, ...porVenta, ...SOLO_CONSIGNACION_PUBLICADA },
     orderBy: { id: "desc" },
     include: {
       descuentos: true,
@@ -164,7 +186,25 @@ export async function listarVehiculosAdmin({ vendidos = "no" } = {}) {
       consignaciones: { where: { deleted_at: null }, orderBy: { id: "desc" }, take: 1 },
     },
   });
-  return autos.map(mapAutoToVehiculo);
+  const deDocumentos = await autosDeConsignacionDocumentos();
+  // Dominio, motor y chasis solo en el panel: el catálogo público no los expone.
+  return autos.map((a) => ({
+    ...mapAutoToVehiculo(a),
+    deConsignacion: deDocumentos.has(a.id),
+    dominio: a.dominio ?? null,
+    motor: a.motor ?? null,
+    chasis: a.chasis ?? null,
+  }));
+}
+
+// Autos que entraron por Documentos → Consignación. Se mira el ingreso y no la
+// consignación vigente: si esa fila se archivó, el auto sigue siendo de un tercero.
+async function autosDeConsignacionDocumentos() {
+  const ingresos = await prisma.consignacion_ingresos.findMany({
+    where: { ...VIGENTE, modalidad: "consignacion", consignacion_id: { not: null } },
+    select: { consignaciones: { select: { auto_id: true } } },
+  });
+  return new Set(ingresos.map((i) => i.consignaciones?.auto_id).filter(Boolean));
 }
 
 // Ficha PUBLICA: mismas reglas que el catálogo, así un link guardado a un auto
@@ -253,6 +293,7 @@ export async function marcarVendido(ref, { precio_venta, vendido_at } = {}) {
         data: { estado: "vendido", updated_at: new Date() },
       });
     }
+    await moverIngresoDelAuto(tx, auto.id, "publicado", "vendido");
   });
   return true;
 }
@@ -279,6 +320,7 @@ export async function deshacerVenta(ref) {
         data: { estado: "en_venta", updated_at: new Date() },
       });
     }
+    await moverIngresoDelAuto(tx, auto.id, "vendido", "publicado");
   });
   return true;
 }

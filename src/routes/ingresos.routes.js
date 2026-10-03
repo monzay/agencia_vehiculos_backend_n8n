@@ -13,6 +13,7 @@ import {
   postExtraccion,
   postFirmaImagenes,
   postEstado,
+  postVenta,
   getContrato,
   putContrato,
   postFirma,
@@ -64,6 +65,7 @@ router.put("/:id/documentos", soloAdmin, putDocumento);
 router.delete("/:id/documentos/:documentoId", soloAdmin, deleteDocumento);
 
 router.post("/:id/estado", soloAdmin, postEstado);
+router.post("/:id/venta", soloAdmin, postVenta);
 
 router.get("/:id/contrato", getContrato);
 router.put("/:id/contrato", soloAdmin, putContrato);

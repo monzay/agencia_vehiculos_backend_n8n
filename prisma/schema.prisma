@@ -23,6 +23,9 @@ model alertas_stock {
 model autos {
   id               Int                     @id @default(autoincrement()) @db.UnsignedInt
   ref              String                  @unique(map: "ref") @db.VarChar(30)
+  dominio          String?                 @db.VarChar(15)
+  motor            String?                 @db.VarChar(40)
+  chasis           String?                 @db.VarChar(40)
   marca            String                  @db.VarChar(60)
   modelo           String                  @db.VarChar(80)
   anio             Int                     @db.UnsignedSmallInt
@@ -54,6 +57,7 @@ model autos {
   @@index([tipo], map: "idx_tipo")
   @@index([descuento_id], map: "idx_descuento")
   @@index([vendido_at], map: "idx_vendido")
+  @@index([dominio], map: "idx_dominio")
 }
 
 model chat_estado {
@@ -596,6 +600,7 @@ enum consignacion_ingresos_estado {
   recepcion
   publicado
   retirado
+  vendido
 }
 
 enum consignacion_contratos_prueba_responsable {

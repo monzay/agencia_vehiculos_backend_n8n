@@ -1,6 +1,7 @@
 import { prisma } from "../lib/prisma.js";
 import { mapIngreso } from "../mappers/ingreso.mapper.js";
 import { mapPersona } from "./personas.service.js";
+import { marcarVendido } from "./vehiculos.service.js";
 
 // Sacar un auto en consignación a la venta, y volver a guardarlo.
 //
@@ -14,6 +15,8 @@ import { mapPersona } from "./personas.service.js";
 // transición hace su efecto sobre el catálogo en la misma transacción.
 
 const VIGENTE = { deleted_at: null };
+// Los estados que se eligen desde Documentos. "vendido" no está: lo pone la
+// venta en Vehículos, y se deshace desde ahí.
 const ESTADOS = ["recepcion", "publicado", "retirado"];
 
 function error(mensaje, status = 400) {
@@ -37,6 +40,9 @@ async function ingresoVigente(ingresoId, tx = prisma) {
   // Publicar y retirar mueven la fila de `consignaciones`, que es la venta por
   // cuenta de un tercero. Un auto comprado o permutado ya es de la agencia.
   if (ingreso.modalidad !== "consignacion") throw error("Publicar o retirar desde acá es solo para consignaciones.", 409);
+  if (ingreso.estado === "vendido") {
+    throw error("Este auto figura vendido. Para cambiarlo, deshacé la venta desde Vehículos.", 409);
+  }
   return ingreso;
 }
 
@@ -175,4 +181,22 @@ export async function cambiarEstadoIngreso(ingresoId, estado) {
     const listo = await tx.consignacion_ingresos.update({ where: { id: ingreso.id }, data: { estado, estado_at: new Date() }, include: PARA_DETALLE });
     return { ingreso: mapIngreso(listo, { conDetalle: true }), avisos: [], ref: null };
   });
+}
+
+// Vender desde Documentos. No es una venta aparte: es la misma de Vehículos
+// sobre la ficha que creó la publicación, así el auto, la consignación y el
+// ingreso quedan vendidos juntos y se deshace desde un solo lugar.
+export async function venderIngreso(ingresoId, { precioVenta, vendidoAt } = {}) {
+  const ingreso = await ingresoVigente(ingresoId);
+  if (ingreso.estado !== "publicado") throw error("Solo se puede marcar vendido un auto publicado.", 409);
+
+  const consignacion = await prisma.consignaciones.findFirst({
+    where: { id: ingreso.consignacion_id ?? -1 },
+    select: { autos: { select: { ref: true } } },
+  });
+  if (!consignacion) throw error("Este ingreso no tiene ficha en el catálogo.", 409);
+
+  await marcarVendido(consignacion.autos.ref, { precio_venta: precioVenta, vendido_at: vendidoAt });
+  const listo = await prisma.consignacion_ingresos.findFirst({ where: { id: ingreso.id }, include: PARA_DETALLE });
+  return { ingreso: mapIngreso(listo, { conDetalle: true }), avisos: [], ref: consignacion.autos.ref };
 }

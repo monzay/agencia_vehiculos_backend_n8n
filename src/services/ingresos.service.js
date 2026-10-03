@@ -10,7 +10,7 @@ import { registrarPersona, SELECT_PERFIL } from "./personas.service.js";
 // recién cuando los papeles están en orden.
 
 const VIGENTE = { deleted_at: null };
-const ESTADOS = ["recepcion", "publicado", "retirado"];
+const ESTADOS = ["recepcion", "publicado", "retirado", "vendido"];
 const ORIGENES = ["nacional", "importado"];
 
 const PERSONA = {
@@ -67,7 +67,8 @@ export async function dominioLibre(dominio, excluyendoId, tx) {
     where: {
       dominio,
       ...VIGENTE,
-      estado: { not: "retirado" },
+      // Retirado o vendido, el auto ya no está en la agencia: puede volver a entrar.
+      estado: { notIn: ["retirado", "vendido"] },
       ...(excluyendoId ? { id: { not: excluyendoId } } : {}),
     },
     select: { id: true },
@@ -209,7 +210,7 @@ export async function actualizarIngreso(id, body = {}) {
     // Los datos del vehículo no se editan acá: se corrigen editando el título.
     const data = datosRecepcion(body);
 
-    if (body.titular) data.cliente_id = await registrarPersona(body.titular, tx);
+    if (body.titular) data.cliente_id = await registrarPersona(body.titular, tx, { reemplazarPerfil: true });
 
     // Publicar = vincular con la fila de `consignaciones` que maneja la venta.
     if (body.consignacionId !== undefined) {

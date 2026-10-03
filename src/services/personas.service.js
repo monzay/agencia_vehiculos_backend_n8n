@@ -108,7 +108,12 @@ function soloHuecos(existente, datos) {
 // Devuelve el `clientes.id` de la persona, creándola si hace falta.
 // Recibe `tx` para participar de la transacción del ingreso: si el ingreso
 // falla, la persona no queda huérfana.
-export async function registrarPersona(datos, tx = prisma) {
+//
+// `reemplazarPerfil`: el perfil se escribe entero y un campo vacío se borra. Es
+// para editar, donde el formulario llega con los datos actuales cargados. En el
+// alta no: ahí se puede tipear el DNI de alguien que ya existe sin traer su
+// perfil, y los vacíos le borrarían datos.
+export async function registrarPersona(datos, tx = prisma, { reemplazarPerfil = false } = {}) {
   const { dni, perfil, ...cliente } = validar(datos);
 
   const existente = await buscarPorDni(dni, tx);
@@ -129,7 +134,9 @@ export async function registrarPersona(datos, tx = prisma) {
   }
 
   // El perfil sí lo manda el panel entero: es la única fuente que lo escribe.
-  const conValor = Object.fromEntries(CAMPOS_PERFIL.filter((c) => perfil[c] != null).map((c) => [c, perfil[c]]));
+  const conValor = Object.fromEntries(
+    CAMPOS_PERFIL.filter((c) => reemplazarPerfil || perfil[c] != null).map((c) => [c, perfil[c]])
+  );
   if (Object.keys(conValor).length) {
     await tx.cliente_perfiles.upsert({
       where: { cliente_id: clienteId },

@@ -5,7 +5,7 @@ import {
   actualizarIngreso,
   eliminarIngreso,
 } from "../services/ingresos.service.js";
-import { cambiarEstadoIngreso } from "../services/ingreso-publicacion.service.js";
+import { cambiarEstadoIngreso, venderIngreso } from "../services/ingreso-publicacion.service.js";
 import {
   listarDocumentos,
   guardarDocumento,
@@ -154,6 +154,15 @@ export async function postExtraccion(req, res, next) {
 export async function postEstado(req, res, next) {
   try {
     res.json({ ok: true, data: await cambiarEstadoIngreso(req.params.id, req.body?.estado) });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// Vender: la misma venta de Vehículos, sobre la ficha publicada del ingreso.
+export async function postVenta(req, res, next) {
+  try {
+    res.json({ ok: true, data: await venderIngreso(req.params.id, req.body ?? {}) });
   } catch (err) {
     next(err);
   }

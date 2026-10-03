@@ -16,7 +16,6 @@ const A_CARGO = ["agencia", "cliente"];
 const FORMAS_PAGO = ["transferencia", "efectivo", "cheque"];
 
 const limpiar = (v, max) => (typeof v === "string" ? v.trim().replace(/\s+/g, " ").slice(0, max) : "");
-const normalizarDominio = (v) => limpiar(v, 20).toUpperCase().replace(/[\s-]/g, "").slice(0, 15);
 
 async function ingresoVigente(ingresoId, tx = prisma) {
   const n = Number(ingresoId);
@@ -33,7 +32,14 @@ async function ingresoVigente(ingresoId, tx = prisma) {
 async function autoParaPermuta(ref, ingresoId, tx) {
   const auto = await tx.autos.findFirst({
     where: { ref: String(ref ?? ""), deleted_at: null },
-    select: { id: true, vendido_at: true, consignaciones: { where: VIGENTE, select: { id: true }, take: 1 } },
+    select: {
+      id: true,
+      vendido_at: true,
+      dominio: true,
+      motor: true,
+      chasis: true,
+      consignaciones: { where: VIGENTE, select: { id: true }, take: 1 },
+    },
   });
   if (!auto) throw error("Elegí el vehículo que vende la agencia.");
   if (auto.vendido_at) throw error("Ese vehículo ya figura como vendido.", 409);
@@ -50,18 +56,20 @@ async function autoParaPermuta(ref, ingresoId, tx) {
     select: { id: true },
   });
   if (comprometido) throw error("Ese vehículo ya está comprometido en otra operación con parte de pago.", 409);
-  return auto.id;
+  // El boleto identifica la unidad por su dominio: sale de la ficha del auto.
+  if (!auto.dominio) throw error("Ese vehículo no tiene dominio cargado. Completalo en Vehículos → Editar.", 409);
+  return auto;
 }
 
+// Dominio, motor y chasis se copian de la ficha del auto al boleto: quedan
+// escritos tal como estaban al firmar, aunque después se edite la ficha.
 async function datosPermuta(body, ingresoId, tx) {
-  const autoId = await autoParaPermuta(body.autoEntregadoRef, ingresoId, tx);
-  const dominio = normalizarDominio(body.entregadoDominio);
-  if (!dominio) throw error("El dominio del vehículo que vende la agencia es obligatorio.");
+  const auto = await autoParaPermuta(body.autoEntregadoRef, ingresoId, tx);
   return {
-    auto_entregado_id: autoId,
-    entregado_dominio: dominio,
-    entregado_motor: limpiar(body.entregadoMotor, 40).toUpperCase() || null,
-    entregado_chasis: limpiar(body.entregadoChasis, 40).toUpperCase() || null,
+    auto_entregado_id: auto.id,
+    entregado_dominio: auto.dominio,
+    entregado_motor: auto.motor,
+    entregado_chasis: auto.chasis,
     entregado_valor: numero(body.entregadoValor, "El precio de venta del vehículo de la agencia", { min: 0.01, max: TOPE_MONTO }),
   };
 }
