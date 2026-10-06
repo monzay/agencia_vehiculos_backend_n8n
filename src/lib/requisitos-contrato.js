@@ -35,7 +35,7 @@ const DATOS_VEHICULO = [
 const DONDE_TITULAR = "Se completa en Editar ingreso, datos del titular";
 
 // `detalle` es el ingreso ya mapeado con documentos y contrato.
-// El CBU se exige solo si la liquidación es por transferencia: sin condiciones
+// El CBU (o su alias) se exige solo si la liquidación es por transferencia: sin condiciones
 // cargadas todavía, la forma por defecto es transferencia.
 export function requisitosContrato({ vehiculo, titular, documentos, contrato }) {
   const tenencias = new Map(documentos.map((d) => [d.tipo, d.tenencia]));
@@ -58,7 +58,15 @@ export function requisitosContrato({ vehiculo, titular, documentos, contrato }) 
       cumplido: presente(persona[clave]),
     })),
     ...(porTransferencia
-      ? [{ grupo: "titular", clave: "cbu", label: "CBU (la liquidación es por transferencia)", donde: DONDE_TITULAR, cumplido: presente(persona.cbu) }]
+      ? [
+          {
+            grupo: "titular",
+            clave: "cbu",
+            label: "CBU o alias (la liquidación es por transferencia)",
+            donde: DONDE_TITULAR,
+            cumplido: presente(persona.cbu) || presente(persona.aliasCbu),
+          },
+        ]
       : []),
     ...DATOS_VEHICULO.map(([clave, label, donde]) => ({
       grupo: "vehiculo",

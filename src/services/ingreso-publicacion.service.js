@@ -76,6 +76,13 @@ function nombreDelDuenio(titular) {
 const tieneFotos = (fotos) => Array.isArray(fotos) && fotos.length > 0;
 const SIN_FOTO_PRINCIPAL = "Subí la foto principal del vehículo para publicar: es la portada del auto en la web.";
 
+// `publicado_at` aparte de `estado_at`: este último se pisa al vender o
+// retirar, y la fecha de publicación se tiene que poder ver igual.
+function publicadoAhora() {
+  const ahora = new Date();
+  return { estado: "publicado", estado_at: ahora, publicado_at: ahora };
+}
+
 export async function publicarIngreso(ingresoId) {
   return prisma.$transaction(async (tx) => {
     const ingreso = await ingresoVigente(ingresoId, tx);
@@ -111,7 +118,7 @@ export async function publicarIngreso(ingresoId) {
         });
         const listo = await tx.consignacion_ingresos.update({
           where: { id: ingreso.id },
-          data: { estado: "publicado", estado_at: new Date() },
+          data: publicadoAhora(),
           include: PARA_DETALLE,
         });
         return { ingreso: mapIngreso(listo, { conDetalle: true }), avisos: [], ref: consignacion.autos.ref };
@@ -147,7 +154,7 @@ export async function publicarIngreso(ingresoId) {
 
     const listo = await tx.consignacion_ingresos.update({
       where: { id: ingreso.id },
-      data: { consignacion_id: consignacion.id, estado: "publicado", estado_at: new Date() },
+      data: { consignacion_id: consignacion.id, ...publicadoAhora() },
       include: PARA_DETALLE,
     });
     return { ingreso: mapIngreso(listo, { conDetalle: true }), avisos: [], ref: auto.ref };

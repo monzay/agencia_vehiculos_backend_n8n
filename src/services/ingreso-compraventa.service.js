@@ -82,8 +82,19 @@ const SIN_PERMUTA = {
   entregado_valor: null,
 };
 
+// En la parte de pago el valor del usado no se carga en el boleto: es el valor
+// de toma que se cargó al crear el trámite.
+function valorDeToma(ingreso) {
+  const valor = Number(ingreso.parte_pago_valor ?? 0);
+  if (!(valor > 0)) throw error("Falta el valor de toma del usado: cargalo en Editar ingreso.", 409);
+  return valor;
+}
+
 async function construirData(body, ingreso, tx) {
-  const precio = numero(body.precio, "El precio del vehículo", { min: 0.01, max: TOPE_MONTO });
+  const precio =
+    ingreso.modalidad === "permuta"
+      ? valorDeToma(ingreso)
+      : numero(body.precio, "El precio del vehículo", { min: 0.01, max: TOPE_MONTO });
   const permuta = ingreso.modalidad === "permuta" ? await datosPermuta(body, ingreso.id, tx) : SIN_PERMUTA;
 
   // Lo que se paga en el acto no puede superar lo que hay que pagar; lo que

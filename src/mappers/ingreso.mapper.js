@@ -113,11 +113,23 @@ export function mapIngreso(i, { conDetalle = false } = {}) {
     estado: i.estado, // recepcion | publicado | retirado
     // Cuándo entró al estado actual. Null en los anteriores a la migración 054.
     estadoDesde: iso(i.estado_at),
+    // La última publicación: sobrevive a la venta y al retiro (migración 058).
+    publicado: iso(i.publicado_at),
     // Cuando el auto se publica, la venta la maneja `consignaciones`.
     consignacionId: i.consignacion_id ?? null,
     recibidoPor: i.usuarios ? { id: i.usuarios.id, nombre: i.usuarios.nombre } : null,
     recibido: iso(i.recibido_at),
     notas: i.notas ?? null,
+    // Solo la parte de pago: el usado como se lo nombró al tomarlo, en cuánto
+    // se lo toma y el efectivo que entrega el cliente además del usado.
+    parteDePago:
+      i.modalidad === "permuta"
+        ? {
+            vehiculo: i.parte_pago_vehiculo ?? null,
+            valor: aNumero(i.parte_pago_valor),
+            efectivo: aNumero(i.parte_pago_efectivo),
+          }
+        : null,
     papeles: {
       cargados: documentos.length,
       faltantes: TIPOS.filter((t) => !cargados.has(t)),

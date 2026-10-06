@@ -128,6 +128,31 @@ function datosRecepcion(body) {
   return data;
 }
 
+// Mismo tope que los montos del boleto: DECIMAL(12,2).
+const TOPE_MONTO = 9999999999.99;
+
+// Monto opcional en pesos: "" o null lo borran.
+function montoOpcional(valor, campo) {
+  if (valor === "" || valor === null) return null;
+  const monto = Number(valor);
+  if (!Number.isFinite(monto) || monto < 0) throw error(`${campo} debe ser un monto válido.`);
+  if (monto > TOPE_MONTO) throw error(`${campo} supera el máximo que admite el sistema.`);
+  return Math.round(monto * 100) / 100;
+}
+
+// Solo en la parte de pago: el usado que deja el cliente, escrito como se lo
+// nombra (todavía sin título), en cuánto se lo toma y el efectivo que entrega
+// además. Mismas reglas que la recepción: solo los campos presentes; "" o null
+// los borran.
+function datosParteDePago(body, modalidad) {
+  if (modalidad !== "permuta") return {};
+  const data = {};
+  if (body.parteDePagoVehiculo !== undefined) data.parte_pago_vehiculo = limpiar(body.parteDePagoVehiculo, 150) || null;
+  if (body.parteDePagoValor !== undefined) data.parte_pago_valor = montoOpcional(body.parteDePagoValor, "El valor de toma");
+  if (body.parteDePagoEfectivo !== undefined) data.parte_pago_efectivo = montoOpcional(body.parteDePagoEfectivo, "Lo que tiene para entregar");
+  return data;
+}
+
 // ── Lecturas ──
 
 // `q` busca por dominio, vehículo o por el titular (nombre o DNI).
@@ -183,10 +208,10 @@ export async function obtenerIngreso(id) {
 // La modalidad se fija acá y no se edita: cambiarla dejaría colgado un contrato
 // del tipo equivocado.
 export async function crearIngreso(body = {}, usuarioId = null) {
-  const recepcion = datosRecepcion(body);
   if (!body.titular) throw error("Faltan los datos del titular.");
   const modalidad = body.modalidad ?? "consignacion";
   if (!MODALIDADES.includes(modalidad)) throw error(`La modalidad debe ser una de: ${MODALIDADES.join(", ")}.`);
+  const recepcion = { ...datosRecepcion(body), ...datosParteDePago(body, modalidad) };
 
   return prisma.$transaction(async (tx) => {
     const clienteId = await registrarPersona(body.titular, tx);
@@ -208,7 +233,7 @@ export async function actualizarIngreso(id, body = {}) {
     if (!existe) return null;
 
     // Los datos del vehículo no se editan acá: se corrigen editando el título.
-    const data = datosRecepcion(body);
+    const data = { ...datosRecepcion(body), ...datosParteDePago(body, existe.modalidad) };
 
     if (body.titular) data.cliente_id = await registrarPersona(body.titular, tx, { reemplazarPerfil: true });
 

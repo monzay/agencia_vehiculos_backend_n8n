@@ -357,6 +357,7 @@ model cliente_perfiles {
   provincia             String?                                @db.VarChar(80)
   cbu                   String?                                @db.VarChar(22)
   alias_cbu             String?                                @db.VarChar(40)
+  banco_cbu             String?                                @db.VarChar(60)
   contacto_alt_telefono String?                                @db.VarChar(30)
   contacto_alt_vinculo  cliente_perfiles_contacto_alt_vinculo?
   created_at            DateTime                               @default(now()) @db.DateTime(0)
@@ -436,8 +437,12 @@ model consignacion_ingresos {
   origen                  consignacion_ingresos_origen?
   km_recepcion            Int?                            @db.UnsignedInt
   fotos_json              Json?
+  parte_pago_vehiculo     String?                         @db.VarChar(150)
+  parte_pago_valor        Decimal?                        @db.Decimal(12, 2)
+  parte_pago_efectivo     Decimal?                        @db.Decimal(12, 2)
   estado                  consignacion_ingresos_estado    @default(recepcion)
   estado_at               DateTime?                       @db.DateTime(0)
+  publicado_at            DateTime?                       @db.DateTime(0)
   recibido_por            Int?                            @db.UnsignedInt
   recibido_at             DateTime                        @default(now()) @db.DateTime(0)
   notas                   String?                         @db.Text

@@ -29,6 +29,7 @@ const CAMPOS_PERFIL = [
   "provincia",
   "cbu",
   "alias_cbu",
+  "banco_cbu",
   "contacto_alt_telefono",
   "contacto_alt_vinculo",
 ];
@@ -52,6 +53,10 @@ function validar(datos) {
 
   const cbu = soloDigitos(datos.cbu);
   if (datos.cbu && cbu.length !== 22) throw error("El CBU debe tener 22 dígitos.");
+
+  const aliasCbu = limpiar(datos.aliasCbu, 40) || null;
+  // El banco describe la cuenta: sin CBU ni alias no hay cuenta que describir.
+  const bancoCbu = cbu || aliasCbu ? limpiar(datos.bancoCbu, 60) || null : null;
 
   const email = limpiar(datos.email, 180);
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) throw error("El email no es válido.");
@@ -79,7 +84,8 @@ function validar(datos) {
       localidad: limpiar(datos.localidad, 120) || null,
       provincia: limpiar(datos.provincia, 80) || null,
       cbu: cbu || null,
-      alias_cbu: limpiar(datos.aliasCbu, 40) || null,
+      alias_cbu: aliasCbu,
+      banco_cbu: bancoCbu,
       contacto_alt_telefono: telefonoAlt,
       contacto_alt_vinculo: vinculoAlt,
     },
@@ -195,6 +201,7 @@ export function mapPersona(c) {
     provincia: p?.provincia ?? null,
     cbu: p?.cbu ?? null,
     aliasCbu: p?.alias_cbu ?? null,
+    bancoCbu: p?.banco_cbu ?? null,
     contactoAlternativo: p?.contacto_alt_telefono
       ? { telefono: p.contacto_alt_telefono, vinculo: p.contacto_alt_vinculo }
       : null,

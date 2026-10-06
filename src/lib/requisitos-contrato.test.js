@@ -65,6 +65,13 @@ test("el CBU se exige solo si la liquidación es por transferencia", () => {
   assert.equal(requisitosContrato(d).habilitado, true);
 });
 
+test("con alias y sin CBU la transferencia queda cubierta", () => {
+  const d = completo();
+  d.titular.cbu = null;
+  d.titular.aliasCbu = "martin.ferreyra.bna";
+  assert.equal(requisitosContrato(d).habilitado, true);
+});
+
 test("sin titular falta todo lo del titular y el error lo lista con 409", () => {
   const d = completo();
   d.titular = null;
