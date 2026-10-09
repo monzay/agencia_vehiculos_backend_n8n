@@ -1,7 +1,8 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 import { mapIngreso } from "../mappers/ingreso.mapper.js";
-import { MODALIDADES } from "../lib/modalidades.js";
+import { MODALIDADES, vendeLaAgencia } from "../lib/modalidades.js";
+import { autoParaVender } from "./auto-venta.service.js";
 import { registrarPersona, SELECT_PERFIL } from "./personas.service.js";
 
 // Toma de un vehículo: el auto entró al playón en consignación, comprado o en
@@ -21,24 +22,41 @@ const USUARIO = { select: { id: true, nombre: true } };
 // El listado no necesita papeles ni contrato: solo si el contrato está firmado.
 const PARA_LISTA = {
   titular: PERSONA,
+  // Para nombrar la venta sin usado, que no tiene título.
+  auto_interes: { select: { ref: true, marca: true, modelo: true, anio: true, dominio: true } },
   usuarios: USUARIO,
   consignacion_contratos: { select: { firmado_at: true } },
   compraventa_contratos: { select: { firmado_at: true } },
   consignacion_documentos: { where: VIGENTE, select: { tipo: true, tenencia: true, fecha_vencimiento: true, datos_json: true } },
 };
 
+// El descuento y las promociones del auto que vende la agencia: la ficha de la
+// parte de pago y de la venta al contado los muestra.
+const BENEFICIOS = { precio: true, descuentos: true, auto_promociones: { include: { promociones: true } } };
+// El auto que compra el cliente en la parte de pago o la venta al contado.
+const AUTO_INTERES = { select: { ref: true, marca: true, modelo: true, anio: true, dominio: true, ...BENEFICIOS } };
+
 export const PARA_DETALLE = {
   titular: PERSONA,
+  auto_interes: AUTO_INTERES,
   usuarios: USUARIO,
   consignacion_contratos: true,
   compraventa_contratos: {
-    include: { auto_entregado: { select: { ref: true, marca: true, modelo: true, anio: true, kms: true } } },
+    include: { auto_entregado: { select: { ref: true, marca: true, modelo: true, anio: true, kms: true, vendido_at: true, ...BENEFICIOS } } },
   },
   consignacion_documentos: {
     where: VIGENTE,
     orderBy: { id: "asc" },
     include: { usuarios: USUARIO },
   },
+  // La financiación del saldo de una parte de pago: hay como mucho una vigente.
+  financiaciones: {
+    where: VIGENTE,
+    take: 1,
+    include: { clientes: true, pagos: { orderBy: { numero: "asc" } } },
+  },
+  // La seña de la que nació el trámite, si hubo: se descuenta en el boleto.
+  sena: { include: { autos: { select: { ref: true, marca: true, modelo: true, anio: true, precio: true, ...BENEFICIOS } } } },
 };
 
 function error(mensaje, status = 400) {
@@ -153,6 +171,30 @@ function datosParteDePago(body, modalidad) {
   return data;
 }
 
+// El auto que compra el cliente: se elige al crear la parte de pago o la venta
+// al contado y es obligatorio. Al editar solo cambia si viene, y no se puede
+// cambiar si el boleto ya está firmado o si el trámite nació de una seña (la
+// seña es por ese auto).
+async function datosAutoInteres(body, modalidad, existente, tx) {
+  if (!vendeLaAgencia(modalidad)) return {};
+  if (body.autoInteresRef === undefined) {
+    if (!existente) throw error("Elegí el vehículo que compra el cliente.");
+    return {};
+  }
+  if (existente) {
+    const [boleto, sena] = await Promise.all([
+      tx.compraventa_contratos.findFirst({ where: { ingreso_id: existente.id, ...VIGENTE }, select: { firmado_at: true } }),
+      tx.senas.findFirst({ where: { ingreso_id: existente.id, ...VIGENTE }, select: { auto_id: true } }),
+    ]);
+    const auto = await autoParaVender(body.autoInteresRef, existente.id, tx);
+    if (auto.id === existente.auto_interes_id) return {};
+    if (boleto?.firmado_at) throw error("El boleto ya está firmado: el vehículo no se puede cambiar.", 409);
+    if (sena) throw error("El trámite nació de una seña: el vehículo es el señado.", 409);
+    return { auto_interes_id: auto.id };
+  }
+  return { auto_interes_id: (await autoParaVender(body.autoInteresRef, null, tx)).id };
+}
+
 // ── Lecturas ──
 
 // `q` busca por dominio, vehículo o por el titular (nombre o DNI).
@@ -214,10 +256,11 @@ export async function crearIngreso(body = {}, usuarioId = null) {
   const recepcion = { ...datosRecepcion(body), ...datosParteDePago(body, modalidad) };
 
   return prisma.$transaction(async (tx) => {
+    const auto = await datosAutoInteres(body, modalidad, null, tx);
     const clienteId = await registrarPersona(body.titular, tx);
 
     const creado = await tx.consignacion_ingresos.create({
-      data: { ...recepcion, modalidad, cliente_id: clienteId, recibido_por: usuarioId },
+      data: { ...recepcion, ...auto, modalidad, cliente_id: clienteId, recibido_por: usuarioId },
       include: PARA_DETALLE,
     });
     return mapIngreso(creado, { conDetalle: true });
@@ -233,7 +276,11 @@ export async function actualizarIngreso(id, body = {}) {
     if (!existe) return null;
 
     // Los datos del vehículo no se editan acá: se corrigen editando el título.
-    const data = { ...datosRecepcion(body), ...datosParteDePago(body, existe.modalidad) };
+    const data = {
+      ...datosRecepcion(body),
+      ...datosParteDePago(body, existe.modalidad),
+      ...(await datosAutoInteres(body, existe.modalidad, existe, tx)),
+    };
 
     if (body.titular) data.cliente_id = await registrarPersona(body.titular, tx, { reemplazarPerfil: true });
 
@@ -269,12 +316,21 @@ export async function actualizarIngreso(id, body = {}) {
 // Soft delete: la fila queda para auditoría y el dominio vuelve a estar libre.
 // Los papeles y el contrato no se borran: cuelgan del ingreso y dejan de verse
 // con él, que es justo lo que hace falta si el borrado fue un error.
+//
+// Si el trámite nació de una seña, la seña vuelve a vigente: la plata sigue
+// estando y el auto sigue reservado hasta su vencimiento.
 export async function eliminarIngreso(id) {
   const n = Number(id);
   if (!Number.isInteger(n) || n <= 0) return false;
   const existe = await prisma.consignacion_ingresos.findFirst({ where: { id: n, ...VIGENTE }, select: { id: true } });
   if (!existe) return false;
 
-  await prisma.consignacion_ingresos.update({ where: { id: existe.id }, data: { deleted_at: new Date() } });
+  await prisma.$transaction([
+    prisma.consignacion_ingresos.update({ where: { id: existe.id }, data: { deleted_at: new Date() } }),
+    prisma.senas.updateMany({
+      where: { ingreso_id: existe.id, estado: "convertida" },
+      data: { estado: "vigente", ingreso_id: null, estado_at: new Date(), updated_at: new Date() },
+    }),
+  ]);
   return true;
 }

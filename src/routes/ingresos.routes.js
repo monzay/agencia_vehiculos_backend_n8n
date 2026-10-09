@@ -14,6 +14,7 @@ import {
   postFirmaImagenes,
   postEstado,
   postVenta,
+  deleteVenta,
   getContrato,
   putContrato,
   postFirma,
@@ -24,6 +25,9 @@ import {
   postFirmaCompraventa,
   deleteFirmaCompraventa,
   getImpresosCompraventa,
+  postVentaCompraventa,
+  deleteVentaCompraventa,
+  postFinanciacionIngreso,
 } from "../controllers/ingresos.controller.js";
 import { requireAuth, requireRole } from "../middlewares/auth.js";
 import { rateLimit } from "../middlewares/rateLimit.js";
@@ -66,6 +70,7 @@ router.delete("/:id/documentos/:documentoId", soloAdmin, deleteDocumento);
 
 router.post("/:id/estado", soloAdmin, postEstado);
 router.post("/:id/venta", soloAdmin, postVenta);
+router.delete("/:id/venta", soloAdmin, deleteVenta);
 
 router.get("/:id/contrato", getContrato);
 router.put("/:id/contrato", soloAdmin, putContrato);
@@ -80,5 +85,11 @@ router.put("/:id/compraventa", soloAdmin, putCompraventa);
 router.post("/:id/compraventa/firma", soloAdmin, postFirmaCompraventa);
 router.delete("/:id/compraventa/firma", soloAdmin, deleteFirmaCompraventa);
 router.get("/:id/compraventa/impresos", getImpresosCompraventa);
+router.post("/:id/compraventa/venta", soloAdmin, postVentaCompraventa);
+router.delete("/:id/compraventa/venta", soloAdmin, deleteVentaCompraventa);
+
+// Financiación del saldo de la parte de pago. Se edita después por
+// PATCH /api/financiaciones/:id, como cualquier otra financiación.
+router.post("/:id/financiacion", soloAdmin, postFinanciacionIngreso);
 
 export default router;

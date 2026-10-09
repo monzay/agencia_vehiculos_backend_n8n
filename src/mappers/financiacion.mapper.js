@@ -49,6 +49,8 @@ export function mapFinanciacion(f) {
   return {
     id: f.id,
     clienteId: f.cliente_id,
+    // El trámite de parte de pago cuyo saldo se financia; null si es suelta.
+    ingresoId: f.ingreso_id ?? null,
     nombre: c.nombre ?? "",
     telefono: c.telefono ?? "",
     telefonoAlt: f.telefono_alt ?? "",

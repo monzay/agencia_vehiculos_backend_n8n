@@ -5,7 +5,7 @@ import {
   actualizarIngreso,
   eliminarIngreso,
 } from "../services/ingresos.service.js";
-import { cambiarEstadoIngreso, venderIngreso } from "../services/ingreso-publicacion.service.js";
+import { cambiarEstadoIngreso, venderIngreso, deshacerVentaIngreso } from "../services/ingreso-publicacion.service.js";
 import {
   listarDocumentos,
   guardarDocumento,
@@ -25,8 +25,11 @@ import {
   firmarCompraventa,
   desfirmarCompraventa,
   armarImpresosCompraventa,
+  venderAutoDelBoleto,
+  deshacerVentaDelBoleto,
 } from "../services/ingreso-compraventa.service.js";
 import { extraerDatos } from "../services/extraccion.service.js";
+import { crearFinanciacionDeIngreso } from "../services/financiaciones.service.js";
 import { buscarPersonas } from "../services/personas.service.js";
 import { CATALOGO } from "../lib/documentos-catalogo.js";
 
@@ -62,11 +65,24 @@ export async function getIngresos(req, res, next) {
   }
 }
 
+// Las financiaciones son solo del admin (igual que /api/financiaciones): el
+// asesor ve el legajo, pero no el plan de cuotas del cliente.
+const sinFinanciacionSiNoEsAdmin = (ingreso, usuario) =>
+  usuario?.rol === "admin" ? ingreso : { ...ingreso, financiacion: null };
+
 export async function getIngreso(req, res, next) {
   try {
     const ingreso = await obtenerIngreso(req.params.id);
     if (!ingreso) return res.status(404).json(NO_ENCONTRADO);
-    res.json({ ok: true, data: ingreso });
+    res.json({ ok: true, data: sinFinanciacionSiNoEsAdmin(ingreso, req.usuario) });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function postFinanciacionIngreso(req, res, next) {
+  try {
+    res.status(201).json({ ok: true, data: await crearFinanciacionDeIngreso(req.params.id, req.body) });
   } catch (err) {
     next(err);
   }
@@ -168,6 +184,14 @@ export async function postVenta(req, res, next) {
   }
 }
 
+export async function deleteVenta(req, res, next) {
+  try {
+    res.json({ ok: true, data: await deshacerVentaIngreso(req.params.id) });
+  } catch (err) {
+    next(err);
+  }
+}
+
 // ── Contrato ──
 
 export async function getContrato(req, res, next) {
@@ -231,3 +255,7 @@ export const deleteFirmaCompraventa = responder(desfirmarCompraventa);
 // Boleto (o permuta) por duplicado, recibo de documentación, recibo de
 // recepción y compromiso de transferencia.
 export const getImpresosCompraventa = responder(armarImpresosCompraventa);
+// Venta al contado o con parte de pago: el auto de la agencia se marca vendido
+// desde el legajo, no desde Vehículos.
+export const postVentaCompraventa = responder(venderAutoDelBoleto);
+export const deleteVentaCompraventa = responder(deshacerVentaDelBoleto);

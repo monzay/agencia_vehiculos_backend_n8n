@@ -3,7 +3,11 @@
 
 import { CATALOGO, TIPOS, cruzarConIngreso } from "../lib/documentos-catalogo.js";
 import { mapPersona } from "../services/personas.service.js";
-import { mapCompraventa } from "./compraventa.mapper.js";
+import { mapCompraventa, senaDelIngreso } from "./compraventa.mapper.js";
+import { mapFinanciacion } from "./financiacion.mapper.js";
+import { conUsado, vendeLaAgencia } from "../lib/modalidades.js";
+import { aplicarDescuento } from "./descuento.mapper.js";
+import { mapPromosDeAuto } from "./promocion.mapper.js";
 import { requisitosContrato } from "../lib/requisitos-contrato.js";
 
 const iso = (d) => (d ? new Date(d).toISOString() : null);
@@ -92,7 +96,43 @@ export function mapContrato(c) {
 // El contrato que corresponde a la modalidad: la consignación firma sus
 // condiciones; la compra y la permuta, un boleto.
 const contratoDe = (i) =>
-  i.modalidad === "consignacion" ? mapContrato(i.consignacion_contratos) : mapCompraventa(i.compraventa_contratos);
+  i.modalidad === "consignacion" ? mapContrato(i.consignacion_contratos) : mapCompraventa(i.compraventa_contratos, senaDelIngreso(i));
+
+// Descuento y promociones vigentes del auto que compra el cliente. Null si no
+// tiene ninguno. Mismas
+// reglas que el catálogo, así el cliente ve acá lo mismo que vio en la web.
+function beneficiosDe(i) {
+  if (!vendeLaAgencia(i.modalidad)) return null;
+  const auto = i.auto_interes;
+  if (!auto) return null;
+  const { descuento, precio_final, ahorro } = aplicarDescuento(auto.precio, auto.descuentos);
+  const promociones = mapPromosDeAuto(auto.auto_promociones);
+  if (!descuento && !promociones.length) return null;
+  return {
+    auto: { ref: auto.ref, marca: auto.marca, modelo: auto.modelo },
+    precio: aNumero(auto.precio),
+    descuento,
+    precioFinal: precio_final,
+    ahorro,
+    promociones,
+  };
+}
+
+// El auto que compra el cliente (parte de pago o venta al contado).
+const autoInteresDe = (a) =>
+  a ? { ref: a.ref, marca: a.marca, modelo: a.modelo, anio: a.anio, dominio: a.dominio ?? null, precio: aNumero(a.precio) } : null;
+
+// La seña de la que nació el trámite: el boleto es por ese auto y la descuenta.
+function senaDe(i) {
+  const s = i.sena;
+  if (!s || s.deleted_at) return null;
+  return {
+    id: s.id,
+    monto: Number(s.monto),
+    senado: iso(s.senado_at),
+    auto: s.autos ? { ref: s.autos.ref, marca: s.autos.marca, modelo: s.autos.modelo, anio: s.autos.anio, precio: aNumero(s.autos.precio) } : null,
+  };
+}
 
 const firmaDe = (i) =>
   i.modalidad === "consignacion" ? i.consignacion_contratos?.firmado_at : i.compraventa_contratos?.firmado_at;
@@ -105,7 +145,11 @@ export function mapIngreso(i, { conDetalle = false } = {}) {
 
   const base = {
     id: i.id,
-    modalidad: i.modalidad, // consignacion | compra | permuta
+    modalidad: i.modalidad, // consignacion | compra | permuta | contado
+    // Si el trámite recibe un vehículo del cliente: sin usado no hay papeles ni recibos.
+    conUsado: conUsado(i),
+    // El auto que compra el cliente (parte de pago o venta al contado).
+    autoInteres: autoInteresDe(i.auto_interes),
     vehiculo: { ...vehiculo, kmRecepcion: i.km_recepcion ?? null },
     // Fotos públicas del auto: la primera es la principal.
     fotos: Array.isArray(i.fotos_json) ? i.fotos_json : [],
@@ -150,7 +194,15 @@ export function mapIngreso(i, { conDetalle = false } = {}) {
 
   if (!conDetalle) return base;
   const contrato = contratoDe(i);
-  const detalle = { ...base, documentos, contrato };
+  const financiacion = i.financiaciones?.[0] ? mapFinanciacion(i.financiaciones[0]) : null;
+  const detalle = {
+    ...base,
+    documentos,
+    contrato,
+    financiacion,
+    sena: senaDe(i),
+    beneficios: beneficiosDe(i),
+  };
   // Solo la consignación tiene este requisito: compra y permuta firman un boleto.
   if (i.modalidad !== "consignacion") return detalle;
   return { ...detalle, requisitosContrato: requisitosContrato(detalle) };

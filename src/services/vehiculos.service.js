@@ -1,5 +1,6 @@
 import { prisma } from "../lib/prisma.js";
 import { mapAutoToVehiculo } from "../mappers/vehiculo.mapper.js";
+import { SIN_RESERVA, senaReservando, hoyFecha } from "../lib/senas.js";
 
 // Soft delete: solo cuentan las filas con deleted_at NULL.
 const VIGENTE = { deleted_at: null };
@@ -160,7 +161,7 @@ function construirData(body, parcial = false) {
 // Catalogo PUBLICO: disponibles y no eliminados.
 export async function listarVehiculos() {
   const autos = await prisma.autos.findMany({
-    where: { ...VIGENTE, ...A_LA_VENTA, disponible: true, ...SIN_CONSIGNACION_CERRADA },
+    where: { ...VIGENTE, ...A_LA_VENTA, disponible: true, ...SIN_CONSIGNACION_CERRADA, ...SIN_RESERVA() },
     orderBy: { id: "desc" },
     include: { descuentos: true, auto_promociones: { include: { promociones: true } } },
   });
@@ -184,6 +185,8 @@ export async function listarVehiculosAdmin({ vendidos = "no" } = {}) {
       // Solo la consignación VIGENTE: el panel necesita saber si el auto es de
       // un tercero para ofrecer "vendido / retirado" en vez de la venta propia.
       consignaciones: { where: { deleted_at: null }, orderBy: { id: "desc" }, take: 1 },
+      // La seña que lo reserva, si hay: el panel la muestra y no ofrece señarlo de nuevo.
+      senas: { where: senaReservando(), take: 1, select: { id: true, vence: true, estado: true, ingreso_id: true, clientes: { select: { nombre: true } } } },
     },
   });
   const deDocumentos = await autosDeConsignacionDocumentos();
@@ -194,8 +197,20 @@ export async function listarVehiculosAdmin({ vendidos = "no" } = {}) {
     dominio: a.dominio ?? null,
     motor: a.motor ?? null,
     chasis: a.chasis ?? null,
+    sena: senaDelAuto(a.senas?.[0]),
   }));
 }
+
+const senaDelAuto = (s) =>
+  s
+    ? {
+        id: s.id,
+        estado: s.estado, // vigente | convertida (ya pasó a un trámite)
+        vence: s.vence ? new Date(s.vence).toISOString().slice(0, 10) : null,
+        cliente: s.clientes?.nombre ?? null,
+        ingresoId: s.ingreso_id ?? null,
+      }
+    : null;
 
 // Autos que entraron por Documentos → Consignación. Se mira el ingreso y no la
 // consignación vigente: si esa fila se archivó, el auto sigue siendo de un tercero.
@@ -211,7 +226,7 @@ async function autosDeConsignacionDocumentos() {
 // ya vendido/retirado no lo sigue mostrando.
 export async function obtenerVehiculoPorRef(ref) {
   const auto = await prisma.autos.findFirst({
-    where: { ref: String(ref), ...VIGENTE, ...A_LA_VENTA, ...SIN_CONSIGNACION_CERRADA },
+    where: { ref: String(ref), ...VIGENTE, ...A_LA_VENTA, ...SIN_CONSIGNACION_CERRADA, ...SIN_RESERVA() },
     include: { descuentos: true, auto_promociones: { include: { promociones: true } } },
   });
   return auto ? mapAutoToVehiculo(auto) : null;
@@ -219,7 +234,7 @@ export async function obtenerVehiculoPorRef(ref) {
 
 export async function listarMarcas() {
   const filas = await prisma.autos.findMany({
-    where: { ...VIGENTE, ...A_LA_VENTA, disponible: true, ...SIN_CONSIGNACION_CERRADA },
+    where: { ...VIGENTE, ...A_LA_VENTA, disponible: true, ...SIN_CONSIGNACION_CERRADA, ...SIN_RESERVA() },
     distinct: ["marca"],
     select: { marca: true },
     orderBy: { marca: "asc" },
@@ -248,7 +263,6 @@ export async function actualizarVehiculo(ref, body = {}) {
   return mapAutoToVehiculo(auto);
 }
 
-// Soft delete.
 // Marca el auto como VENDIDO. No lo borra: la fila queda para la contabilidad.
 //
 // `precio_venta` es el cierre real, no el de lista — es lo que después se suma
@@ -258,43 +272,19 @@ export async function actualizarVehiculo(ref, body = {}) {
 // consignación como vendida: el auto y el trato son el mismo hecho comercial y
 // dejarlos desincronizados hace que el auto siga apareciendo a la venta.
 export async function marcarVendido(ref, { precio_venta, vendido_at } = {}) {
-  const auto = await prisma.autos.findFirst({
-    where: { ref: String(ref), ...VIGENTE },
-    include: { consignaciones: { where: { deleted_at: null }, orderBy: { id: "desc" }, take: 1 } },
-  });
+  const auto = await autoConConsignacion({ ref: String(ref) });
   if (!auto) return null;
   if (auto.vendido_at) throw error("Ese vehículo ya figura como vendido.");
 
-  let precio = precio_venta === undefined || precio_venta === null || precio_venta === ""
+  const precio = precio_venta === undefined || precio_venta === null || precio_venta === ""
     ? Number(auto.precio)
     : Number(precio_venta);
-  if (!(precio >= 0)) throw error("El precio de venta no es valido");
-  if (precio > PRECIO_MAX) {
-    throw error(`El precio de venta no puede superar $${PRECIO_MAX.toLocaleString("es-AR")}`);
-  }
-
   const fecha = vendido_at ? new Date(vendido_at) : new Date();
-  if (Number.isNaN(fecha.getTime())) throw error("La fecha de venta no es valida");
-  if (fecha > new Date()) throw error("La fecha de venta no puede ser futura.");
-
-  const consignacion = auto.consignaciones[0];
 
   // Transacción: el auto y su consignación se cierran juntos o no se cierra
   // nada. Si solo pasara una de las dos, el auto quedaría vendido con el trato
   // abierto (o al revés) y la contabilidad contaría mal.
-  await prisma.$transaction(async (tx) => {
-    await tx.autos.update({
-      where: { id: auto.id },
-      data: { vendido_at: fecha, precio_venta: precio, disponible: false, updated_at: new Date() },
-    });
-    if (consignacion && consignacion.estado === "en_venta") {
-      await tx.consignaciones.update({
-        where: { id: consignacion.id },
-        data: { estado: "vendido", updated_at: new Date() },
-      });
-    }
-    await moverIngresoDelAuto(tx, auto.id, "publicado", "vendido");
-  });
+  await prisma.$transaction((tx) => cerrarVenta(tx, auto, { precio, fecha }));
   return true;
 }
 
@@ -302,27 +292,54 @@ export async function marcarVendido(ref, { precio_venta, vendido_at } = {}) {
 // La venta es el único cierre irreversible del panel, así que necesita salida:
 // sin esto, un click equivocado ensucia la contabilidad para siempre.
 export async function deshacerVenta(ref) {
-  const auto = await prisma.autos.findFirst({
-    where: { ref: String(ref), ...VIGENTE },
+  const auto = await autoConConsignacion({ ref: String(ref) });
+  if (!auto || !auto.vendido_at) return false;
+  await prisma.$transaction((tx) => abrirVenta(tx, auto));
+  return true;
+}
+
+// El auto con su consignación vigente: lo que hace falta para cerrar o abrir la venta.
+export const autoConConsignacion = (where, tx = prisma) =>
+  tx.autos.findFirst({
+    where: { ...where, ...VIGENTE },
     include: { consignaciones: { where: { deleted_at: null }, orderBy: { id: "desc" }, take: 1 } },
   });
-  if (!auto || !auto.vendido_at) return false;
 
-  const consignacion = auto.consignaciones[0];
-  await prisma.$transaction(async (tx) => {
-    await tx.autos.update({
-      where: { id: auto.id },
-      data: { vendido_at: null, precio_venta: null, disponible: true, updated_at: new Date() },
-    });
-    if (consignacion && consignacion.estado === "vendido") {
-      await tx.consignaciones.update({
-        where: { id: consignacion.id },
-        data: { estado: "en_venta", updated_at: new Date() },
-      });
-    }
-    await moverIngresoDelAuto(tx, auto.id, "vendido", "publicado");
+// Cierra la venta dentro de una transacción. La usan Vehículos y el legajo de
+// Documentos (venta al contado o con parte de pago), así las dos puertas
+// marcan lo mismo.
+export async function cerrarVenta(tx, auto, { precio, fecha }) {
+  if (!(precio >= 0)) throw error("El precio de venta no es valido");
+  if (precio > PRECIO_MAX) throw error(`El precio de venta no puede superar $${PRECIO_MAX.toLocaleString("es-AR")}`);
+  if (Number.isNaN(fecha.getTime())) throw error("La fecha de venta no es valida");
+  if (fecha > new Date()) throw error("La fecha de venta no puede ser futura.");
+
+  await tx.autos.update({
+    where: { id: auto.id },
+    data: { vendido_at: fecha, precio_venta: precio, disponible: false, updated_at: new Date() },
   });
-  return true;
+  const consignacion = auto.consignaciones?.[0];
+  if (consignacion && consignacion.estado === "en_venta") {
+    await tx.consignaciones.update({ where: { id: consignacion.id }, data: { estado: "vendido", updated_at: new Date() } });
+  }
+  await moverIngresoDelAuto(tx, auto.id, "publicado", "vendido");
+  // La seña que lo reservaba se concretó con la venta.
+  await tx.senas.updateMany({
+    where: { auto_id: auto.id, deleted_at: null, estado: "vigente", vence: { gte: hoyFecha() } },
+    data: { estado: "convertida", estado_at: new Date(), updated_at: new Date() },
+  });
+}
+
+export async function abrirVenta(tx, auto) {
+  await tx.autos.update({
+    where: { id: auto.id },
+    data: { vendido_at: null, precio_venta: null, disponible: true, updated_at: new Date() },
+  });
+  const consignacion = auto.consignaciones?.[0];
+  if (consignacion && consignacion.estado === "vendido") {
+    await tx.consignaciones.update({ where: { id: consignacion.id }, data: { estado: "en_venta", updated_at: new Date() } });
+  }
+  await moverIngresoDelAuto(tx, auto.id, "vendido", "publicado");
 }
 
 // Cierra la consignación de un auto de tercero desde la ficha del vehículo.

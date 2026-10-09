@@ -1,7 +1,7 @@
 import { prisma } from "../lib/prisma.js";
 import { mapIngreso } from "../mappers/ingreso.mapper.js";
 import { mapPersona } from "./personas.service.js";
-import { marcarVendido } from "./vehiculos.service.js";
+import { marcarVendido, deshacerVenta } from "./vehiculos.service.js";
 
 // Sacar un auto en consignación a la venta, y volver a guardarlo.
 //
@@ -204,6 +204,23 @@ export async function venderIngreso(ingresoId, { precioVenta, vendidoAt } = {}) 
   if (!consignacion) throw error("Este ingreso no tiene ficha en el catálogo.", 409);
 
   await marcarVendido(consignacion.autos.ref, { precio_venta: precioVenta, vendido_at: vendidoAt });
+  const listo = await prisma.consignacion_ingresos.findFirst({ where: { id: ingreso.id }, include: PARA_DETALLE });
+  return { ingreso: mapIngreso(listo, { conDetalle: true }), avisos: [], ref: consignacion.autos.ref };
+}
+
+// Se marcó vendido por error: el auto vuelve a estar publicado. Es la salida
+// de la venta de una consignación, ahora que Vehículos ya no muestra vendidos.
+export async function deshacerVentaIngreso(ingresoId) {
+  const ingreso = await ingresoVigente(ingresoId);
+  if (ingreso.estado !== "vendido") throw error("Este ingreso no figura como vendido.", 409);
+
+  const consignacion = await prisma.consignaciones.findFirst({
+    where: { id: ingreso.consignacion_id ?? -1 },
+    select: { autos: { select: { ref: true } } },
+  });
+  if (!consignacion) throw error("Este ingreso no tiene ficha en el catálogo.", 409);
+
+  await deshacerVenta(consignacion.autos.ref);
   const listo = await prisma.consignacion_ingresos.findFirst({ where: { id: ingreso.id }, include: PARA_DETALLE });
   return { ingreso: mapIngreso(listo, { conDetalle: true }), avisos: [], ref: consignacion.autos.ref };
 }

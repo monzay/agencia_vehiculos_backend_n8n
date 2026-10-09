@@ -1,5 +1,6 @@
 import { prisma } from "../lib/prisma.js";
 import { mapFinanciacion } from "../mappers/financiacion.mapper.js";
+import { mapCompraventa, senaDelIngreso } from "../mappers/compraventa.mapper.js";
 
 // ── Helpers de validación / normalización ──
 
@@ -138,7 +139,7 @@ export async function obtenerFinanciacion(id) {
 // ningún dato de identidad ni de contacto. Así, aunque alguien enumere DNIs, no
 // obtiene PII (nombre/teléfonos/email/dni) de las personas, únicamente números.
 export function aPublico(f) {
-  const { telefono, telefonoAlt, email, clienteId, nombre, dni, ...resto } = f;
+  const { telefono, telefonoAlt, email, clienteId, ingresoId, nombre, dni, ...resto } = f;
   return resto;
 }
 
@@ -194,6 +195,47 @@ export async function crearFinanciacion(body = {}) {
   });
 
   return { ...mapFinanciacion(f), clienteVinculado: vinculado };
+}
+
+// Financia el saldo de una parte de pago. El cliente es el titular del trámite
+// (no se vuelve a cargar) y el saldo sale del boleto: sin boleto o sin saldo
+// que pague el cliente, no hay nada que financiar. Una sola financiación
+// vigente por trámite; se controla dentro de la transacción.
+export async function crearFinanciacionDeIngreso(ingresoId, body = {}) {
+  const id = parsearEntero(ingresoId, "El ingreso", { min: 1 });
+  const cantidadCuotas = parsearEntero(body.cantidadCuotas, "La cantidad de cuotas", { min: 1, max: 600 });
+  const precioCuota = parsearMonto(body.precioCuota, "El precio de la cuota");
+  const diaPago = parsearEntero(body.diaPago, "El día de pago", { min: 1, max: 31 });
+
+  return prisma.$transaction(async (tx) => {
+    const ingreso = await tx.consignacion_ingresos.findFirst({
+      where: { id, ...VIGENTE },
+      select: { cliente_id: true, modalidad: true, compraventa_contratos: true, sena: true },
+    });
+    if (!ingreso) throw error("Ingreso no encontrado.", 404);
+    if (ingreso.modalidad !== "permuta") throw error("Solo se financia el saldo de una parte de pago.", 409);
+
+    const boleto = ingreso.compraventa_contratos?.deleted_at ? null : mapCompraventa(ingreso.compraventa_contratos, senaDelIngreso(ingreso));
+    if (!boleto) throw error("Primero cargá las condiciones del boleto.", 409);
+    if (boleto.pago.pagador !== "cliente" || !(boleto.pago.saldo > 0)) {
+      throw error("El boleto no tiene saldo a pagar por el cliente.", 409);
+    }
+
+    const existente = await tx.financiaciones.findFirst({ where: { ingreso_id: id, ...VIGENTE }, select: { id: true } });
+    if (existente) throw error("Este trámite ya tiene una financiación.", 409);
+
+    const f = await tx.financiaciones.create({
+      data: {
+        cliente_id: ingreso.cliente_id,
+        ingreso_id: id,
+        cantidad_cuotas: cantidadCuotas,
+        precio_cuota: precioCuota,
+        dia_pago: diaPago,
+      },
+      include: CON_RELACIONES,
+    });
+    return mapFinanciacion(f);
+  });
 }
 
 // Actualiza una financiación (edición parcial). Los datos de identidad se

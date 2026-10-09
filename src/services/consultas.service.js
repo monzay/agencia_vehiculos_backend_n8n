@@ -6,8 +6,8 @@ const CANALES = ["whatsapp", "facebook", "instagram", "web"];
 
 const CLASIFICACIONES = ["CALIENTE", "TIBIO", "FRIO"];
 
-// Las consultas de venta/consignación tienen su propia sección ("Vender /
-// Consignación"), así que acá se listan solo las de compra. `tipo_lead` es NULL
+// Las consultas de venta/consignación se listan aparte (filtro "Tipo" de la
+// sección Consultas, ver `listarConsultasVenta`), así que acá van solo las de compra. `tipo_lead` es NULL
 // en la mayoría de las consultas, y en SQL `<> 'venta'` no matchea NULL, por eso
 // el NULL se contempla explícitamente.
 const SIN_VENTA = { OR: [{ tipo_lead: null }, { tipo_lead: { not: "venta" } }] };
@@ -132,12 +132,16 @@ function filtroBusquedaVenta(termino) {
 // cliente y por el vehículo ofrecido. Ordenadas por más recientes.
 // Solo las COMPLETAS (paso 'handoff' = respondió todas las preguntas del bot):
 // las abandonadas a mitad del flujo no son una consulta real.
-export async function listarConsultasVenta({ limite = 10, offset = 0, q = "" } = {}) {
+// `modalidad` = venta | consignacion. Las anteriores a que el bot lo preguntara
+// (NULL) se listan con las de venta directa: si no, no aparecerían en ningún lado.
+export async function listarConsultasVenta({ limite = 10, offset = 0, q = "", modalidad = "" } = {}) {
   const take = Math.max(1, Number(limite) || 10);
   const skip = Math.max(0, Number(offset) || 0);
   const termino = String(q || "").trim();
 
   const filtros = [{ tipo_lead: "venta", paso_actual: "handoff" }];
+  if (modalidad === "consignacion") filtros.push({ modalidad_venta: "consignacion" });
+  if (modalidad === "venta") filtros.push({ OR: [{ modalidad_venta: "venta" }, { modalidad_venta: null }] });
   if (termino) filtros.push(filtroBusquedaVenta(termino));
   const where = { AND: filtros };
 

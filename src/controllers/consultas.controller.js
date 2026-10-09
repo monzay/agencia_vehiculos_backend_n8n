@@ -19,13 +19,14 @@ export async function getConsultas(req, res, next) {
   }
 }
 
-// Consultas de venta/consignación (una por sesión) para la sección homónima.
+// Consultas de venta/consignación (una por sesión), filtrables por modalidad.
 export async function getConsultasVenta(req, res, next) {
   try {
     const { items, hayMas, total } = await listarConsultasVenta({
       limite: req.query.limite,
       offset: req.query.offset,
       q: req.query.q,
+      modalidad: req.query.modalidad,
     });
     res.json({ ok: true, total, data: { items, hayMas, total } });
   } catch (err) {

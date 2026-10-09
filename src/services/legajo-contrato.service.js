@@ -3,6 +3,7 @@ import { prisma } from "../lib/prisma.js";
 import { CATALOGO } from "../lib/documentos-catalogo.js";
 import { error } from "../lib/contrato-campos.js";
 import { mapIngreso } from "../mappers/ingreso.mapper.js";
+import { conUsado } from "../lib/modalidades.js";
 
 // Lo que comparten todos los contratos del legajo (consignación, compra,
 // permuta): la copia congelada que se imprime, y firmar y desfirmar.
@@ -14,9 +15,10 @@ import { mapIngreso } from "../mappers/ingreso.mapper.js";
 const datosAgencia = () => prisma.ubicacion.findFirst({ select: { nombre: true, direccion: true } });
 
 // El vehículo del ingreso sale del título. Sin título, el contrato y los
-// recibos no tienen qué auto nombrar.
+// recibos no tienen qué auto nombrar. Una venta sin usado no recibe ningún auto:
+// el boleto nombra el que vende la agencia, que sale de su ficha.
 export function exigirVehiculo(ingreso) {
-  if (!ingreso.dominio) throw error("Cargá el título del automotor: el contrato necesita los datos del vehículo.", 409);
+  if (conUsado(ingreso) && !ingreso.dominio) throw error("Cargá el título del automotor: el contrato necesita los datos del vehículo.", 409);
 }
 
 // La copia congelada: todo lo que hace falta para reimprimir el contrato y sus
@@ -30,6 +32,8 @@ export async function snapshotDelLegajo(ingreso) {
     version: 1,
     generado: new Date().toISOString(),
     modalidad: detalle.modalidad,
+    // Sin usado no hay recibos de recepción ni compromiso de transferencia.
+    conUsado: detalle.conUsado,
     agencia: agencia ? { nombre: agencia.nombre, direccion: agencia.direccion } : null,
     titular: detalle.titular,
     vehiculo: detalle.vehiculo,
