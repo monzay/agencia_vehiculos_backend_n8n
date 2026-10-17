@@ -12,6 +12,7 @@
 
 import { aplicarDescuento } from "./descuento.mapper.js";
 import { mapPromosDeAuto } from "./promocion.mapper.js";
+import { normalizarTipoVehiculo } from "../lib/tipos-vehiculo.js";
 
 const COMBUSTIBLES_VALIDOS = ["nafta", "gnc", "diesel"];
 
@@ -23,7 +24,7 @@ function parseDescripcion(descripcion) {
     .filter(Boolean);
 
   const primera = partes[0] ?? "";
-  const tipoVehiculo = primera.startsWith("moto") ? "moto" : "auto";
+  const tipoVehiculo = normalizarTipoVehiculo(primera.split(/\s+/)[0]);
 
   const combustible = partes
     .slice(1)
@@ -87,7 +88,7 @@ export function mapAutoToVehiculo(auto) {
     stock: auto.stock ?? 0, // unidades disponibles
     // En la DB `tipo` es la condicion (0km/usado). El enum de Prisma mapea "0km" -> "km".
     condicion: auto.tipo === "km" ? "0km" : "usado",
-    tipo: tipoVehiculo, // "auto" | "moto"
+    tipo: tipoVehiculo, // "auto" | "camioneta" | "moto"
     combustible,
     precio: precioBase,
     descuento, // null o { id, nombre, tipo, valor, ... }

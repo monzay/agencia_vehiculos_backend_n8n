@@ -1,6 +1,7 @@
 import { prisma } from "../lib/prisma.js";
 import { mapFinanciacion } from "../mappers/financiacion.mapper.js";
 import { mapCompraventa, senaDelIngreso } from "../mappers/compraventa.mapper.js";
+import { fechaAR, proximoAviso, conAvisosPrimero } from "./avisos-cuotas.service.js";
 
 // ── Helpers de validación / normalización ──
 
@@ -96,15 +97,25 @@ async function resolverCliente({ nombre, telefonoDigitos, dni, email }) {
 
 // `include` estándar: cliente + pagos (para armar el cronograma en el mapper).
 const CON_RELACIONES = { clientes: true, pagos: { orderBy: { numero: "asc" } } };
+// Para el admin: además, lo que respondió el cliente a los recordatorios y todavía no se atendió.
+const CON_RESPUESTAS = {
+  ...CON_RELACIONES,
+  alertas: { where: { atendida_at: null }, orderBy: { id: "asc" }, include: { aviso: { select: { numero: true } } } },
+};
 
-// Lista las financiaciones vigentes (activas primero), con los datos del cliente.
-export async function listarFinanciaciones() {
+// La cuota que está en la ventana de avisos (vence en 3 días o menos), si la hay.
+const conAvisoEnCurso = (f, hoy) => ({ ...f, proximoAviso: f.activo && !f.completada ? proximoAviso(f, hoy) : null });
+
+// Lista las financiaciones vigentes, con los datos del cliente. Primero las que
+// tienen un aviso en curso; después, activas primero y las más nuevas arriba.
+export async function listarFinanciaciones(ahora = new Date()) {
   const filas = await prisma.financiaciones.findMany({
     where: VIGENTE,
-    include: CON_RELACIONES,
+    include: CON_RESPUESTAS,
     orderBy: [{ activo: "desc" }, { created_at: "desc" }],
   });
-  return filas.map(mapFinanciacion);
+  const hoy = fechaAR(ahora);
+  return conAvisosPrimero(filas.map(mapFinanciacion).map((f) => conAvisoEnCurso(f, hoy)));
 }
 
 // Versión PAGINADA con búsqueda en el server. Devuelve { items, hayMas, total }.
@@ -130,16 +141,16 @@ export async function listarFinanciacionesPaginado({ q, offset = 0, limite = 10 
 export async function obtenerFinanciacion(id) {
   const f = await prisma.financiaciones.findFirst({
     where: { id: Number(id), ...VIGENTE },
-    include: CON_RELACIONES,
+    include: CON_RESPUESTAS,
   });
-  return f ? mapFinanciacion(f) : null;
+  return f ? conAvisoEnCurso(mapFinanciacion(f), fechaAR(new Date())) : null;
 }
 
 // Vista pública para la consulta por DNI: devuelve SOLO el plan de cuotas, sin
 // ningún dato de identidad ni de contacto. Así, aunque alguien enumere DNIs, no
 // obtiene PII (nombre/teléfonos/email/dni) de las personas, únicamente números.
 export function aPublico(f) {
-  const { telefono, telefonoAlt, email, clienteId, ingresoId, nombre, dni, ...resto } = f;
+  const { telefono, telefonoAlt, email, clienteId, ingresoId, nombre, dni, respuestas, avisosBaja, proximoAviso, ...resto } = f;
   return resto;
 }
 
@@ -272,6 +283,11 @@ export async function actualizarFinanciacion(id, body = {}) {
   if (body.diaPago !== undefined) dataPlan.dia_pago = parsearEntero(body.diaPago, "El día de pago", { min: 1, max: 31 });
   if (body.telefonoAlt !== undefined) dataPlan.telefono_alt = soloDigitos(body.telefonoAlt) || null;
   if (body.activo !== undefined) dataPlan.activo = Boolean(body.activo);
+  if (body.avisosWhatsapp !== undefined) {
+    if (typeof body.avisosWhatsapp !== "boolean") throw error("avisosWhatsapp debe ser verdadero o falso");
+    // Apagados: se conserva la fecha de la baja original (por ejemplo, la del BAJA del cliente).
+    dataPlan.avisos_baja_at = body.avisosWhatsapp ? null : existe.avisos_baja_at ?? new Date();
+  }
 
   if (Object.keys(dataCliente).length) {
     await prisma.clientes.update({ where: { id: existe.cliente_id }, data: dataCliente });

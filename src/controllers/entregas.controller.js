@@ -1,10 +1,28 @@
-import { listarEntregas, crearEntrega, eliminarEntrega } from "../services/entregas.service.js";
+import { listarEntregas, listarEntregasGestion, buscarClientesParaEntrega, crearEntrega, eliminarEntrega } from "../services/entregas.service.js";
 
 const NO_ENCONTRADA = { ok: false, error: "Entrega no encontrada" };
 
 export async function getEntregas(req, res, next) {
   try {
     res.json({ ok: true, data: await listarEntregas() });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// Panel (solo admin): las entregas con el cliente de cada una.
+export async function getEntregasGestion(req, res, next) {
+  try {
+    res.json({ ok: true, data: await listarEntregasGestion() });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// Panel (solo admin): buscar el cliente que recibió el auto.
+export async function getClientesParaEntrega(req, res, next) {
+  try {
+    res.json({ ok: true, data: await buscarClientesParaEntrega(req.query.q) });
   } catch (err) {
     next(err);
   }

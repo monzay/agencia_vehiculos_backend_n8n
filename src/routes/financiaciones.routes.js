@@ -7,6 +7,8 @@ import {
   putCuota,
   deleteFinanciacion,
   getConsultaPorDni,
+  getAlertas,
+  putAlertaAtendida,
 } from "../controllers/financiaciones.controller.js";
 import { requireAuth, requireRole } from "../middlewares/auth.js";
 import { rateLimit } from "../middlewares/rateLimit.js";
@@ -27,6 +29,9 @@ router.get("/consulta", limiteConsulta, getConsultaPorDni);
 // Gestión de financiaciones: SOLO admin (ver, crear, editar, marcar cuotas y eliminar).
 const soloAdmin = [requireAuth, requireRole("admin")];
 router.get("/", ...soloAdmin, getFinanciaciones);
+// Avisos de clientes que respondieron un recordatorio (antes de "/:id").
+router.get("/alertas", ...soloAdmin, getAlertas);
+router.put("/alertas/:id/atendida", ...soloAdmin, putAlertaAtendida);
 router.get("/:id", ...soloAdmin, getFinanciacion);
 router.post("/", ...soloAdmin, postFinanciacion);
 router.patch("/:id", ...soloAdmin, patchFinanciacion);

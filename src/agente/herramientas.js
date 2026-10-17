@@ -1,0 +1,398 @@
+import { z } from "zod";
+import { TIPOS_VEHICULO, normalizarTipoVehiculo } from "../lib/tipos-vehiculo.js";
+import { whereDisponible, selectFicha, autoPublico, fotosPublicas } from "./auto-publico.js";
+import { puntaje, clasificar, pendientes } from "./calificacion.js";
+import { linkDelCatalogo } from "./origen-web.js";
+
+// Las herramientas del agente vendedor. Cada una es un "formulario" con
+// casilleros fijos (zod): la IA solo puede pedir que se ejecute completándolo.
+// El backend valida el formulario, ejecuta SU consulta y devuelve el resultado.
+//
+// El cliente y la sesión NO vienen de la IA: llegan en `ctx` desde el backend
+// (identificados por el número de WhatsApp). Así ninguna herramienta puede
+// consultar ni tocar datos de otra persona.
+//
+// ctx = { db, clienteId, sesionId, urlPublica, ahora, cobranza }
+// `cobranza` = { financiacionId, avisoId } si el número recibió un recordatorio de cuota.
+
+const MAX_AUTOS = 5;
+const MAX_CANDIDATOS_SIMILARES = 20;
+const MARGEN_SIMILAR = 0.25;
+const DIAS = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
+const DESFASE_AR_MS = 3 * 3_600_000;
+
+const MAX_INTENTOS_DNI = 3;
+const VENTANA_INTENTOS_MS = 24 * 3_600_000;
+
+const ref = z.string().trim().min(1).max(30).describe("Código del auto (ref), tal como figura en la web o en una búsqueda.");
+
+// Texto libre que dicta el cliente y que después se ve en el panel: sin HTML ni
+// links, para que nadie meta contenido malicioso a través del chat.
+const textoLibre = (max, min = 1) =>
+  z
+    .string()
+    .trim()
+    .min(min)
+    .max(max)
+    .refine((v) => !/[<>]|https?:\/\/|www\.|\b[\w-]+\.(com|ar|me|ly|net|org|io|link)\b/i.test(v), "No se admiten HTML ni links.");
+
+// Los autos viejos sin tipo cargado cuentan como "auto".
+const filtroTipo = (tipo) => (tipo === "auto" ? { OR: [{ tipo_vehiculo: "auto" }, { tipo_vehiculo: null }] } : { tipo_vehiculo: tipo });
+
+// Un auto pausado o sin publicar no existe para el cliente. Uno vendido sí se
+// informa, para poder ofrecerle parecidos.
+const visibleParaElCliente = (auto) => Boolean(auto && (auto.disponible || auto.vendido_at));
+
+const fechaAR = (ahora) => new Date(ahora.getTime() - DESFASE_AR_MS);
+const iso = (anio, mes, dia) => `${anio}-${String(mes + 1).padStart(2, "0")}-${String(dia).padStart(2, "0")}`;
+
+function proximoVencimiento(diaPago, ahora) {
+  const hoy = fechaAR(ahora);
+  let anio = hoy.getUTCFullYear();
+  let mes = hoy.getUTCMonth();
+  if (hoy.getUTCDate() > diaPago) {
+    mes += 1;
+    if (mes > 11) {
+      mes = 0;
+      anio += 1;
+    }
+  }
+  const ultimoDia = new Date(Date.UTC(anio, mes + 1, 0)).getUTCDate();
+  return iso(anio, mes, Math.min(diaPago, ultimoDia));
+}
+
+function requiereSesion(ctx) {
+  if (!ctx.sesionId) throw new Error("Falta la sesión del cliente.");
+}
+
+// Lo que dicta el cliente vuelve al contexto del agente: va en una sola línea, así
+// no puede armar renglones que parezcan instrucciones o estado del recorrido.
+const unaLinea = (v) => (typeof v === "string" ? v.replace(/[\u0000-\u001f\u007f\s]+/g, " ").trim() : v);
+
+// Solo lo que el cliente dijo ahora (sin null): corregir un dato no borra los otros.
+const sinNulos = (objeto) =>
+  Object.fromEntries(
+    Object.entries(objeto)
+      .filter(([, v]) => v !== null && v !== undefined)
+      .map(([k, v]) => [k, unaLinea(v)])
+  );
+
+// El auto de interés se toma solo si está a la venta; un código inventado no se guarda.
+async function autoDeInteres(db, ref) {
+  if (!ref) return null;
+  const auto = await db.autos.findFirst({ where: { ...whereDisponible(), ref }, select: { id: true } });
+  return auto?.id ?? null;
+}
+
+// Con la visita acordada, el vendedor queda avisado para esperarlo con el auto listo.
+// Si ya estaba avisado por otro motivo (una derivación), no se pisa.
+function cambiosDeSesion(input, autoId, momento, yaAvisado) {
+  const aviso = yaAvisado
+    ? {}
+    : { requiere_vendedor: true, requiere_vendedor_motivo: `Visita propuesta: ${unaLinea(input.visita_propuesta)}`.slice(0, 120), requiere_vendedor_at: momento };
+  const visita = input.visita_propuesta ? { visita_propuesta: input.visita_propuesta, visita_propuesta_at: momento, ...aviso } : {};
+  return sinNulos({
+    auto_id: autoId,
+    pago_tipo: input.pago_tipo,
+    anticipo: input.anticipo,
+    credito_ok: input.tiene_recibo_o_garante == null ? null : input.tiene_recibo_o_garante ? 1 : 0,
+    entrega_usado: input.entrega_usado,
+    decisor: input.decisor,
+    decisor_con: input.decisor_con,
+    disponibilidad: input.disponibilidad,
+    ...visita,
+  });
+}
+
+const PRECIO_NO_SABE = "No sabe";
+
+// Hay una sola fila de usado por sesión (índice único): si estaba archivada se
+// reactiva en vez de crear otra. Devuelve el usado como quedó.
+async function guardarUsado(db, sesionId, input, momento) {
+  const precio = input.usado_precio_pedido != null ? String(input.usado_precio_pedido) : input.usado_precio_no_sabe ? PRECIO_NO_SABE : null;
+  const datos = sinNulos({
+    marca: input.usado_marca,
+    modelo: input.usado_modelo,
+    anio: input.usado_anio,
+    kms: input.usado_kms == null ? null : String(input.usado_kms),
+    detalles: input.usado_detalles,
+    precio_pedido: precio,
+  });
+  const existente = await db.vehiculo_cliente.findFirst({ where: { sesion_id: sesionId, contexto: "trade_in" } });
+  if (Object.keys(datos).length === 0) return existente?.deleted_at ? null : existente;
+  if (existente) {
+    await db.vehiculo_cliente.update({ where: { id: existente.id }, data: { ...datos, deleted_at: null, updated_at: momento } });
+    return { ...existente, ...datos };
+  }
+  await db.vehiculo_cliente.create({ data: { sesion_id: sesionId, contexto: "trade_in", ...datos } });
+  return datos;
+}
+
+const HERRAMIENTAS = [
+  {
+    nombre: "buscar_autos",
+    descripcion:
+      "Busca autos disponibles para ofrecer. Nunca devuelve vendidos ni reservados. Usala para cualquier pregunta sobre qué autos hay, por tipo, presupuesto, año o marca. Devuelve hasta 5.",
+    esquema: z.strictObject({
+      tipo: z.enum(TIPOS_VEHICULO).nullable().describe("auto, camioneta o moto. null si no lo dijo."),
+      presupuesto_max: z.number().int().positive().max(10_000_000_000).nullable().describe("Precio máximo en pesos. null si no lo dijo."),
+      anio_desde: z.number().int().min(1950).max(2100).nullable().describe("Año mínimo. null si no lo dijo."),
+      marca: textoLibre(40).nullable().describe("Marca, por ejemplo Toyota. null si no la dijo."),
+    }),
+    async ejecutar({ tipo, presupuesto_max, anio_desde, marca }, { db }) {
+      const where = {
+        ...whereDisponible(),
+        ...(tipo && filtroTipo(tipo)),
+        ...(presupuesto_max && { precio: { lte: presupuesto_max } }),
+        ...(anio_desde && { anio: { gte: anio_desde } }),
+        ...(marca && { marca: { contains: marca } }),
+      };
+      const autos = await db.autos.findMany({
+        where,
+        select: selectFicha(),
+        orderBy: presupuesto_max ? { precio: "desc" } : { id: "desc" },
+        take: MAX_AUTOS,
+      });
+      return { cantidad: autos.length, autos: autos.map(autoPublico) };
+    },
+  },
+  {
+    nombre: "buscar_similares",
+    descripcion:
+      "Busca autos disponibles parecidos a uno dado: mismo tipo y precio dentro de un 25% hacia arriba o abajo, el más cercano primero. Usala cuando el auto que le interesa ya no está, no le alcanza o pide algo parecido.",
+    esquema: z.strictObject({ ref }),
+    async ejecutar({ ref: codigo }, { db }) {
+      const referencia = await db.autos.findFirst({ where: { ref: codigo, deleted_at: null }, select: selectFicha() });
+      if (!visibleParaElCliente(referencia)) return { encontrado: false };
+
+      const precio = Number(referencia.precio);
+      const candidatos = await db.autos.findMany({
+        where: {
+          ...whereDisponible(),
+          ...filtroTipo(normalizarTipoVehiculo(referencia.tipo_vehiculo)),
+          precio: { gte: Math.round(precio * (1 - MARGEN_SIMILAR)), lte: Math.round(precio * (1 + MARGEN_SIMILAR)) },
+          ref: { not: codigo },
+        },
+        select: selectFicha(),
+        take: MAX_CANDIDATOS_SIMILARES,
+      });
+      const cercania = (a) => [Math.abs(Number(a.precio) - precio), Math.abs((a.anio ?? 0) - (referencia.anio ?? 0))];
+      const parecidos = [...candidatos]
+        .sort((a, b) => {
+          const [pa, aa] = cercania(a);
+          const [pb, ab] = cercania(b);
+          return pa - pb || aa - ab;
+        })
+        .slice(0, MAX_AUTOS)
+        .map(autoPublico);
+      return { encontrado: true, referencia: autoPublico(referencia), parecidos };
+    },
+  },
+  {
+    nombre: "ver_auto",
+    descripcion:
+      "Muestra la ficha de un auto por su código: precio, descuento y promociones vigentes, km, y si está disponible, reservado o vendido. Usala antes de dar cualquier precio.",
+    esquema: z.strictObject({ ref }),
+    async ejecutar({ ref: codigo }, { db }) {
+      const auto = await db.autos.findFirst({ where: { ref: codigo, deleted_at: null }, select: selectFicha() });
+      return visibleParaElCliente(auto) ? { encontrado: true, auto: autoPublico(auto) } : { encontrado: false };
+    },
+  },
+  {
+    nombre: "enviar_fotos_auto",
+    descripcion: "Devuelve las fotos de un auto disponible para mandárselas al cliente por WhatsApp.",
+    esquema: z.strictObject({ ref }),
+    async ejecutar({ ref: codigo }, { db, urlPublica }) {
+      const auto = await db.autos.findFirst({ where: { ...whereDisponible(), ref: codigo }, select: { fotos_json: true } });
+      if (!auto) return { fotos: [], motivo: "El auto no está disponible." };
+      const fotos = fotosPublicas(auto, urlPublica);
+      // La ficha web va en el botón "Ver todas las fotos" del mismo mensaje.
+      return fotos.length ? { fotos, ficha: linkDelCatalogo(urlPublica, codigo) } : { fotos: [], motivo: "Este auto todavía no tiene fotos cargadas." };
+    },
+  },
+  {
+    nombre: "mi_financiacion",
+    descripcion:
+      "Estado de la financiación que el cliente que escribe YA tiene con la agencia: cuotas pagas y pendientes, próximo vencimiento y saldo. Pedile antes los últimos 4 dígitos de su DNI. Si responde bloqueado, derivá a un vendedor. No sirve para consultar a otra persona ni para simular cuotas nuevas.",
+    esquema: z.strictObject({
+      dni_ultimos: z.string().regex(/^\d{4}$/).describe("Los últimos 4 dígitos del DNI que dio el cliente."),
+    }),
+    async ejecutar({ dni_ultimos }, { db, clienteId, ahora }) {
+      if (!clienteId) return { verificado: false };
+      const momento = ahora ?? new Date();
+
+      // Contra la fuerza bruta: con 3 fallos en 24 h ni siquiera se compara.
+      const fallidos = await db.verificacion_intentos.count({
+        where: { cliente_id: clienteId, ok: false, created_at: { gte: new Date(momento.getTime() - VENTANA_INTENTOS_MS) } },
+      });
+      if ((Number(fallidos) || 0) >= MAX_INTENTOS_DNI) return { verificado: false, bloqueado: true };
+
+      const cliente = await db.clientes.findUnique({ where: { id: clienteId }, select: { dni: true } });
+      const dni = String(cliente?.dni ?? "").replace(/\D/g, "");
+      const ok = Boolean(dni) && dni.endsWith(dni_ultimos);
+      await db.verificacion_intentos.create({ data: { cliente_id: clienteId, ok, created_at: momento } });
+      if (!ok) return { verificado: false };
+
+      const financiaciones = await db.financiaciones.findMany({
+        where: { cliente_id: clienteId, deleted_at: null, activo: true },
+        select: { cantidad_cuotas: true, precio_cuota: true, dia_pago: true, pagos: { select: { numero: true } } },
+      });
+      return {
+        verificado: true,
+        financiaciones: financiaciones.map((f) => {
+          const pagadas = f.pagos?.length ?? 0;
+          const pendientes = Math.max(0, f.cantidad_cuotas - pagadas);
+          const valor = Number(f.precio_cuota);
+          return {
+            cuotas_total: f.cantidad_cuotas,
+            cuotas_pagadas: pagadas,
+            cuotas_pendientes: pendientes,
+            valor_cuota: valor,
+            saldo: pendientes * valor,
+            dia_de_pago: f.dia_pago,
+            proximo_vencimiento: pendientes > 0 ? proximoVencimiento(f.dia_pago, momento) : null,
+          };
+        }),
+      };
+    },
+  },
+  {
+    nombre: "horarios_atencion",
+    descripcion: "Horarios de atención de la agencia, día por día. Usala antes de confirmar cuándo puede venir el cliente.",
+    esquema: z.strictObject({}),
+    async ejecutar(_, { db }) {
+      const filas = await db.horarios_atencion.findMany({ orderBy: { dia: "asc" } });
+      return {
+        horarios: filas.map((h) => ({ dia: DIAS[h.dia], abierto: Boolean(h.abierto), apertura: h.apertura ?? null, cierre: h.cierre ?? null })),
+      };
+    },
+  },
+  {
+    nombre: "registrar_calificacion",
+    descripcion:
+      "Guarda lo que el cliente respondió en el recorrido de venta: auto de interés, forma de pago, anticipo, recibo o garante, el usado que entrega (marca, modelo, año y cuánto pide; km y detalles solo si los contó sin que se los pidas), quién decide y la visita a la agencia. Completá solo lo que el cliente dijo; el resto en null. Llamala cada vez que responda algo nuevo: devuelve lo que todavía falta preguntar.",
+    // No estricta: el modo estricto de Claude admite hasta 16 campos opcionales
+    // sumando todas las herramientas, y esta sola tiene 16. Igual se valida con zod.
+    estricta: false,
+    esquema: z.strictObject({
+      auto_ref: textoLibre(20).nullish().describe("Código (ref) del auto que le interesa, tal como lo devuelven las herramientas."),
+      pago_tipo: z.enum(["contado", "financiado"]).nullish(),
+      anticipo: textoLibre(40).nullish().describe("Lo que dijo del anticipo, por ejemplo '3 millones'."),
+      tiene_recibo_o_garante: z.boolean().nullish(),
+      entrega_usado: z.boolean().nullish(),
+      usado_marca: textoLibre(60).nullish(),
+      usado_modelo: textoLibre(60).nullish(),
+      usado_anio: z.number().int().min(1950).max(2100).nullish(),
+      usado_kms: z.number().int().min(0).max(2_000_000).nullish(),
+      usado_detalles: textoLibre(300).nullish().describe("Estado del usado: choques, service, cubiertas, algo para arreglar."),
+      usado_precio_pedido: z.number().int().min(1).max(10_000_000_000).nullish().describe("Cuánto pide por el usado, en pesos."),
+      usado_precio_no_sabe: z.boolean().nullish().describe("true si no sabe cuánto pedir por el usado."),
+      decisor: z.enum(["solo", "consulta"]).nullish().describe("solo si decide él o ella; consulta si lo consulta con alguien."),
+      decisor_con: textoLibre(40).nullish().describe("Con quién lo consulta, por ejemplo 'pareja'."),
+      disponibilidad: z.enum(["esta_semana", "proximas", "no_sabe"]).nullish().describe("Cuándo puede venir a la agencia."),
+      visita_propuesta: textoLibre(120).nullish().describe("Cuándo acordó venir: un día, una hora, una semana o una fecha, por ejemplo 'sábado a la mañana'."),
+    }),
+    async ejecutar(input, { db, sesionId, ahora }) {
+      requiereSesion({ sesionId });
+      const momento = ahora ?? new Date();
+      const autoId = await autoDeInteres(db, input.auto_ref);
+      const actual = await db.chat_estado.findUnique({
+        where: { id: sesionId },
+        select: { auto_id: true, pago_tipo: true, anticipo: true, credito_ok: true, entrega_usado: true, decisor: true, disponibilidad: true, visita_propuesta: true, requiere_vendedor: true },
+      });
+      const cambios = cambiosDeSesion(input, autoId, momento, Boolean(actual?.requiere_vendedor));
+      const vigente = { ...actual, ...cambios };
+      await db.chat_estado.update({
+        where: { id: sesionId },
+        data: { ...cambios, score: puntaje(vigente), clasificacion: clasificar(vigente), updated_at: momento },
+      });
+      const usado = await guardarUsado(db, sesionId, input, momento);
+      return { registrado: true, faltan: pendientes(vigente, usado) };
+    },
+  },
+  {
+    nombre: "derivar_a_vendedor",
+    descripcion:
+      "Pasa la conversación a un vendedor. Usala si el cliente pide hablar con una persona, quiere negociar el precio o una tasa, reservar o señar un auto, tasar su usado, está enojado, o si no podés resolver lo que pide.",
+    esquema: z.strictObject({
+      motivo: textoLibre(120, 3).describe("Por qué se deriva, en pocas palabras."),
+    }),
+    async ejecutar({ motivo }, { db, sesionId, ahora }) {
+      requiereSesion({ sesionId });
+      await db.chat_estado.update({
+        where: { id: sesionId },
+        data: { requiere_vendedor: true, requiere_vendedor_motivo: motivo, requiere_vendedor_at: ahora ?? new Date() },
+      });
+      return { derivado: true };
+    },
+  },
+  {
+    nombre: "avisar_administracion",
+    descripcion:
+      "Le deja un aviso al administrador sobre la cuota del recordatorio que recibió el cliente: si la paga en la agencia o por transferencia, si dice que ya la pagó, si no puede pagar, si es un número equivocado u otra cosa. Usala solo si el contexto dice que le mandamos un recordatorio de pago.",
+    esquema: z.strictObject({
+      tipo: z.enum(["pagara_en_agencia", "transferencia", "ya_pago", "no_puede_pagar", "numero_equivocado", "otro"]),
+      detalle: textoLibre(300).nullish().describe("Lo que dijo el cliente, en pocas palabras (por ejemplo 'paga el viernes')."),
+    }),
+    // La financiación sale del recordatorio que el backend encontró para este
+    // número, nunca de la IA. createMany: el usuario del agente solo puede
+    // insertar alertas, no leerlas (create() relee la fila). Lo mismo dos veces
+    // para el mismo aviso no se duplica.
+    async ejecutar({ tipo, detalle }, { db, cobranza, ahora }) {
+      if (!cobranza) return { avisado: false, motivo: "No hay un recordatorio de cuota reciente para este cliente." };
+      await db.financiacion_alertas.createMany({
+        data: [{ financiacion_id: cobranza.financiacionId, aviso_id: cobranza.avisoId, tipo, detalle: detalle ?? null, created_at: ahora ?? new Date() }],
+        skipDuplicates: true,
+      });
+      return { avisado: true };
+    },
+  },
+];
+
+const POR_NOMBRE = new Map(HERRAMIENTAS.map((h) => [h.nombre, h]));
+export const NOMBRES_HERRAMIENTAS = HERRAMIENTAS.map((h) => h.nombre);
+
+// El modo estricto de Claude no acepta límites numéricos ni de largo: se sacan
+// del formulario que ve la IA, y el backend los sigue validando con zod.
+const LIMITES_NO_ADMITIDOS = new Set(["minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "minLength", "maxLength", "pattern"]);
+
+function sinLimites(nodo) {
+  if (Array.isArray(nodo)) return nodo.map(sinLimites);
+  if (!nodo || typeof nodo !== "object") return nodo;
+  return Object.fromEntries(
+    Object.entries(nodo)
+      .filter(([clave]) => !LIMITES_NO_ADMITIDOS.has(clave) && clave !== "$schema")
+      .map(([clave, valor]) => [clave, sinLimites(valor)])
+  );
+}
+
+// Las definiciones que se mandan a Claude. `strict: true` lo obliga a respetar
+// exactamente los casilleros; igual el backend vuelve a validar todo.
+export function definicionesParaClaude() {
+  return HERRAMIENTAS.map((h) => ({
+    name: h.nombre,
+    description: h.descripcion,
+    input_schema: sinLimites(z.toJSONSchema(h.esquema)),
+    strict: h.estricta !== false,
+  }));
+}
+
+// Ejecuta una herramienta pedida por la IA. Nunca lanza: devuelve
+// { esError, resultado } o { esError, error } para mandarle a Claude.
+export async function ejecutarHerramienta(nombre, entrada, ctx) {
+  const herramienta = POR_NOMBRE.get(nombre);
+  if (!herramienta) return { esError: true, error: `No existe la herramienta ${nombre}.` };
+
+  const validado = herramienta.esquema.safeParse(entrada ?? {});
+  if (!validado.success) {
+    const campos = [...new Set(validado.error.issues.map((i) => i.path.join(".") || "formulario"))].join(", ");
+    return { esError: true, error: `Datos inválidos en: ${campos}.` };
+  }
+
+  try {
+    return { esError: false, resultado: await herramienta.ejecutar(validado.data, ctx) };
+  } catch (err) {
+    console.error(`[agente] la herramienta ${nombre} falló:`, err?.message);
+    return { esError: true, error: "No se pudo completar la consulta. Ofrecé derivar a un vendedor." };
+  }
+}

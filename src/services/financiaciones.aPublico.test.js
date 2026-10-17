@@ -32,3 +32,10 @@ test("F1 — la vista pública no expone PII, solo el plan", () => {
   assert.equal(pub.saldo, 8000);
   assert.ok(Array.isArray(pub.cronograma));
 });
+
+test("la vista pública tampoco muestra las respuestas del cliente ni la baja de avisos (son del admin)", () => {
+  const pub = aPublico({ id: 1, cantidadCuotas: 12, respuestas: [{ tipo: "transferencia" }], avisosBaja: "2026-10-01", proximoAviso: { numero: 1 } });
+  for (const prohibido of ["respuestas", "avisosBaja", "proximoAviso"]) {
+    assert.ok(!(prohibido in pub), `la vista pública NO debe exponer "${prohibido}"`);
+  }
+});

@@ -4,17 +4,17 @@ import { requireAuth, requireRole } from "../middlewares/auth.js";
 
 const router = Router();
 
-// Hay plata y datos de clientes: todo exige sesión. Ver lo puede admin o asesor
-// (saber qué auto está reservado es parte de vender); cambiar algo, solo admin.
-router.use(requireAuth);
-const soloAdmin = requireRole("admin");
+// Hay plata y datos de clientes: todo el módulo es solo del admin, también
+// para leer (decisión del 16/10/2026). En Vehículos el asesor igual ve que un
+// auto está señado (a nombre de quién y hasta cuándo), sin el monto ni el resto.
+router.use(requireAuth, requireRole("admin"));
 
 router.get("/", getSenas);
-router.post("/", soloAdmin, postSena);
+router.post("/", postSena);
 router.get("/:id", getSena);
-router.patch("/:id", soloAdmin, patchSena);
-router.delete("/:id", soloAdmin, deleteSena);
-router.post("/:id/cancelacion", soloAdmin, postCancelacion);
-router.post("/:id/tramite", soloAdmin, postTramite);
+router.patch("/:id", patchSena);
+router.delete("/:id", deleteSena);
+router.post("/:id/cancelacion", postCancelacion);
+router.post("/:id/tramite", postTramite);
 
 export default router;

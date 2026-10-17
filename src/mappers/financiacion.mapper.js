@@ -54,6 +54,17 @@ export function mapFinanciacion(f) {
     nombre: c.nombre ?? "",
     telefono: c.telefono ?? "",
     telefonoAlt: f.telefono_alt ?? "",
+    // Recordatorios por WhatsApp apagados (respondió BAJA o lo apagó el admin).
+    avisosBaja: f.avisos_baja_at ? new Date(f.avisos_baja_at).toISOString() : null,
+    // Lo que respondió a los recordatorios y el admin todavía no atendió (solo
+    // viene en las consultas del admin).
+    respuestas: (f.alertas ?? []).map((a) => ({
+      id: a.id,
+      tipo: a.tipo,
+      detalle: a.detalle ?? null,
+      creada: new Date(a.created_at).toISOString(),
+      cuota: a.aviso?.numero ?? null,
+    })),
     dni: c.dni ?? "",
     email: c.email ?? "",
     cantidadCuotas: cuotas,

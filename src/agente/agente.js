@@ -1,0 +1,119 @@
+import { definicionesParaClaude, ejecutarHerramienta } from "./herramientas.js";
+import { INSTRUCCIONES, contextoDelMomento } from "./instrucciones.js";
+import { LIMITES, MENSAJES_FIJOS } from "./limites.js";
+
+// El agente vendedor: le habla a Claude, ejecuta las herramientas que pide y
+// arma la respuesta para WhatsApp. Nunca lanza: ante cualquier problema
+// devuelve el mensaje de respaldo y pide derivar a un vendedor.
+
+export const MODELO = "claude-haiku-5-5";
+
+const respaldo = (motivo) => ({ ok: false, texto: MENSAJES_FIJOS.respaldo, fotos: [], derivar: true, motivo });
+
+const textoDe = (respuesta) =>
+  respuesta.content
+    .filter((b) => b.type === "text")
+    .map((b) => b.text)
+    .join("\n")
+    .trim();
+
+const LIMITE_ALCANZADO = "Límite de consultas alcanzado: respondé al cliente con la información que ya tenés.";
+
+// De a una y en orden: así dos herramientas del mismo turno no compiten (p. ej.
+// los intentos de verificar el DNI) y las fotos salen en el orden pedido.
+async function resolverHerramientas(usos, ctx, disponibles) {
+  const resultados = [];
+  let fotos = [];
+  let ficha = null;
+  for (const [i, uso] of usos.entries()) {
+    if (i >= disponibles) {
+      resultados.push({ type: "tool_result", tool_use_id: uso.id, is_error: true, content: LIMITE_ALCANZADO });
+      continue;
+    }
+    const r = await ejecutarHerramienta(uso.name, uso.input, ctx);
+    if (uso.name === "enviar_fotos_auto" && !r.esError) {
+      fotos = [...fotos, ...(r.resultado.fotos ?? [])];
+      ficha = ficha ?? r.resultado.ficha ?? null;
+    }
+    resultados.push(
+      r.esError
+        ? { type: "tool_result", tool_use_id: uso.id, is_error: true, content: r.error }
+        : { type: "tool_result", tool_use_id: uso.id, content: JSON.stringify(r.resultado) }
+    );
+  }
+  return { resultados, fotos, ficha };
+}
+
+// Un fallo al guardar el costo no le corta la respuesta al cliente: queda en el log
+// con el uso completo para cargarlo a mano.
+async function registrarSinCortar(registrarConsumo, usage) {
+  try {
+    await registrarConsumo({ modelo: MODELO, usage });
+  } catch (err) {
+    console.error("[agente] no se pudo registrar el consumo:", err?.message, JSON.stringify(usage));
+  }
+}
+
+// Un webhook no puede esperar minutos: corta rápido y deja el reintento a Meta.
+const OPCIONES_PEDIDO = { timeout: 30_000, maxRetries: 1 };
+
+// mensajes: turnos para Claude (historial + mensaje nuevo, que puede traer imágenes).
+// registrarConsumo({ modelo, usage }) guarda el costo de cada llamada.
+export async function responderConIA({ mensajes, contexto, ctx, registrarConsumo }, { anthropic }) {
+  const tools = definicionesParaClaude();
+  const system = [
+    { type: "text", text: INSTRUCCIONES, cache_control: { type: "ephemeral" } },
+    { type: "text", text: contextoDelMomento(contexto) },
+  ];
+  let conversacion = [...mensajes];
+  let herramientasUsadas = 0;
+  let sinHerramientas = false;
+  let fotos = [];
+  let ficha = null;
+  // Claude a veces contesta en el mismo turno en que usa una herramienta y después
+  // no agrega nada (o repite lo mismo): se manda la respuesta final y, si viene
+  // vacía, lo que había escrito antes.
+  let textos = [];
+
+  for (;;) {
+    let respuesta;
+    try {
+      respuesta = await anthropic.messages.create({
+        model: MODELO,
+        max_tokens: LIMITES.maxTokensRespuesta,
+        system,
+        tools,
+        messages: conversacion,
+        output_config: { effort: "low" },
+        ...(sinHerramientas && { tool_choice: { type: "none" } }),
+      }, OPCIONES_PEDIDO);
+    } catch (err) {
+      console.error("[agente] falló la llamada a Claude:", err?.status ?? "", err?.message);
+      return respaldo("error_api");
+    }
+
+    await registrarSinCortar(registrarConsumo, respuesta.usage);
+
+    if (respuesta.stop_reason === "refusal") return respaldo("rechazo");
+    if (respuesta.stop_reason === "max_tokens") return respaldo("max_tokens");
+
+    if (respuesta.stop_reason === "tool_use") {
+      if (sinHerramientas) return respaldo("demasiadas_herramientas");
+      const usos = respuesta.content.filter((b) => b.type === "tool_use");
+      const disponibles = LIMITES.herramientasPorMensaje - herramientasUsadas;
+      const { resultados, fotos: nuevas, ficha: fichaNueva } = await resolverHerramientas(usos, ctx, disponibles);
+      fotos = [...fotos, ...nuevas];
+      ficha = ficha ?? fichaNueva;
+      herramientasUsadas += Math.min(usos.length, disponibles);
+      sinHerramientas = herramientasUsadas >= LIMITES.herramientasPorMensaje;
+      // La respuesta va completa (con sus bloques de razonamiento) y todos los
+      // resultados juntos en un solo mensaje.
+      textos = [...textos, textoDe(respuesta)];
+      conversacion = [...conversacion, { role: "assistant", content: respuesta.content }, { role: "user", content: resultados }];
+      continue;
+    }
+
+    const texto = textoDe(respuesta) || textos.filter(Boolean).join("\n");
+    return texto ? { ok: true, texto, fotos, ficha } : respaldo("sin_texto");
+  }
+}

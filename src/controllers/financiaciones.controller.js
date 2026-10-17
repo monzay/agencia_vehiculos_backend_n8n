@@ -8,6 +8,29 @@ import {
   marcarCuota,
   consultarPorDni,
 } from "../services/financiaciones.service.js";
+import { listarAlertasPendientes, marcarAlertaAtendida } from "../services/alertas-financiacion.service.js";
+import { prisma } from "../lib/prisma.js";
+
+// Avisos de clientes que respondieron un recordatorio de cuota (solo admin).
+export async function getAlertas(req, res, next) {
+  try {
+    res.json({ ok: true, data: await listarAlertasPendientes({ db: prisma }) });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function putAlertaAtendida(req, res, next) {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id < 1) return res.status(400).json({ ok: false, error: "Aviso inválido" });
+  try {
+    const ok = await marcarAlertaAtendida({ db: prisma, id, usuario: req.usuario?.nombre });
+    if (!ok) return res.status(404).json({ ok: false, error: "El aviso no existe o ya estaba atendido" });
+    res.json({ ok: true, data: { atendida: true } });
+  } catch (err) {
+    next(err);
+  }
+}
 
 // Consulta pública por DNI (sin auth). Devuelve las financiaciones del cliente.
 export async function getConsultaPorDni(req, res, next) {

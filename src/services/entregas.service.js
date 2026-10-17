@@ -1,10 +1,12 @@
 import { prisma } from "../lib/prisma.js";
-import { mapEntrega } from "../mappers/entrega.mapper.js";
+import { mapEntrega, mapEntregaGestion } from "../mappers/entrega.mapper.js";
 
-// Fotos de entregas que se muestran en la galería del home. Alta desde el panel
-// (solo admin): la imagen se sube a Blob y acá se guarda su URL. Soft delete.
+// Fotos de entregas que se muestran en la galería del home. Cada entrega es la
+// de un cliente (migración 071). Alta desde el panel (solo admin): la imagen se
+// sube a Blob y acá se guarda su URL y el cliente. Soft delete.
 
 const VIGENTE = { deleted_at: null };
+const CON_CLIENTE = { clientes: { select: { id: true, nombre: true, telefono: true, canal_id: true } } };
 
 function error(mensaje, status = 400) {
   const e = new Error(mensaje);
@@ -12,27 +14,63 @@ function error(mensaje, status = 400) {
   return e;
 }
 
-// La URL viene de nuestro propio endpoint de subida (https de Vercel Blob) o es
-// una ruta interna a /public (las semillas /images/…). Se aceptan solo esas dos
-// formas: cualquier otra cosa (javascript:, data:, etc.) se rechaza.
+// La URL viene de nuestro propio endpoint de subida (Vercel Blob público,
+// carpeta vehiculos/) o es una foto del sitio en /public/images (las semillas).
+// Cualquier otra (otro host, javascript:, data:, rutas con ..) se rechaza: el
+// home la mostraría a todos.
+const FOTO_DE_BLOB = /^https:\/\/[a-z0-9-]+\.public\.blob\.vercel-storage\.com\/vehiculos\/[\w.-]+$/i;
+const FOTO_DEL_SITIO = /^\/images\/[\w-]+(\.[\w-]+)*$/;
+
 function validarUrl(valor) {
   const url = typeof valor === "string" ? valor.trim() : "";
   if (!url) throw error("La URL de la imagen es obligatoria.");
   if (url.length > 500) throw error("La URL es demasiado larga (máximo 500 caracteres).");
-  if (!/^(https?:\/\/|\/)/.test(url)) throw error("La URL de la imagen no es válida.");
+  if (!FOTO_DE_BLOB.test(url) && !FOTO_DEL_SITIO.test(url)) throw error("La URL de la imagen no es válida.");
   return url;
 }
 
-// Galería completa (vigentes), de la más nueva a la más vieja.
-export async function listarEntregas() {
-  const filas = await prisma.entregas.findMany({ where: VIGENTE, orderBy: { id: "desc" } });
+async function clienteDeLaEntrega(valor, db) {
+  const id = Number(valor);
+  if (!Number.isInteger(id) || id <= 0) throw error("Elegí el cliente que recibió el auto.");
+  const cliente = await db.clientes.findUnique({ where: { id }, select: { id: true } });
+  if (!cliente) throw error("Ese cliente no existe.", 404);
+  return id;
+}
+
+// Buscador del panel (solo admin): por nombre o teléfono, con lo mínimo para elegir.
+const BUSQUEDA_MIN = 2;
+const BUSQUEDA_MAX = 60;
+const MAX_CLIENTES = 7;
+
+export async function buscarClientesParaEntrega(texto, db = prisma) {
+  const q = String(texto ?? "").trim().slice(0, BUSQUEDA_MAX);
+  if (q.length < BUSQUEDA_MIN) return [];
+  const filas = await db.clientes.findMany({
+    where: { OR: [{ nombre: { contains: q } }, { telefono: { contains: q } }, { canal_id: { contains: q } }] },
+    select: { id: true, nombre: true, telefono: true, canal_id: true },
+    orderBy: { id: "desc" },
+    take: MAX_CLIENTES,
+  });
+  return filas.map((c) => ({ id: c.id, nombre: c.nombre || "Sin nombre", telefono: c.telefono || c.canal_id || "" }));
+}
+
+// Galería pública (vigentes), de la más nueva a la más vieja. Sin datos del cliente.
+export async function listarEntregas(db = prisma) {
+  const filas = await db.entregas.findMany({ where: VIGENTE, orderBy: { id: "desc" } });
   return filas.map(mapEntrega);
 }
 
-export async function crearEntrega(body = {}) {
+// Para el panel: cada entrega con el cliente que la recibió.
+export async function listarEntregasGestion(db = prisma) {
+  const filas = await db.entregas.findMany({ where: VIGENTE, orderBy: { id: "desc" }, include: CON_CLIENTE });
+  return filas.map(mapEntregaGestion);
+}
+
+export async function crearEntrega(body = {}, db = prisma) {
   const url = validarUrl(body.url);
-  const creada = await prisma.entregas.create({ data: { url } });
-  return mapEntrega(creada);
+  const clienteId = await clienteDeLaEntrega(body.clienteId, db);
+  const creada = await db.entregas.create({ data: { url, cliente_id: clienteId }, include: CON_CLIENTE });
+  return mapEntregaGestion(creada);
 }
 
 // Soft delete: la fila queda para auditoría, pero sale de la galería.

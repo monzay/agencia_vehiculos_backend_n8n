@@ -20,6 +20,9 @@ import ingresosRoutes from "./routes/ingresos.routes.js";
 import senasRoutes from "./routes/senas.routes.js";
 import entregasRoutes from "./routes/entregas.routes.js";
 import contabilidadRoutes from "./routes/contabilidad.routes.js";
+import iaRoutes from "./routes/ia.routes.js";
+import agenteRoutes from "./routes/agente.routes.js";
+import avisosCuotasRoutes from "./routes/avisos-cuotas.routes.js";
 import { notFound, errorHandler } from "./middlewares/error.js";
 import { opcionesCors } from "./lib/cors.js";
 
@@ -43,8 +46,11 @@ export function crearApp() {
   });
 
   app.use(cors(opcionesCors()));
-  app.use(express.json());
   app.use(morgan("dev"));
+  // Antes del parser global: trae fotos y audios, con su propio límite (ver la ruta).
+  app.use("/api/agente/cuotas", avisosCuotasRoutes);
+  app.use("/api/agente", agenteRoutes);
+  app.use(express.json());
 
   // Healthcheck
   app.get("/health", (req, res) => res.json({ ok: true, service: "agencia-api" }));
@@ -68,6 +74,7 @@ export function crearApp() {
   app.use("/api/financiaciones", financiacionesRoutes);
   app.use("/api/asesores", asesoresRoutes);
   app.use("/api/contabilidad", contabilidadRoutes);
+  app.use("/api/ia", iaRoutes);
 
   // Errores
   app.use(notFound);

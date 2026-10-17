@@ -1,6 +1,7 @@
 import { prisma } from "../lib/prisma.js";
 import { mapAutoToVehiculo } from "../mappers/vehiculo.mapper.js";
 import { SIN_RESERVA, senaReservando, hoyFecha } from "../lib/senas.js";
+import { normalizarTipoVehiculo } from "../lib/tipos-vehiculo.js";
 
 // Soft delete: solo cuentan las filas con deleted_at NULL.
 const VIGENTE = { deleted_at: null };
@@ -138,10 +139,9 @@ function construirData(body, parcial = false) {
   if (body.dominio !== undefined) data.dominio = identificacion(String(body.dominio ?? "").replace(/[\s-]/g, ""), 15);
   if (body.motor !== undefined) data.motor = identificacion(body.motor, 40);
   if (body.chasis !== undefined) data.chasis = identificacion(body.chasis, 40);
-  // Columnas atómicas (1NF): tipo de vehículo (auto/moto) y combustible.
+  // Columnas atómicas (1NF): tipo de vehículo (auto/camioneta/moto) y combustible.
   if (body.tipoVehiculo !== undefined || body.tipo_vehiculo !== undefined) {
-    const tv = limpiar(body.tipoVehiculo ?? body.tipo_vehiculo);
-    data.tipo_vehiculo = tv === "moto" ? "moto" : "auto";
+    data.tipo_vehiculo = normalizarTipoVehiculo(body.tipoVehiculo ?? body.tipo_vehiculo);
   }
   if (body.combustible !== undefined) {
     data.combustible = limpiar(body.combustible) || null;
@@ -254,10 +254,19 @@ export async function crearVehiculo(body = {}) {
   return mapAutoToVehiculo(auto);
 }
 
+// Un auto vendido no vuelve a estar disponible por una edición: para eso se
+// deshace la venta (la base también lo exige, migración 071).
+export function exigirVentaCoherente(existe, data) {
+  if (existe.vendido_at && data.disponible === true) {
+    throw error("Este vehículo figura vendido: para volver a ofrecerlo, deshacé la venta.", 409);
+  }
+}
+
 export async function actualizarVehiculo(ref, body = {}) {
   const existe = await prisma.autos.findFirst({ where: { ref: String(ref), ...VIGENTE } });
   if (!existe) return null;
   const data = construirData(body, true);
+  exigirVentaCoherente(existe, data);
   data.updated_at = new Date();
   const auto = await prisma.autos.update({ where: { id: existe.id }, data });
   return mapAutoToVehiculo(auto);

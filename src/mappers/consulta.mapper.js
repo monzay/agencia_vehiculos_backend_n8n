@@ -52,6 +52,14 @@ export function mapConsultaResumen(sesion, cliente, auto, vendedor) {
       : null,
     // Hora en que se realizó la consulta (inicio de la sesión).
     hora: sesion.sesion_inicio ? new Date(sesion.sesion_inicio).toISOString() : null,
+    // Aviso del agente con IA: lo derivó a un vendedor o acordó una visita.
+    requiereVendedor: sesion.requiere_vendedor
+      ? {
+          motivo: sesion.requiere_vendedor_motivo ?? null,
+          at: sesion.requiere_vendedor_at ? new Date(sesion.requiere_vendedor_at).toISOString() : null,
+        }
+      : null,
+    visitaPropuesta: sesion.visita_propuesta ?? null,
   };
 }
 
@@ -176,6 +184,8 @@ export function construirRespuestas(sesion, vehiculosCliente = []) {
     if (usado.anio) r.push({ pregunta: "Año del usado", respuesta: String(usado.anio) });
     if (usado.kms != null && String(usado.kms).trim() !== "")
       r.push({ pregunta: "Kilómetros del usado", respuesta: String(usado.kms) });
+    if (usado.detalles?.trim()) r.push({ pregunta: "Estado del usado", respuesta: usado.detalles.trim() });
+    if (usado.precio_pedido?.trim()) r.push({ pregunta: "Cuánto pide por el usado", respuesta: usado.precio_pedido.trim() });
   }
   if (sesion.decisor) {
     r.push({
@@ -186,6 +196,8 @@ export function construirRespuestas(sesion, vehiculosCliente = []) {
   if (sesion.disponibilidad) {
     r.push({ pregunta: "¿Cuándo puede venir?", respuesta: DISPONIBILIDAD[sesion.disponibilidad] ?? sesion.disponibilidad });
   }
+  // Día y franja que acordó con el agente para ver el auto (no es un turno confirmado).
+  if (sesion.visita_propuesta?.trim()) r.push({ pregunta: "Visita propuesta", respuesta: sesion.visita_propuesta.trim() });
   // El bot lo pregunta al final del flujo, así que cierra la lista.
   if (sesion.nombre_declarado) r.push({ pregunta: PREGUNTA_NOMBRE, respuesta: sesion.nombre_declarado });
   return r;

@@ -1,5 +1,6 @@
 import { prisma } from "../lib/prisma.js";
 import { sqlSesionUtil } from "../lib/consultas-utiles.js";
+import { fechaAR } from "./avisos-cuotas.service.js";
 
 // Novedades por sección: cuántas cosas nuevas hay desde la última vez que ESTE
 // usuario la revisó. Cada sección lleva su propia marca en `usuarios`, porque el
@@ -69,21 +70,25 @@ const SECCIONES = {
        ) AS n
        FROM usuarios u WHERE u.id = ?`,
   },
-  // Financiación: clientes con una cuota que vence HOY y sigue pendiente. A
-  // diferencia de consultas/ventas (novedades "nuevas desde…"), acá la novedad es
-  // una condición del día: se muestra hasta que el usuario abre la sección hoy y
-  // reaparece al día siguiente con los que vencen ese día.
+  // Financiación: clientes con una cuota que vence HOY y sigue pendiente, más los
+  // avisos de clientes sin atender (respuestas a recordatorios, bajas). Lo de los
+  // vencimientos es una condición del día: se muestra hasta que el usuario abre la
+  // sección hoy y reaparece al día siguiente. Los avisos quedan hasta que se atienden.
+  // Un día de pago 29-31 en un mes más corto vence el último día del mes.
   financiacion: {
     columna: "financiacion_visto_at",
     contar: (col) =>
-      `SELECT COUNT(*) AS n
-         FROM financiaciones f
-         JOIN clientes c ON c.id = f.cliente_id
-         JOIN usuarios u ON u.id = ?
-        WHERE f.activo = 1 AND f.deleted_at IS NULL
-          AND f.dia_pago = DAY(CURDATE())
-          AND (f.cantidad_cuotas - (SELECT COUNT(*) FROM financiacion_pagos pp WHERE pp.financiacion_id = f.id)) > 0
-          AND (u.${col} IS NULL OR DATE(u.${col}) < CURDATE())`,
+      `SELECT (
+         (SELECT COUNT(*) FROM financiaciones f
+            WHERE f.activo = 1 AND f.deleted_at IS NULL
+              AND LEAST(f.dia_pago, DAY(LAST_DAY(?))) = DAY(?)
+              AND (f.cantidad_cuotas - (SELECT COUNT(*) FROM financiacion_pagos pp WHERE pp.financiacion_id = f.id)) > 0
+              AND (u.${col} IS NULL OR DATE(u.${col}) < CURDATE()))
+         + (SELECT COUNT(*) FROM financiacion_alertas a WHERE a.atendida_at IS NULL)
+       ) AS n
+       FROM usuarios u WHERE u.id = ?`,
+    // El día del vencimiento es el de Argentina (la base de producción corre en UTC).
+    parametros: (usuarioId, ahora = new Date()) => [fechaAR(ahora), fechaAR(ahora), usuarioId],
   },
 };
 
@@ -100,8 +105,8 @@ async function leerVistoAt(usuarioId, columna) {
 }
 
 export async function contarNuevos(seccion, usuarioId) {
-  const { columna, contar } = SECCIONES[seccion];
-  const filas = await prisma.$queryRawUnsafe(contar(columna), Number(usuarioId));
+  const { columna, contar, parametros = (id) => [id] } = SECCIONES[seccion];
+  const filas = await prisma.$queryRawUnsafe(contar(columna), ...parametros(Number(usuarioId)));
   return { nuevas: Number(filas?.[0]?.n ?? 0), vistoAt: await leerVistoAt(usuarioId, columna) };
 }
 

@@ -3,33 +3,30 @@
 //
 // Un cliente puede tener varias filas en `chat_estado` (varias sesiones de
 // chat). De todas ellas derivamos:
-//   - clasificacion: CALIENTE | TIBIO | FRIO  (la del bot; si falta se deriva del score)
+//   - clasificacion: CALIENTE | TIBIO | FRIO (la guardada), EN_CALIFICACION o null (ver clasificacionDeSesion)
 //   - score: el maximo entre las sesiones
 //   - autos consultados: los `auto_ref` distintos referenciados en sus sesiones
 //   - ultima actividad, paso actual y datos de la sesion "principal"
 
 import { mapAutoToVehiculo } from "./vehiculo.mapper.js";
 
-// Umbrales para derivar la clasificacion cuando el bot todavia no la seteo.
-function derivarClasificacion(score) {
-  if (score >= 6) return "CALIENTE";
-  if (score >= 3) return "TIBIO";
-  return "FRIO";
-}
 
-// Solo se deriva clasificacion si la sesion tuvo señales reales de consulta.
+// Clasificacion que se muestra de una sesion.
 // Quedan SIN clasificar (null):
 //   - consultas generales (solo saludo/menu): derivar FRIO por score 0 las
 //     mostraria como "consulta fria" sin serlo.
 //   - venta/consignacion: no pasan por la calificacion del bot, no son leads
 //     de compra frios/tibios/calientes.
-function clasificacionDeSesion(sesion, score) {
+// Con señales pero sin temperatura guardada, la consulta está "en calificación":
+// la temperatura se pone recién cuando respondió lo clave (decisión del
+// 11/10/2026), así una conversación que empieza no se ve fría.
+export function clasificacionDeSesion(sesion) {
   if (sesion?.tipo_lead === "venta") return null;
   if (sesion?.clasificacion) return sesion.clasificacion;
   const conSenales =
     sesion != null &&
     (sesion.auto_id != null || sesion.pago_tipo != null || (sesion.score ?? 0) > 0);
-  return conSenales ? derivarClasificacion(score ?? sesion.score ?? 0) : null;
+  return conSenales ? "EN_CALIFICACION" : null;
 }
 
 function fechaMax(fechas) {
@@ -57,7 +54,7 @@ export function mapClienteToLead(cliente, autosMap = {}) {
   })[0];
 
   const scoreMax = sesiones.reduce((m, s) => Math.max(m, s.score ?? 0), 0);
-  const clasificacion = clasificacionDeSesion(principal, scoreMax);
+  const clasificacion = clasificacionDeSesion(principal);
 
   // Autos consultados: agrupados por ref. Como cada consulta es una sesion
   // independiente con su propio score/clasificacion (asi lo arma el workflow),
@@ -132,7 +129,7 @@ export function mapClienteToLead(cliente, autosMap = {}) {
     canalId: cliente.canal_id,
     creado: cliente.created_at ? new Date(cliente.created_at).toISOString() : null,
 
-    clasificacion,           // CALIENTE | TIBIO | FRIO (sesión de mayor score)
+    clasificacion,           // la de la sesión de mayor score (ver clasificacionDeSesion)
     ultimaConsulta,          // { clasificacion, fecha } de la sesión más reciente
     score: scoreMax,
     pasoActual: principal?.paso_actual ?? null,
@@ -197,8 +194,7 @@ export function mapClienteToLeadDetalle(cliente, autosMap = {}) {
       id: s.id,
       pasoActual: s.paso_actual,
       score: s.score ?? 0,
-      // Clasificacion de la sesion: la del bot; si falta y hubo consulta real,
-      // se deriva del score (las generales quedan sin clasificar).
+      // Clasificacion de la sesion (ver clasificacionDeSesion).
       clasificacion: clasificacionDeSesion(s),
       autoRef: autosMap[s.auto_id]?.ref ?? null, // ref derivada de auto_id (join)
       origen: s.origen ?? null, // 'web' si vino del boton Consultar

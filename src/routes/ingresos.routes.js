@@ -34,21 +34,20 @@ import { rateLimit } from "../middlewares/rateLimit.js";
 
 const router = Router();
 
-// Todo el módulo exige sesión: acá hay DNI, CUIT y CBU de clientes reales.
-// La LECTURA la puede hacer admin o asesor; las MUTACIONES son del admin.
-router.use(requireAuth);
-const soloAdmin = requireRole("admin");
+// Documentos: acá hay DNI, CUIT y CBU de clientes reales, contratos y montos.
+// Todo el módulo es solo del admin, también para leer (decisión del 16/10/2026).
+router.use(requireAuth, requireRole("admin"));
 
 // Antes de "/:id", si no "catalogo" y "personas" se leerían como ids.
 router.get("/catalogo", getCatalogoDocumentos);
 router.get("/personas", getPersonas);
 
 router.get("/", getIngresos);
-router.post("/", soloAdmin, postIngreso);
+router.post("/", postIngreso);
 
 router.get("/:id", getIngreso);
-router.patch("/:id", soloAdmin, patchIngreso);
-router.delete("/:id", soloAdmin, deleteIngreso);
+router.patch("/:id", patchIngreso);
+router.delete("/:id", deleteIngreso);
 
 // Cada lectura automática cuesta plata y tarda: se limita por usuario, no por
 // IP, para que un panel abierto en varias máquinas no comparta el cupo.
@@ -60,36 +59,34 @@ const limiteExtraccion = rateLimit({
 });
 
 router.get("/:id/documentos", getDocumentos);
-// Firmar es leer: mismo permiso que ver la lista de papeles. Si un asesor puede
-// ver que hay un DNI cargado, puede abrirlo; negarle la firma dejaría el
-// pathname que ya recibe convertido en un dato inútil.
+// Firmar es leer: mismo permiso que ver la lista de papeles.
 router.post("/:id/documentos/firmar", postFirmaImagenes);
-router.post("/:id/documentos/extraer", soloAdmin, limiteExtraccion, postExtraccion);
-router.put("/:id/documentos", soloAdmin, putDocumento);
-router.delete("/:id/documentos/:documentoId", soloAdmin, deleteDocumento);
+router.post("/:id/documentos/extraer", limiteExtraccion, postExtraccion);
+router.put("/:id/documentos", putDocumento);
+router.delete("/:id/documentos/:documentoId", deleteDocumento);
 
-router.post("/:id/estado", soloAdmin, postEstado);
-router.post("/:id/venta", soloAdmin, postVenta);
-router.delete("/:id/venta", soloAdmin, deleteVenta);
+router.post("/:id/estado", postEstado);
+router.post("/:id/venta", postVenta);
+router.delete("/:id/venta", deleteVenta);
 
 router.get("/:id/contrato", getContrato);
-router.put("/:id/contrato", soloAdmin, putContrato);
-router.post("/:id/contrato/firma", soloAdmin, postFirma);
-router.delete("/:id/contrato/firma", soloAdmin, deleteFirma);
+router.put("/:id/contrato", putContrato);
+router.post("/:id/contrato/firma", postFirma);
+router.delete("/:id/contrato/firma", deleteFirma);
 
 router.get("/:id/impresos", getImpresos);
 
 // Compra y permuta: el boleto reemplaza al contrato de consignación.
 router.get("/:id/compraventa", getCompraventa);
-router.put("/:id/compraventa", soloAdmin, putCompraventa);
-router.post("/:id/compraventa/firma", soloAdmin, postFirmaCompraventa);
-router.delete("/:id/compraventa/firma", soloAdmin, deleteFirmaCompraventa);
+router.put("/:id/compraventa", putCompraventa);
+router.post("/:id/compraventa/firma", postFirmaCompraventa);
+router.delete("/:id/compraventa/firma", deleteFirmaCompraventa);
 router.get("/:id/compraventa/impresos", getImpresosCompraventa);
-router.post("/:id/compraventa/venta", soloAdmin, postVentaCompraventa);
-router.delete("/:id/compraventa/venta", soloAdmin, deleteVentaCompraventa);
+router.post("/:id/compraventa/venta", postVentaCompraventa);
+router.delete("/:id/compraventa/venta", deleteVentaCompraventa);
 
 // Financiación del saldo de la parte de pago. Se edita después por
 // PATCH /api/financiaciones/:id, como cualquier otra financiación.
-router.post("/:id/financiacion", soloAdmin, postFinanciacionIngreso);
+router.post("/:id/financiacion", postFinanciacionIngreso);
 
 export default router;
