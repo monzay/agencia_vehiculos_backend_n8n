@@ -6,6 +6,7 @@
 // panel no la ve ni la necesita.
 
 import Anthropic from "@anthropic-ai/sdk";
+import { crearClienteAnthropic } from "./anthropic.js";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 
 // Haiku por defecto: la tarea es transcribir un papel impreso, no razonar.
@@ -27,7 +28,7 @@ export const hayProveedor = () => Boolean(process.env.ANTHROPIC_API_KEY);
 
 // Se crea una sola vez, no por pedido: el cliente maneja reintentos y timeouts.
 let cliente = null;
-const clienteAnthropic = () => (cliente ??= new Anthropic());
+const clienteAnthropic = () => (cliente ??= crearClienteAnthropic());
 
 // `imagenes` son URLs de Blob ya firmadas por quien llama: el modelo las
 // descarga por su cuenta, así que no hay que bajarlas ni convertirlas acá.

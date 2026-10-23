@@ -9,12 +9,32 @@
 //   node prisma/seed/seed-consultas-vistas.mjs            # sembrar
 //   node prisma/seed/seed-consultas-vistas.mjs --limpiar  # borrar lo sembrado
 //
+// Solo corre contra la base local: se niega a cualquier otra, sin override.
+//
 // OJO: --limpiar vacía la tabla auto_vistas ENTERA. Las vistas no guardan de
 // dónde vinieron (es telemetría anónima), así que no hay forma de distinguir
 // las sembradas de las reales. Los clientes y sesiones sí se borran selectivos,
-// por el prefijo del canal_id.
+// por el email (dominio .invalid, reservado: nunca es de una persona real).
 
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { PrismaClient } from "@prisma/client";
+import { baseAutorizada, destinoDeLaBase } from "../../src/lib/base-local.js";
+
+// Este script INSERTA cientos de filas (y --limpiar vacía auto_vistas entera). Contra la base de producción
+// sería un desastre difícil de revertir, y en .env conviven la URL local y la de Aiven comentada: un descuido
+// de una línea alcanza. Por eso exige base local, sin override. El chequeo va antes de crear el cliente de
+// Prisma, que es quien lee el .env: se lee acá para poder mirar la URL.
+const ARCHIVO_ENV = fileURLToPath(new URL("../../.env", import.meta.url));
+if (existsSync(ARCHIVO_ENV)) process.loadEnvFile(ARCHIVO_ENV);
+const urlBase = process.env.DATABASE_URL;
+if (!baseAutorizada(urlBase)) {
+  console.error(
+    `✖ DATABASE_URL apunta a ${destinoDeLaBase(urlBase)}, que no es una base local.\n` +
+      "  Este seed escribe cientos de filas de demo: solo corre contra la base local."
+  );
+  process.exit(1);
+}
 
 const prisma = new PrismaClient();
 
@@ -23,24 +43,12 @@ const TOTAL_CONSULTAS = 100;
 const TOTAL_CLIENTES = 70; // menos que consultas: algunos vuelven a consultar
 const DIAS_ATRAS = 365;
 
-// Marca de agua para poder borrar después solo lo sembrado.
+// Marca de agua para poder borrar después solo lo sembrado: el email de cada cliente es de un
+// dominio `.invalid` (RFC 2606: reservado, nunca es de una persona real).
 const PREFIJO = "seed-demo-";
-
-// Este script INSERTA cientos de filas. Contra la base de producción sería un
-// desastre difícil de revertir, y en .env conviven la URL local y la de Aiven
-// comentada: un descuido de una línea alcanza. Por eso exige base local.
-function verificarBaseLocal() {
-  const url = process.env.DATABASE_URL || "";
-  const esLocal = /@(localhost|127\.0\.0\.1)[:/]/.test(url);
-  if (!esLocal && !process.argv.includes("--forzar")) {
-    console.error(
-      "✖ DATABASE_URL no apunta a una base local.\n" +
-        "  Este seed escribe cientos de filas de demo. Si de verdad querés\n" +
-        "  correrlo contra esa base, agregá --forzar."
-    );
-    process.exit(1);
-  }
-}
+const DOMINIO_EMAIL = "consultas-vistas.invalid";
+const SEMBRADOS = { email: { endsWith: `@${DOMINIO_EMAIL}` } };
+const CANALES_MENSAJERIA = ["whatsapp", "facebook", "instagram"];
 
 const azar = (n) => Math.floor(Math.random() * n);
 const elegir = (arr) => arr[azar(arr.length)];
@@ -69,13 +77,14 @@ const CANALES = ["whatsapp", "whatsapp", "whatsapp", "instagram", "facebook", "w
 
 async function limpiar() {
   const clientes = await prisma.clientes.findMany({
-    where: { canal_id: { startsWith: PREFIJO } },
+    where: SEMBRADOS,
     select: { id: true },
   });
   const ids = clientes.map((c) => c.id);
 
-  // Orden: primero las sesiones (FK hacia clientes), después los clientes.
+  // Orden: primero lo que cuelga de los clientes (FK), después los clientes.
   const sesiones = await prisma.chat_estado.deleteMany({ where: { cliente_id: { in: ids } } });
+  await prisma.cliente_canales.deleteMany({ where: { cliente_id: { in: ids } } });
   await prisma.clientes.deleteMany({ where: { id: { in: ids } } });
   const vistas = await prisma.auto_vistas.deleteMany({});
 
@@ -83,6 +92,11 @@ async function limpiar() {
 }
 
 async function sembrar() {
+  // Sembrar dos veces duplicaría los clientes y chocaría con los identificadores de cliente_canales.
+  if ((await prisma.clientes.count({ where: SEMBRADOS })) > 0) {
+    throw new Error("Ya hay clientes sembrados: corré primero --limpiar.");
+  }
+
   const autos = await prisma.autos.findMany({
     where: { deleted_at: null },
     select: { id: true, marca: true, modelo: true },
@@ -102,20 +116,28 @@ async function sembrar() {
   await prisma.auto_vistas.createMany({ data: vistas });
 
   // ── Clientes ──
-  // canal_id es UNIQUE junto con canal: el índice del bucle lo hace único y a
-  // la vez sirve de marca para el borrado.
+  // El email lleva el índice del bucle, así que es único, y a la vez sirve de marca para el
+  // borrado. Los de mensajería tienen además su fila en cliente_canales, como los que crea el
+  // bot (migración 073), con un identificador inventado que nunca es el de una persona real.
   const clientes = Array.from({ length: TOTAL_CLIENTES }, (_, i) => ({
     nombre: `${elegir(NOMBRES)} ${elegir(APELLIDOS)}`,
     telefono: `+54938${String(10000000 + i).slice(0, 8)}`,
+    email: `${PREFIJO}${i}@${DOMINIO_EMAIL}`,
     canal: elegir(CANALES),
-    canal_id: `${PREFIJO}${i}`,
     created_at: fechaAlAzar(),
   }));
   await prisma.clientes.createMany({ data: clientes });
 
   const creados = await prisma.clientes.findMany({
-    where: { canal_id: { startsWith: PREFIJO } },
-    select: { id: true, created_at: true },
+    where: SEMBRADOS,
+    select: { id: true, email: true, created_at: true },
+    orderBy: { id: "asc" },
+  });
+  const idPorEmail = new Map(creados.map((c) => [c.email, c.id]));
+  await prisma.cliente_canales.createMany({
+    data: clientes
+      .map((c, i) => ({ cliente_id: idPorEmail.get(c.email), canal: c.canal, identificador: `${PREFIJO}${i}` }))
+      .filter((vinculo) => CANALES_MENSAJERIA.includes(vinculo.canal)),
   });
 
   // ── Consultas ──
@@ -146,7 +168,6 @@ async function sembrar() {
   );
 }
 
-verificarBaseLocal();
 const tarea = process.argv.includes("--limpiar") ? limpiar : sembrar;
 tarea()
   .catch((e) => {

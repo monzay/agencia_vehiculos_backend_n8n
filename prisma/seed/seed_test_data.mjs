@@ -2,11 +2,29 @@
 // Respeta tipos, enums, FKs, UNIQUE y orden de inserción. Usa Prisma Client
 // (parametrizado) y bcrypt para password_hash. "Borrado" = deleted_at.
 //
-// Ejecutar con DATABASE_URL apuntando a la base destino:
-//   DATABASE_URL="mysql://..." node prisma/seed/seed_test_data.mjs
+// Solo corre contra la base local: se niega a cualquier otra, sin override (crea asesores con una clave fija).
+// DATABASE_URL sale del entorno o, si no está, del .env del backend:
+//   node prisma/seed/seed_test_data.mjs
+//   DATABASE_URL="mysql://usuario:clave@localhost:3306/otra_base" node prisma/seed/seed_test_data.mjs
 
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { baseAutorizada, destinoDeLaBase } from "../../src/lib/base-local.js";
+
+// Los asesores que crea llevan una clave fija, conocida: en otra base serían una puerta abierta. El chequeo va
+// antes de crear el cliente de Prisma, que es quien lee el .env: se lee acá para poder mirar la URL.
+const ARCHIVO_ENV = fileURLToPath(new URL("../../.env", import.meta.url));
+if (existsSync(ARCHIVO_ENV)) process.loadEnvFile(ARCHIVO_ENV);
+const urlBase = process.env.DATABASE_URL;
+if (!baseAutorizada(urlBase)) {
+  console.error(
+    `✖ DATABASE_URL apunta a ${destinoDeLaBase(urlBase)}, que no es una base local.\n` +
+      "  Este seed crea asesores con una clave fija: solo corre contra la base local."
+  );
+  process.exit(1);
+}
 
 const prisma = new PrismaClient();
 
@@ -53,22 +71,27 @@ async function main() {
   console.log(`  usuarios (asesores): ${usuariosCreados}`);
 
   // ─────────────────────────────────────────────────────────
-  // 3) CLIENTES  — UNIQUE(canal, canal_id)
+  // 3) CLIENTES  — el DNI es único entre vigentes (074); cada identificador de
+  //    mensajería va en cliente_canales, UNIQUE(canal, identificador). "web" no tiene.
   // ─────────────────────────────────────────────────────────
   const clientesData = [
-    { nombre: "Juan Pérez",       telefono: "+5493811111111", dni: "28111222", email: "juan.perez@gmail.com",     canal: "whatsapp",  canal_id: "5493811111111" },
-    { nombre: "María López",      telefono: "+5493812222222", dni: "30222333", email: "maria.lopez@gmail.com",    canal: "whatsapp",  canal_id: "5493812222222" },
-    { nombre: "Carlos Díaz",      telefono: "+5493813333333", dni: "27333444", email: null,                        canal: "whatsapp",  canal_id: "5493813333333" },
-    { nombre: "Ana Torres",       telefono: null,              dni: null,       email: "ana.torres@hotmail.com",  canal: "instagram", canal_id: "ig_ana_torres" },
-    { nombre: "Pedro Sánchez",    telefono: "+5493814000111",  dni: "25444555", email: null,                        canal: "facebook",  canal_id: "fb_10098877" },
-    { nombre: "Laura Romero",     telefono: "+5493814000222",  dni: null,       email: "laura.romero@gmail.com",  canal: "web",       canal_id: "web_sess_00187" },
-    { nombre: "Jorge Ruiz",       telefono: "+5493814444444",  dni: "31555666", email: null,                        canal: "whatsapp",  canal_id: "5493814444444" },
-    { nombre: "Valentina Silva",  telefono: null,              dni: null,       email: null,                        canal: "instagram", canal_id: "ig_valen_silva" },
-    { nombre: "Roberto Acosta",   telefono: "+5493815555555",  dni: "24666777", email: "r.acosta@yahoo.com",       canal: "whatsapp",  canal_id: "5493815555555" },
+    { nombre: "Juan Pérez",       telefono: "+5493811111111", dni: "28111222", email: "juan.perez@gmail.com",     canal: "whatsapp",  identificador: "5493811111111" },
+    { nombre: "María López",      telefono: "+5493812222222", dni: "30222333", email: "maria.lopez@gmail.com",    canal: "whatsapp",  identificador: "5493812222222" },
+    { nombre: "Carlos Díaz",      telefono: "+5493813333333", dni: "27333444", email: null,                        canal: "whatsapp",  identificador: "5493813333333" },
+    { nombre: "Ana Torres",       telefono: null,              dni: null,       email: "ana.torres@hotmail.com",  canal: "instagram", identificador: "ig_ana_torres" },
+    { nombre: "Pedro Sánchez",    telefono: "+5493814000111",  dni: "25444555", email: null,                        canal: "facebook",  identificador: "fb_10098877" },
+    { nombre: "Laura Romero",     telefono: "+5493814000222",  dni: null,       email: "laura.romero@gmail.com",  canal: "web",       identificador: null },
+    { nombre: "Jorge Ruiz",       telefono: "+5493814444444",  dni: "31555666", email: null,                        canal: "whatsapp",  identificador: "5493814444444" },
+    { nombre: "Valentina Silva",  telefono: null,              dni: null,       email: null,                        canal: "instagram", identificador: "ig_valen_silva" },
+    { nombre: "Roberto Acosta",   telefono: "+5493815555555",  dni: "24666777", email: "r.acosta@yahoo.com",       canal: "whatsapp",  identificador: "5493815555555" },
   ];
   const clientes = [];
-  for (const c of clientesData) {
-    clientes.push(await prisma.clientes.create({ data: c }));
+  for (const { identificador, ...datos } of clientesData) {
+    clientes.push(
+      await prisma.clientes.create({
+        data: { ...datos, ...(identificador && { canales: { create: { canal: datos.canal, identificador } } }) },
+      })
+    );
   }
   console.log(`  clientes: ${clientes.length}`);
 

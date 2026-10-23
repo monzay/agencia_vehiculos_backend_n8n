@@ -40,7 +40,8 @@ const SECCIONES = {
   },
   // Un cliente nuevo = su PRIMERA consulta útil llegó después de la última
   // revisión (los "hola" sueltos sin consulta real no cuentan hasta que la hagan).
-  // Coincide con la sección Clientes, que muestra compradores y vendedores.
+  // Coincide con la sección Clientes, que muestra compradores y vendedores y no
+  // las fichas archivadas por una fusión (deleted_at).
   clientes: {
     columna: "clientes_visto_at",
     contar: (col) =>
@@ -48,7 +49,9 @@ const SECCIONES = {
          FROM usuarios u
          JOIN (SELECT s.cliente_id, MIN(s.sesion_inicio) AS primera
                  FROM sesiones s
-                WHERE ${sqlSesionUtil("s")}
+                 JOIN clientes c ON c.id = s.cliente_id
+                WHERE c.deleted_at IS NULL
+                  AND ${sqlSesionUtil("s")}
                 GROUP BY s.cliente_id) t
         WHERE u.id = ?
           AND (u.${col} IS NULL OR t.primera > u.${col})`,
@@ -75,6 +78,7 @@ const SECCIONES = {
   // vencimientos es una condición del día: se muestra hasta que el usuario abre la
   // sección hoy y reaparece al día siguiente. Los avisos quedan hasta que se atienden.
   // Un día de pago 29-31 en un mes más corto vence el último día del mes.
+  // Un pago anulado (deleted_at) no cuenta como cuota paga.
   financiacion: {
     columna: "financiacion_visto_at",
     contar: (col) =>
@@ -82,7 +86,7 @@ const SECCIONES = {
          (SELECT COUNT(*) FROM financiaciones f
             WHERE f.activo = 1 AND f.deleted_at IS NULL
               AND LEAST(f.dia_pago, DAY(LAST_DAY(?))) = DAY(?)
-              AND (f.cantidad_cuotas - (SELECT COUNT(*) FROM financiacion_pagos pp WHERE pp.financiacion_id = f.id)) > 0
+              AND (f.cantidad_cuotas - (SELECT COUNT(*) FROM financiacion_pagos pp WHERE pp.financiacion_id = f.id AND pp.deleted_at IS NULL)) > 0
               AND (u.${col} IS NULL OR DATE(u.${col}) < CURDATE()))
          + (SELECT COUNT(*) FROM financiacion_alertas a WHERE a.atendida_at IS NULL)
        ) AS n

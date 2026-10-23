@@ -8,12 +8,15 @@ export function mapEntrega(e) {
   };
 }
 
-// Para el panel (solo admin): además, el cliente que recibió el auto. Los de
-// WhatsApp tienen el número en `canal_id`.
+// El cliente que recibió el auto, como lo ve el panel (solo admin).
+export function mapClienteDeEntrega(c) {
+  return { id: c.id, nombre: c.nombre || "Sin nombre", telefono: c.telefono || "" };
+}
+
+// Para el panel (solo admin): además, el cliente que recibió el auto.
 export function mapEntregaGestion(e) {
-  const c = e.clientes;
   return {
     ...mapEntrega(e),
-    cliente: c ? { id: c.id, nombre: c.nombre || "Sin nombre", telefono: c.telefono || c.canal_id || "" } : null,
+    cliente: e.clientes ? mapClienteDeEntrega(e.clientes) : null,
   };
 }

@@ -90,8 +90,10 @@ export async function patchFinanciacion(req, res, next) {
 }
 
 export async function putCuota(req, res, next) {
+  const pagado = req.body?.pagado;
+  if (typeof pagado !== "boolean") return res.status(400).json({ ok: false, error: "Falta indicar si la cuota está paga" });
   try {
-    const financiacion = await marcarCuota(req.params.id, req.params.numero, req.body?.pagado === true);
+    const financiacion = await marcarCuota(req.params.id, req.params.numero, pagado);
     if (!financiacion) {
       return res.status(404).json({ ok: false, error: "Financiación no encontrada" });
     }

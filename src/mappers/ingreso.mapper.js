@@ -120,7 +120,18 @@ function beneficiosDe(i) {
 
 // El auto que compra el cliente (parte de pago o venta al contado).
 const autoInteresDe = (a) =>
-  a ? { ref: a.ref, marca: a.marca, modelo: a.modelo, anio: a.anio, dominio: a.dominio ?? null, precio: aNumero(a.precio) } : null;
+  a
+    ? {
+        ref: a.ref,
+        marca: a.marca,
+        modelo: a.modelo,
+        anio: a.anio,
+        dominio: a.dominio ?? null,
+        motor: a.motor ?? null,
+        chasis: a.chasis ?? null,
+        precio: aNumero(a.precio),
+      }
+    : null;
 
 // La seña de la que nació el trámite: el boleto es por ese auto y la descuenta.
 function senaDe(i) {

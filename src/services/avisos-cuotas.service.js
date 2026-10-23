@@ -99,7 +99,7 @@ export function plantillaDeAviso({ telefono, nombre, numero, cuotasTotal, vencim
   };
 }
 
-const esDuplicado = (err) => err?.code === "P2002";
+export const esDuplicado = (err) => err?.code === "P2002";
 
 // Un aviso registrado que n8n no llegó a informar (se cortó la corrida) se
 // vuelve a entregar en la próxima corrida; uno recién creado puede estar saliendo.
@@ -144,7 +144,8 @@ export async function prepararAvisosDelDia({ db, ahora = new Date(), ids }) {
       avisos_baja_at: null,
       NOT: { alertas: { some: { tipo: "numero_equivocado", atendida_at: null } } },
     },
-    include: { clientes: true, pagos: { select: { numero: true } } },
+    // Solo los pagos vigentes: con uno anulado la cuota sigue impaga y se avisa.
+    include: { clientes: true, pagos: { where: { deleted_at: null }, select: { numero: true } } },
   });
   const envios = [];
   for (const f of filas.map(mapFinanciacion)) {

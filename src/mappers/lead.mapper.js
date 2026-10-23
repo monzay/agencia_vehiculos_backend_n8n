@@ -123,10 +123,9 @@ export function mapClienteToLead(cliente, autosMap = {}) {
   return {
     id: cliente.id,
     nombre: cliente.nombre || "Sin nombre",
-    telefono: cliente.telefono || cliente.canal_id || "",
+    telefono: cliente.telefono || "",
     email: cliente.email || "",
     canal: cliente.canal,
-    canalId: cliente.canal_id,
     creado: cliente.created_at ? new Date(cliente.created_at).toISOString() : null,
 
     clasificacion,           // la de la sesión de mayor score (ver clasificacionDeSesion)

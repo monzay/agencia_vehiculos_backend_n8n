@@ -1,8 +1,11 @@
 import { prisma } from "../lib/prisma.js";
 import { SESION_UTIL } from "../lib/consultas-utiles.js";
+import { telefonosParaBuscar } from "../lib/busqueda-telefono.js";
 import { mapConsultaResumen, mapConsultaVenta, mapMensaje, construirRespuestas } from "../mappers/consulta.mapper.js";
 
-const CANALES = ["whatsapp", "facebook", "instagram", "web"];
+// `cliente_canales` guarda solo los de mensajería; "web" existe únicamente en la ficha.
+const CANALES_MENSAJERIA = ["whatsapp", "facebook", "instagram"];
+const CANALES = [...CANALES_MENSAJERIA, "web"];
 
 const CLASIFICACIONES = ["CALIENTE", "TIBIO", "FRIO"];
 
@@ -11,6 +14,10 @@ const CLASIFICACIONES = ["CALIENTE", "TIBIO", "FRIO"];
 // en la mayoría de las consultas, y en SQL `<> 'venta'` no matchea NULL, por eso
 // el NULL se contempla explícitamente.
 const SIN_VENTA = { OR: [{ tipo_lead: null }, { tipo_lead: { not: "venta" } }] };
+
+// El teléfono se guarda con 10 dígitos, pero se busca pegándolo como venga (+54 9 388…).
+const filtrosPorTelefono = (termino) =>
+  telefonosParaBuscar(termino).map((telefono) => ({ clientes: { telefono: { contains: telefono } } }));
 
 // Arma el `where` de búsqueda POR COINCIDENCIA sobre toda la base de datos:
 // cruza el cliente (nombre/teléfono/canal), el vehículo de interés
@@ -39,12 +46,12 @@ async function construirFiltroBusqueda(termino) {
   ]);
 
   const canales = CANALES.filter((c) => c.includes(termino.toLowerCase()));
+  const canalesMensajeria = canales.filter((c) => CANALES_MENSAJERIA.includes(c));
 
-  const OR = [
-    { clientes: { nombre: { contains: termino } } },
-    { clientes: { telefono: { contains: termino } } },
-  ];
+  const OR = [{ clientes: { nombre: { contains: termino } } }, ...filtrosPorTelefono(termino)];
+  // Una ficha fusionada puede decir "web" y tener WhatsApp: se encuentra por cualquiera de los dos.
   if (canales.length) OR.push({ clientes: { canal: { in: canales } } });
+  if (canalesMensajeria.length) OR.push({ clientes: { canales: { some: { canal: { in: canalesMensajeria } } } } });
   if (autos.length) OR.push({ auto_id: { in: autos.map((a) => a.id) } });
   if (vendedores.length) OR.push({ vendedor_id: { in: vendedores.map((v) => v.id) } });
 
@@ -72,7 +79,8 @@ export async function listarConsultas({ limite = 20, offset = 0, q = "", clasif 
   const [sesiones, total] = await Promise.all([
     prisma.chat_estado.findMany({
       where,
-      include: { clientes: true },
+      // El mapper muestra `canales[0]`: ordenados por id, el canal de una persona con varios es siempre el mismo.
+      include: { clientes: { include: { canales: { select: { canal: true }, orderBy: { id: "asc" } } } } },
       orderBy: { sesion_inicio: "desc" }, // consultas más recientes primero
       skip,
       take: take + 1,
@@ -109,7 +117,7 @@ function filtroBusquedaVenta(termino) {
   return {
     OR: [
       { clientes: { nombre: { contains: termino } } },
-      { clientes: { telefono: { contains: termino } } },
+      ...filtrosPorTelefono(termino),
       {
         vehiculo_cliente: {
           some: {

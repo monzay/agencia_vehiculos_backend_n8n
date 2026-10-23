@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { provinciaDeTelefono, telefonoLocal, PROVINCIAS } from "./provincias.js";
+import { provinciaDeTelefono, telefonoLocal, telefonoNacional, PROVINCIAS } from "./provincias.js";
 
 const prov = (n) => provinciaDeTelefono(n)?.provincia ?? null;
 
@@ -90,4 +90,24 @@ test("telefonoLocal no recorta lo que no reconoce", () => {
   assert.equal(telefonoLocal("5215512345678"), "5215512345678", "número de México, se muestra entero");
   assert.equal(telefonoLocal(""), null);
   assert.equal(telefonoLocal(null), null);
+});
+
+test("telefonoNacional deja los 10 dígitos nacionales sin importar cómo venga escrito", () => {
+  // Todos son el mismo teléfono de Jujuy (área de 3 dígitos).
+  for (const n of ["5493884708347", "543884708347", "03884708347", "388 470-8347", "0388 15 470-8347", "+54 9 388 470 8347", 3884708347]) {
+    assert.equal(telefonoNacional(n), "3884708347", `falló con "${n}"`);
+  }
+  // Área de 2 dígitos (CABA / GBA), con el 9 internacional y con el 15 viejo.
+  for (const n of ["+54 9 11 4567-8901", "011 15 4567-8901"]) {
+    assert.equal(telefonoNacional(n), "1145678901", `falló con "${n}"`);
+  }
+  assert.equal(telefonoNacional("5492954123456"), "2954123456", "área de 4 dígitos");
+});
+
+test("telefonoNacional devuelve null si no es un número argentino de 10 dígitos", () => {
+  for (const n of ["12345", "", null, undefined, "hola", "+1 415 555 0123", "5215512345678", "5491145"]) {
+    assert.equal(telefonoNacional(n), null, `debería ser null con "${n}"`);
+  }
+  assert.equal(telefonoNacional("5493884708347999"), null, "dígitos de más: no se recorta");
+  assert.equal(telefonoNacional("388470834"), null, "dígitos de menos: no se completa");
 });

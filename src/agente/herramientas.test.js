@@ -233,6 +233,26 @@ test("mi_financiacion calcula cuotas pagas, pendientes y saldo", async () => {
   assert.equal(f.proximo_vencimiento, "2026-10-10");
 });
 
+test("mi_financiacion no cuenta como paga una cuota con el pago anulado", async () => {
+  const pagos = [
+    { numero: 1, deleted_at: null },
+    { numero: 2, deleted_at: new Date("2026-10-01T12:00:00Z") },
+    { numero: 3, deleted_at: null },
+  ];
+  const db = baseFalsa({
+    "clientes.findUnique": { dni: "30111222" },
+    // Como Prisma: el `where` de la relación decide qué pagos vuelven.
+    "financiaciones.findMany": ({ select }) => [
+      { cantidad_cuotas: 12, precio_cuota: 150000, dia_pago: 10, pagos: pagos.filter((p) => !select.pagos.where || p.deleted_at === select.pagos.where.deleted_at) },
+    ],
+  });
+  const r = await ejecutarHerramienta("mi_financiacion", { dni_ultimos: "1222" }, ctx(db, { ahora: new Date("2026-10-05T15:00:00Z") }));
+  const f = r.resultado.financiaciones[0];
+  assert.equal(f.cuotas_pagadas, 2);
+  assert.equal(f.cuotas_pendientes, 10);
+  assert.equal(f.saldo, 1500000);
+});
+
 test("mi_financiacion exige exactamente 4 dígitos", async () => {
   for (const dni_ultimos of ["2", "222", "12345"]) {
     const r = await ejecutarHerramienta("mi_financiacion", { dni_ultimos }, ctx(baseFalsa()));

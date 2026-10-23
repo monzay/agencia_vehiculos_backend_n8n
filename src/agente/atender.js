@@ -11,9 +11,10 @@ import { juntarRafaga, ESPERA_RAFAGA_MS } from "./rafagas.js";
 import { PASO_AGENTE, PASO_REACCION } from "./pasos.js";
 import { gastoDelMes, topeConfigurado, registrarConsumoClaude, registrarConsumoGroq } from "../services/ia-consumos.service.js";
 import { avisoReciente, darDeBaja, esBaja, BAJA_CONFIRMADA } from "../services/avisos-cuotas.service.js";
+import { resolverCliente } from "../services/clientes.service.js";
 
 // Orquestador: lo que pasa cada vez que llega un mensaje de WhatsApp.
-//   1. identifica al cliente por su número (o lo crea);
+//   1. reconoce al cliente por su número de WhatsApp o por el teléfono de una ficha que ya existe (o lo crea);
 //   2. revisa el tope del mes y los límites del cliente en el día;
 //   3. llama al agente o responde el mensaje fijo;
 //   4. guarda la conversación en el historial;
@@ -72,14 +73,6 @@ function deAUno(clave, tarea) {
   cola.then(() => colas.get(clave) === cola && colas.delete(clave));
   return actual;
 }
-
-// upsert: dos mensajes de un número nuevo no chocan con el único canal + canal_id.
-const clienteDe = (root, telefono, nombre) =>
-  root.clientes.upsert({
-    where: { canal_canal_id: { canal: "whatsapp", canal_id: telefono } },
-    update: {},
-    create: { canal: "whatsapp", canal_id: telefono, nombre: nombre?.trim().slice(0, 120) || null },
-  });
 
 // El auto del mensaje predefinido de la web: si está disponible pasa a ser el de
 // interés; si no, el agente lo sabe y ofrece parecidos.
@@ -337,7 +330,12 @@ async function responderAudio(base, audio, imagenes, deps, textoPrevio) {
 async function atender(datos, deps) {
   const { root } = deps;
   const ahora = datos.ahora ?? new Date();
-  const cliente = await clienteDe(root, datos.telefono, datos.nombre);
+  // Con `root` y no con un `tx`: si otro mensaje del mismo número gana la carrera, `resolverCliente`
+  // vuelve a buscar y tiene que ver su ficha ya confirmada.
+  const { cliente } = await resolverCliente(
+    { canal: "whatsapp", identificador: datos.telefono, telefono: datos.telefono, nombre: datos.nombre },
+    root
+  );
   const web = datosDeLaWeb(datos.texto);
   const autoWeb = await autoDeLaWeb(root, web.ref);
   const sesion = await sesionDe(root, cliente.id, ahora, { ...web, auto: autoWeb });

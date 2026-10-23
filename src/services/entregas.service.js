@@ -1,12 +1,14 @@
 import { prisma } from "../lib/prisma.js";
-import { mapEntrega, mapEntregaGestion } from "../mappers/entrega.mapper.js";
+import { telefonosParaBuscar } from "../lib/busqueda-telefono.js";
+import { mapEntrega, mapEntregaGestion, mapClienteDeEntrega } from "../mappers/entrega.mapper.js";
 
 // Fotos de entregas que se muestran en la galería del home. Cada entrega es la
 // de un cliente (migración 071). Alta desde el panel (solo admin): la imagen se
 // sube a Blob y acá se guarda su URL y el cliente. Soft delete.
 
 const VIGENTE = { deleted_at: null };
-const CON_CLIENTE = { clientes: { select: { id: true, nombre: true, telefono: true, canal_id: true } } };
+const DATOS_CLIENTE = { id: true, nombre: true, telefono: true };
+const CON_CLIENTE = { clientes: { select: DATOS_CLIENTE } };
 
 function error(mensaje, status = 400) {
   const e = new Error(mensaje);
@@ -32,7 +34,7 @@ function validarUrl(valor) {
 async function clienteDeLaEntrega(valor, db) {
   const id = Number(valor);
   if (!Number.isInteger(id) || id <= 0) throw error("Elegí el cliente que recibió el auto.");
-  const cliente = await db.clientes.findUnique({ where: { id }, select: { id: true } });
+  const cliente = await db.clientes.findFirst({ where: { id, ...VIGENTE }, select: { id: true } });
   if (!cliente) throw error("Ese cliente no existe.", 404);
   return id;
 }
@@ -45,13 +47,21 @@ const MAX_CLIENTES = 7;
 export async function buscarClientesParaEntrega(texto, db = prisma) {
   const q = String(texto ?? "").trim().slice(0, BUSQUEDA_MAX);
   if (q.length < BUSQUEDA_MIN) return [];
+  // El teléfono se busca por sus dígitos, escrito como se escriba, y si es un número
+  // entero también por el de 10 dígitos con que se guarda. Sin dígitos no se agrega:
+  // un `contains` vacío traería a todos.
+  const digitos = q.replace(/\D/g, "");
+  const coincidencias = [{ nombre: { contains: q } }];
+  if (digitos.length >= BUSQUEDA_MIN) {
+    coincidencias.push(...telefonosParaBuscar(digitos).map((telefono) => ({ telefono: { contains: telefono } })));
+  }
   const filas = await db.clientes.findMany({
-    where: { OR: [{ nombre: { contains: q } }, { telefono: { contains: q } }, { canal_id: { contains: q } }] },
-    select: { id: true, nombre: true, telefono: true, canal_id: true },
+    where: { ...VIGENTE, OR: coincidencias },
+    select: DATOS_CLIENTE,
     orderBy: { id: "desc" },
     take: MAX_CLIENTES,
   });
-  return filas.map((c) => ({ id: c.id, nombre: c.nombre || "Sin nombre", telefono: c.telefono || c.canal_id || "" }));
+  return filas.map(mapClienteDeEntrega);
 }
 
 // Galería pública (vigentes), de la más nueva a la más vieja. Sin datos del cliente.

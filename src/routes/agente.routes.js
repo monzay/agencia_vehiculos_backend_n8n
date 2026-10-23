@@ -1,5 +1,5 @@
 import express, { Router } from "express";
-import Anthropic from "@anthropic-ai/sdk";
+import { crearClienteAnthropic } from "../lib/anthropic.js";
 import { prisma } from "../lib/prisma.js";
 import { dbAgente } from "../agente/db.js";
 import { atenderMensaje } from "../agente/atender.js";
@@ -24,7 +24,7 @@ export function crearRouterAgente({ atender, secretoAgente, secretoMeta }) {
 }
 
 let deps;
-const depsReales = () => (deps ??= { root: prisma, dbAgente: dbAgente(), anthropic: new Anthropic() });
+const depsReales = () => (deps ??= { root: prisma, dbAgente: dbAgente(), anthropic: crearClienteAnthropic() });
 
 export default crearRouterAgente({
   atender: (entrada) => atenderMensaje(entrada, depsReales()),

@@ -34,7 +34,7 @@ const PARA_LISTA = {
 // parte de pago y de la venta al contado los muestra.
 const BENEFICIOS = { precio: true, descuentos: true, auto_promociones: { include: { promociones: true } } };
 // El auto que compra el cliente en la parte de pago o la venta al contado.
-const AUTO_INTERES = { select: { ref: true, marca: true, modelo: true, anio: true, dominio: true, ...BENEFICIOS } };
+const AUTO_INTERES = { select: { ref: true, marca: true, modelo: true, anio: true, dominio: true, motor: true, chasis: true, ...BENEFICIOS } };
 
 export const PARA_DETALLE = {
   titular: PERSONA,
@@ -53,7 +53,7 @@ export const PARA_DETALLE = {
   financiaciones: {
     where: VIGENTE,
     take: 1,
-    include: { clientes: true, pagos: { orderBy: { numero: "asc" } } },
+    include: { clientes: true, pagos: { where: VIGENTE, orderBy: { numero: "asc" } } },
   },
   // La seña de la que nació el trámite, si hubo: se descuenta en el boleto.
   sena: { include: { autos: { select: { ref: true, marca: true, modelo: true, anio: true, precio: true, ...BENEFICIOS } } } },

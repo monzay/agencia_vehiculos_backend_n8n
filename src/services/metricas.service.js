@@ -6,7 +6,8 @@ import { PERIODOS, bucketsPorPeriodo, etiquetaBucket } from "../lib/periodos.js"
 // Métricas del panel Resumen: totales del día, fluctuación temporal de clientes
 // y consultas, y top de autos más consultados por período.
 // `sesiones` (chat_estado) = consultas; `clientes` = clientes que llegaron.
-// Las consultas vacías (y los clientes que solo tienen de esas) no cuentan.
+// Las consultas vacías (y los clientes que solo tienen de esas) no cuentan, ni
+// las fichas archivadas por una fusión (deleted_at).
 
 const num = (v) => Number(v ?? 0);
 const raw = (sql) => prisma.$queryRawUnsafe(sql);
@@ -21,7 +22,7 @@ async function fluctuacionSerie() {
   for (const p of PERIODOS) {
     const cli = await raw(
       `SELECT ${gCli[p].g} k, COUNT(*) n FROM clientes ` +
-        `WHERE ${gCli[p].where} AND ${sqlClienteUtil()} GROUP BY k ORDER BY k`
+        `WHERE ${gCli[p].where} AND deleted_at IS NULL AND ${sqlClienteUtil()} GROUP BY k ORDER BY k`
     );
     const con = await raw(
       `SELECT ${gSes[p].g} k, COUNT(*) total, ` +
@@ -54,7 +55,7 @@ async function fluctuacionSerie() {
 export async function metricasResumen() {
   // ── Hoy ──
   const [cliHoy] = await raw(
-    `SELECT COUNT(*) n FROM clientes WHERE DATE(created_at)=CURDATE() AND ${sqlClienteUtil()}`
+    `SELECT COUNT(*) n FROM clientes WHERE DATE(created_at)=CURDATE() AND deleted_at IS NULL AND ${sqlClienteUtil()}`
   );
   const [consHoy] = await raw(
     `SELECT COUNT(*) n FROM sesiones WHERE DATE(sesion_inicio)=CURDATE() AND ${sqlSesionUtil()}`

@@ -79,7 +79,10 @@ test("'en 3 días' y 'hoy' según el aviso", () => {
 
 // ── Con base ──
 
-function fila({ id = 1, telefono = "3885550101", telefonoAlt = null, pagos = [], creado = "2026-05-10T15:00:00Z", diaPago = 18 } = {}) {
+const PAGO_ANULADO_EN = new Date("2026-10-10T12:00:00Z");
+
+// `pagos` son las cuotas pagas; `anulados`, las que tuvieron un pago que se anuló.
+function fila({ id = 1, telefono = "3885550101", telefonoAlt = null, pagos = [], anulados = [], creado = "2026-05-10T15:00:00Z", diaPago = 18 } = {}) {
   return {
     id,
     cliente_id: 7,
@@ -90,7 +93,7 @@ function fila({ id = 1, telefono = "3885550101", telefonoAlt = null, pagos = [],
     activo: true,
     created_at: new Date(creado),
     clientes: { nombre: "Juan Pérez", telefono, dni: "30111222", email: "j@x.com" },
-    pagos: pagos.map((numero) => ({ numero })),
+    pagos: [...pagos.map((numero) => ({ numero, deleted_at: null })), ...anulados.map((numero) => ({ numero, deleted_at: PAGO_ANULADO_EN }))],
   };
 }
 
@@ -98,15 +101,23 @@ function baseFalsa(filas, { avisos = [], alertas = [] } = {}) {
   const estado = { avisos: [...avisos], alertas: [...alertas], financiaciones: filas.map((f) => ({ ...f })) };
   const enEstado = (a, where) => (where.estado?.in ? where.estado.in.includes(a.estado) : a.estado === where.estado);
   const conNumeroEquivocado = (id) => estado.alertas.some((a) => a.financiacion_id === id && a.tipo === "numero_equivocado" && !a.atendida_at);
+  // Como Prisma: el `where` de la relación decide qué pagos vuelven en el `include`
+  // y el `select`, qué campos (sin `deleted_at`, el mapper no puede tapar un filtro faltante).
+  const coincide = (pago, where = {}) => Object.entries(where).every(([campo, valor]) => pago[campo] === valor);
+  const conCampos = (pago, select) => (select ? Object.fromEntries(Object.keys(select).map((campo) => [campo, pago[campo]])) : pago);
   const db = {
     estado,
     $transaction: async (fn) => fn(db),
     financiaciones: {
-      findMany: async ({ where }) =>
+      findMany: async ({ where, include }) =>
         estado.financiaciones
           .filter((f) => !where.id?.in || where.id.in.includes(f.id))
           .filter((f) => where.avisos_baja_at !== null || !f.avisos_baja_at)
-          .filter((f) => !where.NOT?.alertas || !conNumeroEquivocado(f.id)),
+          .filter((f) => !where.NOT?.alertas || !conNumeroEquivocado(f.id))
+          .map((f) => ({
+            ...f,
+            pagos: (f.pagos ?? []).filter((p) => coincide(p, include?.pagos?.where)).map((p) => conCampos(p, include?.pagos?.select)),
+          })),
       updateMany: async ({ where, data }) => {
         const tocadas = estado.financiaciones.filter((f) => where.id.in.includes(f.id) && !f.avisos_baja_at);
         tocadas.forEach((f) => Object.assign(f, data));
@@ -292,6 +303,23 @@ test("se puede limitar a algunas financiaciones (el simulador no toca las demás
   assert.deepEqual(pedidos[0].where.id, { in: [1, 2] });
   await prepararAvisosDelDia({ db, ahora: new Date(ahora.getTime() + 86_400_000) });
   assert.equal(pedidos[1].where.id, undefined, "sin ids: todas");
+});
+
+// ── Pagos anulados ──
+
+test("una cuota con el pago anulado cuenta como impaga: se la sigue avisando", async () => {
+  // Pagó de mayo a septiembre; el pago de octubre (la 6, que vence en 3 días) se anuló.
+  const db = baseFalsa([fila({ pagos: [1, 2, 3, 4, 5], anulados: [6] })]);
+  const [envio] = await prepararAvisosDelDia({ db, ahora });
+  assert.equal(db.estado.avisos.length, 1);
+  assert.equal(db.estado.avisos[0].numero, 6);
+  assert.equal(envio.cuerpo.template.components[0].parameters[1].text, "6");
+});
+
+test("una cuota con el pago vigente no se avisa", async () => {
+  const db = baseFalsa([fila({ pagos: [1, 2, 3, 4, 5, 6] })]);
+  assert.deepEqual(await prepararAvisosDelDia({ db, ahora }), []);
+  assert.equal(db.estado.avisos.length, 0);
 });
 
 // ── Panel: financiaciones con un aviso en curso ──

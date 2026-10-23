@@ -1,5 +1,10 @@
 import { prisma } from "../lib/prisma.js";
+import { telefonosParaBuscar } from "../lib/busqueda-telefono.js";
 import { mapClienteToLead, mapClienteToLeadDetalle } from "../mappers/lead.mapper.js";
+
+// Una ficha fusionada con otra de la misma persona queda archivada (deleted_at):
+// no se lista, no se cuenta ni se abre.
+const VIGENTE = { deleted_at: null };
 
 // Resuelve, en una sola query, las filas `autos` para un conjunto de ids.
 // El mapa queda keyeado por `id` (la sesión referencia el auto por auto_id).
@@ -15,6 +20,7 @@ async function cargarAutosPorIds(ids) {
 // Lista todos los clientes (leads) con su clasificacion y autos consultados.
 export async function listarLeads() {
   const clientes = await prisma.clientes.findMany({
+    where: VIGENTE,
     include: { chat_estado: { include: { vehiculo_cliente: true } } },
     orderBy: { created_at: "desc" },
   });
@@ -64,11 +70,13 @@ export async function listarLeadsPaginado({ tipo, clasif, q, offset = 0, limite 
 
   const ql = (q || "").trim().toLowerCase();
   if (ql) {
+    // El teléfono se guarda con 10 dígitos, pero se busca pegándolo como venga (+54 9 388…).
+    const telefonos = telefonosParaBuscar(ql);
     arr = arr.filter((l) => {
       const venta = l.venta ? [l.venta.marca, l.venta.modelo, l.venta.anio].filter(Boolean).join(" ") : "";
       return (
         (l.nombre || "").toLowerCase().includes(ql) ||
-        (l.telefono || "").toLowerCase().includes(ql) ||
+        telefonos.some((telefono) => (l.telefono || "").toLowerCase().includes(telefono)) ||
         (l.autosConsultados || []).some((a) => `${a.brand} ${a.model}`.toLowerCase().includes(ql)) ||
         venta.toLowerCase().includes(ql)
       );
@@ -86,8 +94,8 @@ export async function listarLeadsPaginado({ tipo, clasif, q, offset = 0, limite 
 
 // Detalle de un lead: incluye sesiones e historial de mensajes.
 export async function obtenerLead(id) {
-  const cliente = await prisma.clientes.findUnique({
-    where: { id: Number(id) },
+  const cliente = await prisma.clientes.findFirst({
+    where: { id: Number(id), ...VIGENTE },
     include: {
       chat_estado: {
         orderBy: { updated_at: "desc" },

@@ -15,13 +15,16 @@
 
 import { writeFileSync, appendFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
+import { baseAutorizada, destinoDeLaBase } from "../src/lib/base-local.js";
 
 process.loadEnvFile(".env");
 
-// Solo contra la base local: crea clientes de prueba y gasta en Claude.
-const esLocal = (url) => /@(localhost|127\.0\.0\.1)[:/]/.test(url ?? "");
-if (process.env.NODE_ENV === "production" || !esLocal(process.env.DATABASE_URL) || !esLocal(process.env.AGENTE_DATABASE_URL)) {
-  console.error("El simulador corre solo contra la base local (localhost).");
+// Solo contra la base local (la del backend y la del agente) y fuera de producción, sin override: crea clientes de
+// prueba y gasta en Claude.
+const basesNoLocales = ["DATABASE_URL", "AGENTE_DATABASE_URL"].filter((nombre) => !baseAutorizada(process.env[nombre]));
+if (process.env.NODE_ENV === "production" || basesNoLocales.length) {
+  for (const nombre of basesNoLocales) console.error(`${nombre} apunta a ${destinoDeLaBase(process.env[nombre])}, que no es una base local.`);
+  console.error("El simulador corre solo contra la base local y fuera de producción.");
   process.exit(1);
 }
 
@@ -121,16 +124,20 @@ const enviarRafaga = (telefono, nombre, partes) =>
     )
   );
 
+// La ficha de la persona es la que tiene su número de WhatsApp en cliente_canales.
 async function datosGuardados(telefono) {
-  const cliente = await prisma.clientes.findUnique({ where: { canal_canal_id: { canal: "whatsapp", canal_id: telefono } } });
+  const { cliente_id: clienteId } = await prisma.cliente_canales.findUniqueOrThrow({
+    where: { canal_identificador: { canal: "whatsapp", identificador: telefono } },
+    select: { cliente_id: true },
+  });
   const sesion = await prisma.chat_estado.findFirst({
-    where: { cliente_id: cliente.id },
+    where: { cliente_id: clienteId },
     orderBy: { id: "desc" },
     include: { vehiculo_cliente: true },
   });
   const usado = sesion?.vehiculo_cliente.find((v) => v.contexto === "trade_in" && !v.deleted_at) ?? null;
-  const { _sum } = await prisma.ia_consumos.aggregate({ where: { cliente_id: cliente.id }, _sum: { costo_usd: true } });
-  return { clienteId: cliente.id, sesion, usado, costoUsd: Number(_sum.costo_usd ?? 0) };
+  const { _sum } = await prisma.ia_consumos.aggregate({ where: { cliente_id: clienteId }, _sum: { costo_usd: true } });
+  return { clienteId, sesion, usado, costoUsd: Number(_sum.costo_usd ?? 0) };
 }
 
 async function simular(escenario, indice) {

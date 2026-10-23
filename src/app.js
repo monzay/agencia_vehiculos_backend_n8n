@@ -25,6 +25,7 @@ import agenteRoutes from "./routes/agente.routes.js";
 import avisosCuotasRoutes from "./routes/avisos-cuotas.routes.js";
 import { notFound, errorHandler } from "./middlewares/error.js";
 import { opcionesCors } from "./lib/cors.js";
+import { urlSinDatosPersonales } from "./lib/log-seguro.js";
 
 export function crearApp() {
   const app = express();
@@ -46,6 +47,9 @@ export function crearApp() {
   });
 
   app.use(cors(opcionesCors()));
+  // El formato "dev" escribe `:url` entero: sin esto el log guarda los DNIs, teléfonos y
+  // búsquedas que viajan en la query string. El token es global de morgan.
+  morgan.token("url", (req) => urlSinDatosPersonales(req.originalUrl || req.url));
   app.use(morgan("dev"));
   // Antes del parser global: trae fotos y audios, con su propio límite (ver la ruta).
   app.use("/api/agente/cuotas", avisosCuotasRoutes);

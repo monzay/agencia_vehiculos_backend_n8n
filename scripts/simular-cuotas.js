@@ -12,11 +12,15 @@
 //
 // Gasta centavos en Claude (suman al tope del mes). Solo contra la base local.
 
+import { baseAutorizada, destinoDeLaBase } from "../src/lib/base-local.js";
+
 process.loadEnvFile(".env");
 
-const esLocal = (url) => /@(localhost|127\.0\.0\.1)[:/]/.test(url ?? "");
-if (process.env.NODE_ENV === "production" || !esLocal(process.env.DATABASE_URL) || !esLocal(process.env.AGENTE_DATABASE_URL)) {
-  console.error("El simulador corre solo contra la base local (localhost).");
+// Solo contra la base local (la del backend y la del agente) y fuera de producción, sin override.
+const basesNoLocales = ["DATABASE_URL", "AGENTE_DATABASE_URL"].filter((nombre) => !baseAutorizada(process.env[nombre]));
+if (process.env.NODE_ENV === "production" || basesNoLocales.length) {
+  for (const nombre of basesNoLocales) console.error(`${nombre} apunta a ${destinoDeLaBase(process.env[nombre])}, que no es una base local.`);
+  console.error("El simulador corre solo contra la base local y fuera de producción.");
   process.exit(1);
 }
 
@@ -27,9 +31,11 @@ const { atenderMensaje } = await import("../src/agente/atender.js");
 const { marcarCuota } = await import("../src/services/financiaciones.service.js");
 const { prepararAvisosDelDia, registrarResultado, TEXTO_PLANTILLA_CUOTA } = await import("../src/services/avisos-cuotas.service.js");
 
-// Los clientes del simulador se reconocen por su canal_id (el nombre es real
-// porque el aviso saluda con el primer nombre).
-const MARCA = "sim-cuotas-";
+// Los clientes del simulador se reconocen por su email: un dominio `.invalid` está
+// reservado (RFC 2606) y nunca es de una persona (el nombre es real porque el aviso
+// saluda con el primer nombre). Las fichas donde caen sus números de WhatsApp, por
+// cliente_canales.
+const DOMINIO_EMAIL = "sim-cuotas.invalid";
 const UNA_HORA_MS = 3_600_000;
 const UN_DIA_MS = 24 * UNA_HORA_MS;
 // La cuota 1 vence el 18/11/2026 (alta el 02/11, día de pago 18); la 2, el 18/12.
@@ -51,15 +57,29 @@ const CLIENTES = [
 ];
 
 const telWhatsApp = (c) => `549${c.tel}`;
+const emailDe = (c) => `${c.tel}@${DOMINIO_EMAIL}`;
 
-// Borra solo lo que creó el simulador: sus clientes (por marca y por número).
-async function limpiar() {
+// Los clientes del simulador: los que creó (por su email) y las fichas donde cayeron sus
+// números de WhatsApp (el bot reconoce el teléfono y usa la ficha web, o una unificada).
+async function clientesDelSimulador() {
+  const vinculos = await prisma.cliente_canales.findMany({
+    where: { canal: "whatsapp", identificador: { in: CLIENTES.map(telWhatsApp) } },
+    select: { cliente_id: true },
+  });
   const clientes = await prisma.clientes.findMany({
-    where: { OR: [{ canal: "web", canal_id: { startsWith: MARCA } }, { canal: "whatsapp", canal_id: { in: CLIENTES.map(telWhatsApp) } }] },
+    where: { OR: [{ email: { endsWith: `@${DOMINIO_EMAIL}` } }, { id: { in: vinculos.map((v) => v.cliente_id) } }] },
     select: { id: true },
   });
-  const ids = clientes.map((c) => c.id);
-  if (!ids.length) return 0;
+  return clientes.map((c) => c.id);
+}
+
+// Borra solo lo que creó el simulador: sus clientes y lo que cuelga de ellos.
+async function limpiar() {
+  const propios = await clientesDelSimulador();
+  if (!propios.length) return 0;
+  // Las fichas que la unificación de clientes fusionó en las suyas también son del simulador.
+  const fusionadas = (await prisma.clientes.findMany({ where: { fusionado_en_id: { in: propios } }, select: { id: true } })).map((c) => c.id);
+  const ids = [...new Set([...propios, ...fusionadas])];
   const financiaciones = (await prisma.financiaciones.findMany({ where: { cliente_id: { in: ids } }, select: { id: true } })).map((f) => f.id);
   const sesiones = (await prisma.chat_estado.findMany({ where: { cliente_id: { in: ids } }, select: { id: true } })).map((s) => s.id);
   await prisma.$transaction([
@@ -72,7 +92,10 @@ async function limpiar() {
     prisma.verificacion_intentos.deleteMany({ where: { cliente_id: { in: ids } } }),
     prisma.vehiculo_cliente.deleteMany({ where: { sesion_id: { in: sesiones } } }),
     prisma.chat_estado.deleteMany({ where: { id: { in: sesiones } } }),
-    prisma.clientes.deleteMany({ where: { id: { in: ids } } }),
+    prisma.cliente_fusiones.deleteMany({ where: { OR: [{ origen_id: { in: ids } }, { destino_id: { in: ids } }] } }),
+    prisma.cliente_canales.deleteMany({ where: { cliente_id: { in: ids } } }),
+    prisma.clientes.deleteMany({ where: { id: { in: fusionadas } } }), // primero las fusionadas: apuntan a las otras
+    prisma.clientes.deleteMany({ where: { id: { in: propios } } }),
   ]);
   return ids.length;
 }
@@ -81,7 +104,7 @@ async function crearFinanciaciones() {
   const creadas = [];
   for (const c of CLIENTES) {
     const cliente = await prisma.clientes.create({
-      data: { nombre: c.nombre, telefono: c.tel, dni: `30${c.tel.slice(-6)}`, canal: "web", canal_id: `${MARCA}${c.tel}` },
+      data: { nombre: c.nombre, telefono: c.tel, dni: `30${c.tel.slice(-6)}`, email: emailDe(c), canal: "web" },
     });
     const f = await prisma.financiaciones.create({
       data: { cliente_id: cliente.id, cantidad_cuotas: 12, precio_cuota: 250000, dia_pago: DIA_PAGO, created_at: ALTA },

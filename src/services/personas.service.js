@@ -1,4 +1,7 @@
 import { prisma } from "../lib/prisma.js";
+import { telefonosParaBuscar } from "../lib/busqueda-telefono.js";
+import { validarDni } from "../lib/dni.js";
+import { VIGENTE_CLIENTE, resolverCliente } from "./clientes.service.js";
 
 // Alta y actualización del titular de una consignación sobre las tablas que ya
 // existen: `clientes` + `cliente_perfiles`.
@@ -7,9 +10,9 @@ import { prisma } from "../lib/prisma.js";
 // la agencia como cualquier otro: si mañana escribe por WhatsApp tiene que ser
 // el mismo, no un duplicado. Por eso el vínculo es siempre `clientes.id`.
 //
-// El DNI es obligatorio y hace de identificador: es `canal_id` para los que
-// llegan al mostrador (canal 'presencial') y la clave de búsqueda para
-// reconocer a alguien que ya está en la base por otro canal.
+// El DNI es obligatorio. La ficha sale de `resolverCliente`, la puerta única de
+// alta de clientes: reconoce a la persona por DNI o por teléfono, venga del canal
+// que venga, y solo crea una si no existe.
 
 function error(mensaje, status = 400) {
   const e = new Error(mensaje);
@@ -42,8 +45,7 @@ const VINCULOS = ["pareja", "padre_madre", "hermano_a", "hijo_a", "otro"];
 export const SELECT_PERFIL = Object.fromEntries(CAMPOS_PERFIL.map((c) => [c, true]));
 
 function validar(datos) {
-  const dni = soloDigitos(datos.dni);
-  if (dni.length < 7 || dni.length > 9) throw error("El DNI debe tener entre 7 y 9 dígitos.");
+  const dni = validarDni(datos.dni);
 
   const nombre = limpiar(datos.nombre, 120);
   if (!nombre) throw error("El nombre es obligatorio.");
@@ -92,25 +94,6 @@ function validar(datos) {
   };
 }
 
-// Busca por DNI en cualquier canal: si la persona ya habló con el bot, esa fila
-// es la buena. El índice de `clientes` es (canal, canal_id), así que este
-// findFirst recorre por `dni`, que no es único — puede haber duplicados previos
-// del bot y en ese caso gana el más viejo, que es el que tiene historial.
-async function buscarPorDni(dni, tx) {
-  return tx.clientes.findFirst({ where: { dni }, orderBy: { id: "asc" }, select: { id: true, nombre: true, telefono: true, email: true } });
-}
-
-// Sobre un cliente que ya existe solo se completan los huecos. El bot pisa
-// `clientes.nombre` con lo que manda WhatsApp; si el panel lo sobrescribiera,
-// los dos se estarían peleando la misma columna en cada mensaje.
-function soloHuecos(existente, datos) {
-  const relleno = {};
-  if (!existente.nombre && datos.nombre) relleno.nombre = datos.nombre;
-  if (!existente.telefono && datos.telefono) relleno.telefono = datos.telefono;
-  if (!existente.email && datos.email) relleno.email = datos.email;
-  return relleno;
-}
-
 // Devuelve el `clientes.id` de la persona, creándola si hace falta.
 // Recibe `tx` para participar de la transacción del ingreso: si el ingreso
 // falla, la persona no queda huérfana.
@@ -120,24 +103,10 @@ function soloHuecos(existente, datos) {
 // alta no: ahí se puede tipear el DNI de alguien que ya existe sin traer su
 // perfil, y los vacíos le borrarían datos.
 export async function registrarPersona(datos, tx = prisma, { reemplazarPerfil = false } = {}) {
-  const { dni, perfil, ...cliente } = validar(datos);
+  const { dni, perfil, ...contacto } = validar(datos);
 
-  const existente = await buscarPorDni(dni, tx);
-
-  let clienteId;
-  if (existente) {
-    clienteId = existente.id;
-    const relleno = soloHuecos(existente, cliente);
-    if (Object.keys(relleno).length) {
-      await tx.clientes.update({ where: { id: clienteId }, data: relleno });
-    }
-  } else {
-    const creado = await tx.clientes.create({
-      data: { ...cliente, dni, canal: "presencial", canal_id: dni },
-      select: { id: true },
-    });
-    clienteId = creado.id;
-  }
+  const { cliente } = await resolverCliente({ canal: "presencial", dni, ...contacto }, tx);
+  const clienteId = cliente.id;
 
   // El perfil sí lo manda el panel entero: es la única fuente que lo escribe.
   const conValor = Object.fromEntries(
@@ -156,17 +125,23 @@ export async function registrarPersona(datos, tx = prisma, { reemplazarPerfil = 
 
 // Búsqueda para el alta del panel: escribís un DNI o un nombre y te dice si esa
 // persona ya está, para reusarla en vez de duplicarla.
-export async function buscarPersonas(q = "", limite = 8) {
+export async function buscarPersonas(q = "", limite = 8, db = prisma) {
   const termino = String(q || "").trim();
   if (termino.length < 3) return [];
 
   const digitos = soloDigitos(termino);
-  const filas = await prisma.clientes.findMany({
+  // El teléfono se guarda con 10 dígitos: pegado como +54 9 388 470-8347 también se busca así.
+  const porNumero =
+    digitos.length >= 6
+      ? [
+          { dni: { contains: digitos } },
+          ...telefonosParaBuscar(termino).map((telefono) => ({ telefono: { contains: telefono } })),
+        ]
+      : [];
+  const filas = await db.clientes.findMany({
     where: {
-      OR: [
-        ...(digitos.length >= 6 ? [{ dni: { contains: digitos } }, { telefono: { contains: digitos } }] : []),
-        { nombre: { contains: termino } },
-      ],
+      ...VIGENTE_CLIENTE,
+      OR: [...porNumero, { nombre: { contains: termino } }],
     },
     select: {
       id: true,

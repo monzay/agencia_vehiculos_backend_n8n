@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { errorHandler } from "./error.js";
+import { errorHandler, notFound } from "./error.js";
 
 function fakeRes() {
   return {
@@ -75,6 +75,47 @@ test("un dato único repetido responde 409; el email de usuario tiene su mensaje
   assert.deepEqual([otro.statusCode, otro.payload.error], [409, "Ya existe un registro con esos datos."]);
 });
 
+// ── Reglas de la fase 1 de clientes (migraciones 073 y 074) ──
+
+// Una regla rota deja una línea en el log del servidor: en estos tests no interesa.
+const sinLog = (t) => t.mock.method(console, "error", () => {});
+
+const errorUnico = (target) => Object.assign(new Error(`Unique constraint failed on the constraint: \`${target}\``), { code: "P2002", meta: { target } });
+
+test("un DNI repetido entre fichas vigentes responde 409 con un mensaje claro, sin el nombre del índice", (t) => {
+  sinLog(t);
+  const res = fakeRes();
+  errorHandler(errorUnico("uq_clientes_dni_vigente"), {}, res, () => {});
+  assert.deepEqual([res.statusCode, res.payload.error], [409, "Ya hay otra ficha con ese DNI."]);
+  assert.doesNotMatch(JSON.stringify(res.payload), /uq_|Unique constraint/);
+});
+
+test("un número de WhatsApp ya vinculado a otra ficha responde 409 con un mensaje claro", (t) => {
+  sinLog(t);
+  const res = fakeRes();
+  errorHandler(errorUnico("uq_canal_identificador"), {}, res, () => {});
+  assert.deepEqual([res.statusCode, res.payload.error], [409, "Ese número ya está vinculado a otra ficha."]);
+  assert.doesNotMatch(JSON.stringify(res.payload), /uq_|Unique constraint/);
+});
+
+test("una ficha fusionada que no quedó archivada rompe una regla con su mensaje, sin internals", (t) => {
+  sinLog(t);
+  const res = fakeRes();
+  errorHandler(errorDeRegla("chk_cliente_fusionado_archivado"), {}, res, () => {});
+  assert.deepEqual([res.statusCode, res.payload.error], [409, "Una ficha fusionada en otra tiene que estar archivada."]);
+  assert.doesNotMatch(JSON.stringify(res.payload), /MysqlError|ConnectorError|chk_/);
+});
+
+test("los mensajes de las reglas de clientes no llevan datos personales", (t) => {
+  sinLog(t);
+  const mensajes = [errorUnico("uq_clientes_dni_vigente"), errorUnico("uq_canal_identificador"), errorDeRegla("chk_cliente_fusionado_archivado")].map((e) => {
+    const res = fakeRes();
+    errorHandler(Object.assign(e, { message: `${e.message} Duplicate entry '30125678' for key 'clientes.uq' (joel@x.com 3884708347)` }), {}, res, () => {});
+    return res.payload.error;
+  });
+  for (const mensaje of mensajes) assert.doesNotMatch(mensaje, /30125678|joel@x\.com|3884708347/);
+});
+
 test("también entiende el formato de las consultas SQL directas y deja registro del bug", () => {
   const res = fakeRes();
   const registros = [];
@@ -91,4 +132,18 @@ test("también entiende el formato de las consultas SQL directas y deja registro
   assert.match(registros[0], /chk_auto_vendido_no_disponible/);
   assert.match(registros[0], /PATCH \/api\/vehiculos\/12/);
   assert.doesNotMatch(registros[0], /secreto/, "sin la query string");
+});
+
+test("una ruta que no existe responde 404 con el formato de la API", () => {
+  const res = fakeRes();
+  notFound({}, res);
+  assert.deepEqual([res.statusCode, res.payload], [404, { ok: false, error: "Ruta no encontrada" }]);
+});
+
+test("un fallo esperado de un servicio externo (publico) muestra su mensaje tal cual, sin correlationId", (t) => {
+  t.mock.method(console, "error", () => {});
+  const res = fakeRes();
+  const caido = Object.assign(new Error("El servicio de mapas no está configurado."), { status: 503, publico: true });
+  errorHandler(caido, {}, res, () => {});
+  assert.deepEqual([res.statusCode, res.payload], [503, { ok: false, error: "El servicio de mapas no está configurado." }]);
 });

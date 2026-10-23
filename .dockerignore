@@ -8,3 +8,6 @@ Dockerfile
 .dockerignore
 prisma/seed
 prisma/migrations_manual
+# Volcados de la base (datos reales): el Dockerfile copia prisma/ entera
+prisma/*.sql
+**/backup-*

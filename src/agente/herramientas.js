@@ -235,7 +235,8 @@ const HERRAMIENTAS = [
 
       const financiaciones = await db.financiaciones.findMany({
         where: { cliente_id: clienteId, deleted_at: null, activo: true },
-        select: { cantidad_cuotas: true, precio_cuota: true, dia_pago: true, pagos: { select: { numero: true } } },
+        // Un pago anulado no es una cuota paga: solo se cuentan los vigentes.
+        select: { cantidad_cuotas: true, precio_cuota: true, dia_pago: true, pagos: { where: { deleted_at: null }, select: { numero: true } } },
       });
       return {
         verificado: true,

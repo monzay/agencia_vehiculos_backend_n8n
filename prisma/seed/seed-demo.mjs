@@ -4,15 +4,37 @@
 // Uso:    node prisma/seed/seed-demo.mjs
 // Limpiar: node prisma/seed/seed-demo.mjs --wipe
 //
-// Todos los clientes generados llevan canal_id con prefijo "seed_", así el
-// wipe borra SOLO lo generado acá (los datos reales no se tocan).
+// Solo corre contra la base local: se niega a cualquier otra, sin override.
+//
+// Todos los clientes generados llevan un email @seed.demo (el mismo dominio de los
+// asesores de demo), así el wipe borra SOLO lo generado acá (los datos reales no se
+// tocan). Los de mensajería tienen además su fila en cliente_canales, como los del bot.
 
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { PrismaClient } from "@prisma/client";
+import { baseAutorizada, destinoDeLaBase } from "../../src/lib/base-local.js";
+
+// Genera ~1000 consultas y con --wipe borra: solo contra la base local, sin override. El chequeo va antes de
+// crear el cliente de Prisma, que es quien lee el .env: se lee acá para poder mirar la URL.
+const ARCHIVO_ENV = fileURLToPath(new URL("../../.env", import.meta.url));
+if (existsSync(ARCHIVO_ENV)) process.loadEnvFile(ARCHIVO_ENV);
+const urlBase = process.env.DATABASE_URL;
+if (!baseAutorizada(urlBase)) {
+  console.error(
+    `DATABASE_URL apunta a ${destinoDeLaBase(urlBase)}, que no es una base local.\n` +
+      "Este seed escribe datos de demo (y con --wipe borra): solo corre contra la base local."
+  );
+  process.exit(1);
+}
 
 const prisma = new PrismaClient();
 
 const TOTAL_SESIONES = 1000;
 const SEED_PREFIX = "seed_";
+const DOMINIO_EMAIL = "seed.demo";
+const SEMBRADOS = { email: { endsWith: `@${DOMINIO_EMAIL}` } };
+const CANALES_MENSAJERIA = ["whatsapp", "facebook", "instagram"];
 
 // ---------------------------------------------------------------------------
 // Utilidades de azar
@@ -58,8 +80,6 @@ const CARACTERISTICAS = ["3050", "3510", "3410", "3520", "3540", "3560", "3624",
 const nombreCompleto = () => `${pick(NOMBRES)} ${pick(APELLIDOS)}`;
 const telefonoAr = () => `+54 9 ${pick(CARACTERISTICAS)} ${entre(40, 69)}${entre(1000, 9999)}`;
 const dniAr = () => String(entre(20000000, 45999999));
-const emailDe = (nombre) =>
-  `${nombre.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, ".")}${entre(1, 99)}@gmail.com`;
 
 // Vehículos que el cliente entrega como usado o quiere vender/consignar.
 const VEHICULOS_CLIENTE = [
@@ -109,7 +129,7 @@ const ASESORES = [
 // ---------------------------------------------------------------------------
 async function wipe() {
   const clientes = await prisma.clientes.findMany({
-    where: { canal_id: { startsWith: SEED_PREFIX } },
+    where: SEMBRADOS,
     select: { id: true },
   });
   const ids = clientes.map((c) => c.id);
@@ -130,6 +150,7 @@ async function wipe() {
   await prisma.alertas_stock.deleteMany({ where: { cliente_id: { in: ids } } });
   await prisma.historial_mensajes.deleteMany({ where: { cliente_id: { in: ids } } });
   await prisma.chat_estado.deleteMany({ where: { cliente_id: { in: ids } } });
+  await prisma.cliente_canales.deleteMany({ where: { cliente_id: { in: ids } } });
   await prisma.clientes.deleteMany({ where: { id: { in: ids } } });
   await prisma.vendedores.deleteMany({ where: { email: { endsWith: "@seed.demo" } } });
   console.log(`Borrado: ${ids.length} clientes, ${sesionIds.length} sesiones y sus datos asociados.`);
@@ -158,7 +179,9 @@ async function crearAsesores() {
   return creados.map((v) => v.id);
 }
 
-function generarClientes(cantidad) {
+// Devuelve `{ cliente, identificador }`: el cliente a insertar y, para los de mensajería, el
+// identificador de su fila en cliente_canales. El email lleva ese mismo texto, que es único.
+function generarClientes(cantidad, dnisOcupados) {
   const canales = () => {
     const r = Math.random();
     if (r < 0.72) return "whatsapp";
@@ -166,18 +189,29 @@ function generarClientes(cantidad) {
     if (r < 0.95) return "facebook";
     return "web";
   };
+  // El DNI es único entre las fichas vigentes (074): ni repetido entre los generados ni contra los que ya hay.
+  const dnisUsados = new Set(dnisOcupados);
+  const dniLibre = () => {
+    let dni = dniAr();
+    while (dnisUsados.has(dni)) dni = dniAr();
+    dnisUsados.add(dni);
+    return dni;
+  };
   return Array.from({ length: cantidad }, (_, i) => {
     const nombre = nombreCompleto();
     const canal = canales();
     const telefono = telefonoAr();
+    const identificador = `${SEED_PREFIX}${canal}_${Date.now()}_${i}`;
     return {
-      nombre,
-      telefono,
-      dni: chance(0.35) ? dniAr() : null,
-      email: chance(0.25) ? emailDe(nombre) : null,
-      canal,
-      canal_id: `${SEED_PREFIX}${canal}_${Date.now()}_${i}`,
-      created_at: fechaReciente(90),
+      cliente: {
+        nombre,
+        telefono,
+        dni: chance(0.35) ? dniLibre() : null,
+        email: `${identificador}@${DOMINIO_EMAIL}`,
+        canal,
+        created_at: fechaReciente(90),
+      },
+      identificador,
     };
   });
 }
@@ -389,11 +423,19 @@ async function seed() {
 
   // 1) Clientes (algunos tendrán más de una sesión → ~1000 sesiones totales)
   const CANT_CLIENTES = 850;
-  await prisma.clientes.createMany({ data: generarClientes(CANT_CLIENTES) });
+  const dnisOcupados = (await prisma.clientes.findMany({ where: { dni: { not: null } }, select: { dni: true } })).map((c) => c.dni);
+  const generados = generarClientes(CANT_CLIENTES, dnisOcupados);
+  await prisma.clientes.createMany({ data: generados.map((g) => g.cliente) });
   const clientes = await prisma.clientes.findMany({
-    where: { canal_id: { startsWith: SEED_PREFIX } },
-    select: { id: true },
+    where: SEMBRADOS,
+    select: { id: true, email: true },
     orderBy: { id: "asc" },
+  });
+  const idPorEmail = new Map(clientes.map((c) => [c.email, c.id]));
+  await prisma.cliente_canales.createMany({
+    data: generados
+      .filter((g) => CANALES_MENSAJERIA.includes(g.cliente.canal))
+      .map((g) => ({ cliente_id: idPorEmail.get(g.cliente.email), canal: g.cliente.canal, identificador: g.identificador })),
   });
   const clienteIds = clientes.map((c) => c.id);
   console.log(`Clientes creados: ${clienteIds.length}`);

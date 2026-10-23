@@ -179,8 +179,14 @@ model clientes {
   dni                   String?                 @db.VarChar(20)
   email                 String?                 @db.VarChar(180)
   canal                 clientes_canal
-  canal_id              String                  @db.VarChar(120)
   created_at            DateTime?               @default(now()) @db.DateTime(0)
+  deleted_at            DateTime?               @db.DateTime(0)
+  fusionado_en_id       Int?                    @db.UnsignedInt
+  fusionado_en          clientes?               @relation("cliente_fusionado", fields: [fusionado_en_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "clientes_fusionado_en_fk")
+  fusionados            clientes[]              @relation("cliente_fusionado")
+  canales               cliente_canales[]
+  fusiones_como_origen  cliente_fusiones[]      @relation("fusion_origen")
+  fusiones_como_destino cliente_fusiones[]      @relation("fusion_destino")
   alertas_stock         alertas_stock[]
   cliente_perfiles      cliente_perfiles?
   ingresos_como_titular consignacion_ingresos[] @relation("consignacion_ingresos_cliente_idToclientes")
@@ -193,7 +199,55 @@ model clientes {
   verificacion_intentos verificacion_intentos[]
   entregas              entregas[]
 
-  @@unique([canal, canal_id], map: "uq_canal")
+  @@index([telefono], map: "idx_clientes_telefono")
+  @@index([dni], map: "idx_clientes_dni")
+  @@index([fusionado_en_id], map: "idx_clientes_fusionado_en")
+  // + índice único funcional `uq_clientes_dni_vigente` (migración 074): el DNI no se
+  //   repite entre fichas vigentes; las archivadas no cuentan. Prisma no representa
+  //   índices funcionales. El teléfono no es único a propósito (una familia puede
+  //   compartirlo): lo cuida `resolverCliente`.
+}
+
+/// Identificador de la persona en cada canal de mensajería (migración 073). Una
+/// persona puede tener varios; cada identificador pertenece a una sola ficha.
+model cliente_canales {
+  id            Int                   @id @default(autoincrement()) @db.UnsignedInt
+  cliente_id    Int                   @db.UnsignedInt
+  canal         cliente_canales_canal
+  identificador String                @db.VarChar(120)
+  created_at    DateTime              @default(now()) @db.DateTime(0)
+  clientes      clientes              @relation(fields: [cliente_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "cliente_canales_cliente_fk")
+
+  @@unique([canal, identificador], map: "uq_canal_identificador")
+  @@index([cliente_id], map: "idx_cliente_canales_cliente")
+}
+
+enum cliente_canales_canal {
+  whatsapp
+  facebook
+  instagram
+}
+
+/// Registro de cada fusión de fichas (migración 073): qué filas se movieron de
+/// `origen` a `destino`, para auditarla o deshacerla a mano.
+model cliente_fusiones {
+  id         Int                     @id @default(autoincrement()) @db.UnsignedInt
+  origen_id  Int                     @db.UnsignedInt
+  destino_id Int                     @db.UnsignedInt
+  motivo     cliente_fusiones_motivo
+  detalle    Json
+  created_at DateTime                @default(now()) @db.DateTime(0)
+  origen     clientes                @relation("fusion_origen", fields: [origen_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "cliente_fusiones_origen_fk")
+  destino    clientes                @relation("fusion_destino", fields: [destino_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "cliente_fusiones_destino_fk")
+
+  @@index([origen_id], map: "idx_fusiones_origen")
+  @@index([destino_id], map: "idx_fusiones_destino")
+}
+
+enum cliente_fusiones_motivo {
+  mismo_dni
+  mismo_telefono
+  manual
 }
 
 model financiaciones {
@@ -226,10 +280,14 @@ model financiacion_pagos {
   numero          Int            @db.UnsignedSmallInt
   pagado_en       DateTime?      @default(now()) @db.DateTime(0)
   created_at      DateTime?      @default(now()) @db.DateTime(0)
+  deleted_at      DateTime?      @db.DateTime(0)
   financiaciones  financiaciones @relation(fields: [financiacion_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "financiacion_pagos_ibfk_1")
 
-  @@unique([financiacion_id, numero], map: "uq_financiacion_numero")
   @@index([financiacion_id], map: "idx_financiacion")
+  // + índice único funcional `uq_pago_vigente` (migración 072): una sola fila
+  //   vigente (`deleted_at` nulo) por cuota; las anuladas son historial. Prisma no
+  //   representa índices funcionales. `idx_financiacion` sostiene la FK: no es
+  //   redundante, no borrarlo.
 }
 
 /// Recordatorios de cuotas por WhatsApp (migración 070): uno por financiación,

@@ -6,6 +6,7 @@ import { firmar, desfirmar, impresosDe } from "./legajo-contrato.service.js";
 import { PARA_DETALLE } from "./ingresos.service.js";
 import { autoConConsignacion, cerrarVenta, abrirVenta } from "./vehiculos.service.js";
 import { autoParaVender } from "./auto-venta.service.js";
+import { identificacionParaBoleto, difiereDeLaFicha } from "../lib/identificacion-vehiculo.js";
 
 // El boleto de compraventa: de un auto que la agencia compra (compra directa),
 // o de un auto que la agencia vende, al contado o con parte de pago (modalidad
@@ -29,19 +30,24 @@ async function ingresoVigente(ingresoId, tx = prisma) {
 }
 
 // El auto que vende la agencia es el que se eligió al crear el trámite. Se
-// vuelve a validar al guardar el boleto (pudo venderse o reservarse después), y
-// el boleto lo identifica por su dominio, que sale de la ficha del auto.
-// Dominio, motor y chasis se copian al boleto: quedan escritos tal como estaban
-// al firmar, aunque después se edite la ficha.
+// vuelve a validar al guardar el boleto (pudo venderse o reservarse después).
+// El boleto lo identifica por dominio, motor y chasis: lo que se cargue en el
+// formulario completa o corrige la ficha del auto, en la misma transacción, así
+// Vehículos y el boleto dicen lo mismo. Además se copian al boleto: quedan
+// escritos tal como estaban al firmar, aunque después se edite la ficha.
 async function datosPermuta(body, ingreso, tx) {
   if (!ingreso.auto_interes) throw error("El trámite no tiene el vehículo que compra el cliente: elegilo en Editar trámite.", 409);
   const auto = await autoParaVender(ingreso.auto_interes.ref, ingreso.id, tx);
-  if (!auto.dominio) throw error("Ese vehículo no tiene dominio cargado. Completalo en Vehículos → Editar.", 409);
+  const cargado = { dominio: body.entregadoDominio, motor: body.entregadoMotor, chasis: body.entregadoChasis };
+  const identificacion = identificacionParaBoleto(cargado, auto);
+  if (difiereDeLaFicha(identificacion, auto)) {
+    await tx.autos.update({ where: { id: auto.id }, data: { ...identificacion, updated_at: new Date() } });
+  }
   return {
     auto_entregado_id: auto.id,
-    entregado_dominio: auto.dominio,
-    entregado_motor: auto.motor,
-    entregado_chasis: auto.chasis,
+    entregado_dominio: identificacion.dominio,
+    entregado_motor: identificacion.motor,
+    entregado_chasis: identificacion.chasis,
     entregado_valor: numero(body.entregadoValor, "El precio de venta del vehículo de la agencia", { min: 0.01, max: TOPE_MONTO }),
   };
 }

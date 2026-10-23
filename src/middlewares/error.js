@@ -15,16 +15,21 @@ export function notFound(req, res) {
 //   configurado, no respondió). El mensaje lo escribimos nosotros y le dice a
 //   quien está cargando qué hacer, así que se muestra tal cual. No lleva stack
 //   ni detalle del proveedor: eso queda en el log del servicio.
-// Reglas de la base (CHECK y UNIQUE, migración 071). Los servicios ya las
-// cuidan; si igual se rompen, el usuario recibe un 409 claro y nunca el
-// detalle de MySQL.
+// Reglas de la base (CHECK y UNIQUE, migraciones 071, 073 y 074). Los servicios
+// ya las cuidan; si igual se rompen, el usuario recibe un 409 claro y nunca el
+// detalle de MySQL. Los mensajes no llevan datos de la persona.
 const MENSAJES_DE_REGLA = {
   chk_auto_vendido_no_disponible: "Un vehículo vendido no puede quedar disponible.",
   chk_auto_precio_venta_vendido: "Solo un vehículo vendido puede tener precio de venta.",
   chk_sena_convertida_con_tramite: "Una seña que pasó a trámite tiene que figurar como convertida.",
   chk_entrega_vigente_con_cliente: "Cada entrega tiene que tener un cliente.",
+  chk_cliente_fusionado_archivado: "Una ficha fusionada en otra tiene que estar archivada.",
 };
-const MENSAJES_DE_UNICO = { uq_usuarios_email_activo: "Ya existe un usuario con ese email." };
+const MENSAJES_DE_UNICO = {
+  uq_usuarios_email_activo: "Ya existe un usuario con ese email.",
+  uq_clientes_dni_vigente: "Ya hay otra ficha con ese DNI.",
+  uq_canal_identificador: "Ese número ya está vinculado a otra ficha.",
+};
 // Prisma lo informa como "MysqlError { code: 3819 ... }" y las consultas SQL
 // directas como "Code: `3819`".
 const REGLA_ROTA = /code:\s*`?3819`?.*check constraint '(\w+)'/is;

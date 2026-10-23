@@ -2,6 +2,7 @@ import { prisma } from "../lib/prisma.js";
 import { mapAutoToVehiculo } from "../mappers/vehiculo.mapper.js";
 import { SIN_RESERVA, senaReservando, hoyFecha } from "../lib/senas.js";
 import { normalizarTipoVehiculo } from "../lib/tipos-vehiculo.js";
+import { normalizarDominio, normalizarIdentificacion } from "../lib/identificacion-vehiculo.js";
 
 // Soft delete: solo cuentan las filas con deleted_at NULL.
 const VIGENTE = { deleted_at: null };
@@ -133,12 +134,11 @@ function construirData(body, parcial = false) {
     data.stock = stock;
   }
   if (body.descripcion !== undefined) data.descripcion = limpiar(body.descripcion) || null;
-  // Identificación de la unidad: la usa el boleto cuando el auto se vende con
-  // parte de pago. Opcional; vacío la borra.
-  const identificacion = (v, max) => String(v ?? "").trim().toUpperCase().slice(0, max) || null;
-  if (body.dominio !== undefined) data.dominio = identificacion(String(body.dominio ?? "").replace(/[\s-]/g, ""), 15);
-  if (body.motor !== undefined) data.motor = identificacion(body.motor, 40);
-  if (body.chasis !== undefined) data.chasis = identificacion(body.chasis, 40);
+  // Identificación de la unidad: la usa el boleto cuando el auto se vende (y el
+  // boleto también la puede completar). Opcional acá; vacío la borra.
+  if (body.dominio !== undefined) data.dominio = normalizarDominio(body.dominio);
+  if (body.motor !== undefined) data.motor = normalizarIdentificacion(body.motor, 40);
+  if (body.chasis !== undefined) data.chasis = normalizarIdentificacion(body.chasis, 40);
   // Columnas atómicas (1NF): tipo de vehículo (auto/camioneta/moto) y combustible.
   if (body.tipoVehiculo !== undefined || body.tipo_vehiculo !== undefined) {
     data.tipo_vehiculo = normalizarTipoVehiculo(body.tipoVehiculo ?? body.tipo_vehiculo);

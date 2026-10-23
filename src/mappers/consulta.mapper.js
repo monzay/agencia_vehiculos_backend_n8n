@@ -8,25 +8,25 @@ import { provinciaDeTelefono, telefonoLocal } from "../lib/provincias.js";
 
 const PREGUNTA_NOMBRE = "¿A nombre de quién registramos la consulta?";
 
-// De qué provincia escribe el cliente, según el código de área. Se prioriza
-// `canal_id` (el id de WhatsApp, que siempre viene completo con el código de
-// país) sobre `telefono`, que en filas viejas puede estar en formato local o
-// vacío. `null` = no se pudo determinar; el panel lo muestra como "—".
-const provinciaDe = (cliente) =>
-  provinciaDeTelefono(cliente?.canal_id)?.provincia ??
-  provinciaDeTelefono(cliente?.telefono)?.provincia ??
-  null;
+// De qué provincia escribe el cliente, según el código de área de su teléfono.
+// `null` = no se pudo determinar; el panel lo muestra como "—".
+const provinciaDe = (cliente) => provinciaDeTelefono(cliente?.telefono)?.provincia ?? null;
 
 // El teléfono como se marca dentro del país (área + abonado, sin el 54 ni el 9
 // de móvil). Es solo para mostrar: `telefono` se sigue exponiendo crudo, que es
 // contra lo que corre la búsqueda y lo que sirve para armar un link de WhatsApp.
-const telefonoVisibleDe = (cliente) =>
-  telefonoLocal(cliente?.canal_id) ?? telefonoLocal(cliente?.telefono) ?? "";
+const telefonoVisibleDe = (cliente) => telefonoLocal(cliente?.telefono) ?? "";
 
-// Nombre a mostrar: el del perfil de WhatsApp (`clientes.nombre`, que el bot
-// refresca en cada mensaje entrante) identifica a quien realmente escribe. El
-// declarado en la consulta queda de respaldo para los canales sin perfil (web).
-// El declarado igual se ve completo en el detalle, entre las respuestas.
+// Canal por el que escribe la persona. La consulta es una conversación del bot, así
+// que es uno de mensajería (`cliente_canales`). `clientes.canal` queda de respaldo:
+// en una ficha fusionada dice por dónde llegó primero (web, presencial), no el de la charla.
+const canalDe = (cliente) => cliente?.canales?.[0]?.canal ?? cliente?.canal ?? "";
+
+// Nombre a mostrar: el de la ficha (`clientes.nombre`). Si la persona escribió primero
+// por WhatsApp es el de su perfil, pero el bot ya no lo refresca en cada mensaje:
+// `resolverCliente` solo completa huecos. La excepción es una carga web o presencial,
+// que lo reemplaza mientras la ficha no tiene DNI. El declarado en la consulta queda de
+// respaldo si la ficha no tiene nombre, y se ve completo en el detalle, entre las respuestas.
 const nombreDe = (sesion, cliente) => cliente?.nombre || sesion.nombre_declarado || "";
 
 // Resumen para la lista (sin cargar mensajes).
@@ -37,7 +37,7 @@ export function mapConsultaResumen(sesion, cliente, auto, vendedor) {
     nombre: nombreDe(sesion, cliente),
     telefono: cliente?.telefono ?? "",
     telefonoLocal: telefonoVisibleDe(cliente),
-    canal: cliente?.canal ?? "",
+    canal: canalDe(cliente),
     provincia: provinciaDe(cliente),
     vehiculo: auto
       ? { ref: auto.ref, marca: auto.marca, modelo: auto.modelo, anio: auto.anio }

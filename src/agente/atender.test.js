@@ -4,12 +4,34 @@ import { atenderMensaje } from "./atender.js";
 import { MENSAJES_FIJOS } from "./limites.js";
 import { notaDeVoz } from "./ogg-de-prueba.js";
 
+const TEL = "5493885550101"; // el número de WhatsApp de casi todas las pruebas
+
+// Las tablas de clientes son las de la migración 074: sin clientes.canal_id y con un único
+// vínculo por canal + identificador en cliente_canales. Un campo que no existe revienta, como en Prisma.
+const COLUMNAS_CLIENTE = ["id", "canal", "nombre", "telefono", "dni", "email", "deleted_at", "fusionado_en_id"];
+const COLUMNAS_CANAL = ["id", "cliente_id", "canal", "identificador"];
+const FICHA_VACIA = { nombre: null, telefono: null, dni: null, email: null, deleted_at: null, fusionado_en_id: null };
+
+function soloColumnas(objeto, columnas) {
+  const desconocida = Object.keys(objeto).find((campo) => !columnas.includes(campo));
+  if (desconocida) throw new Error(`Unknown argument \`${desconocida}\`.`);
+  return objeto;
+}
+const cumple = (fila, [campo, esperado]) => (esperado?.not === undefined ? (fila[campo] ?? null) === esperado : fila[campo] !== esperado.not);
+
 // Base simulada con estado en memoria para lo que toca el orquestador.
-function baseFalsa({ cliente = null, sesion = null, mensajesHoy = 0, consumosHoy = 0, gastoMes = 0, gastoClienteHoy = 0, usado = null, ubicacion = null, autos = [], vendedores = [], aviso = null } = {}) {
-  const e = { clientes: cliente ? [cliente] : [], sesiones: sesion ? [sesion] : [], historial: [], consumos: [], updates: [], consultas: [], bajas: [], alertas: [] };
+// `cliente` es la ficha del número de las pruebas (TEL), ya vinculada a su canal de WhatsApp;
+// `clientes` son fichas sueltas, sin ese vínculo.
+function baseFalsa({ cliente = null, clientes = [], sesion = null, mensajesHoy = 0, consumosHoy = 0, gastoMes = 0, gastoClienteHoy = 0, usado = null, ubicacion = null, autos = [], vendedores = [], aviso = null } = {}) {
+  const fichas = [...(cliente ? [{ canal: "whatsapp", ...cliente }] : []), ...clientes].map((ficha) => ({ ...FICHA_VACIA, ...ficha }));
+  const canales = cliente ? [{ id: 1, cliente_id: cliente.id, canal: "whatsapp", identificador: TEL }] : [];
+  const e = { clientes: fichas, canales, transacciones: 0, sesiones: sesion ? [sesion] : [], historial: [], consumos: [], updates: [], consultas: [], bajas: [], alertas: [] };
+  let proximaFicha = 77;
+  const fichasQue = (where = {}) => e.clientes.filter((ficha) => Object.entries(soloColumnas(where, COLUMNAS_CLIENTE)).every((par) => cumple(ficha, par)));
+  const primeraFicha = async ({ where }) => fichasQue(where)[0] ?? null;
   const root = {
     estado: e,
-    $transaction: async (fn) => fn(root),
+    $transaction: async (fn) => (e.transacciones += 1, fn(root)),
     // El último recordatorio de cuota que recibió el número (null: ninguno).
     financiacion_avisos: {
       findFirst: async () => aviso,
@@ -26,7 +48,21 @@ function baseFalsa({ cliente = null, sesion = null, mensajesHoy = 0, consumosHoy
     },
     vendedores: { findFirst: async ({ where }) => vendedores.find((v) => v.slug === where.slug) ?? null },
     clientes: {
-      upsert: async ({ create }) => e.clientes[0] ?? (e.clientes.push({ id: 77, ...create }), e.clientes.at(-1)),
+      findUnique: primeraFicha,
+      findFirst: primeraFicha,
+      findMany: async ({ where }) => fichasQue(where),
+      create: async ({ data }) => (e.clientes.push({ ...FICHA_VACIA, id: proximaFicha++, ...soloColumnas(data, COLUMNAS_CLIENTE) }), e.clientes.at(-1)),
+      update: async ({ where, data }) => Object.assign(fichasQue(where)[0], soloColumnas(data, COLUMNAS_CLIENTE)),
+    },
+    cliente_canales: {
+      findUnique: async ({ where: { canal_identificador: { canal, identificador } } }) => e.canales.find((c) => c.canal === canal && c.identificador === identificador) ?? null,
+      create: async ({ data }) => {
+        const { canal, identificador } = soloColumnas(data, COLUMNAS_CANAL);
+        if (e.canales.some((c) => c.canal === canal && c.identificador === identificador)) {
+          throw Object.assign(new Error("Unique constraint failed on uq_canal_identificador"), { code: "P2002" });
+        }
+        return (e.canales.push({ id: e.canales.length + 1, ...data }), e.canales.at(-1));
+      },
     },
     chat_estado: {
       findFirst: async () => e.sesiones.at(-1) ?? null,
@@ -94,13 +130,17 @@ const deps = (root, anthropic = claudeFalso(), groq = groqFalso()) => ({
   esperaRafagaMs: 0,
 });
 const audio = (segundos) => ({ media_type: "audio/ogg", data: notaDeVoz(segundos).toString("base64") });
+const vinculos = (root) => root.estado.canales.map(({ cliente_id, canal, identificador }) => ({ cliente_id, canal, identificador }));
 
-test("un número nuevo crea el cliente y la sesión", async () => {
+test("un número nuevo crea la ficha con su fila en cliente_canales, el teléfono de 10 dígitos y la sesión", async () => {
   const root = baseFalsa();
   await atenderMensaje({ telefono: "5493885550101", nombre: "Ana", texto: "Hola", ahora }, deps(root));
-  assert.equal(root.estado.clientes[0].canal, "whatsapp");
-  assert.equal(root.estado.clientes[0].canal_id, "5493885550101");
+  const [ficha, ...otras] = root.estado.clientes;
+  assert.deepEqual(otras, [], "una sola ficha");
+  assert.deepEqual([ficha.canal, ficha.nombre, ficha.telefono], ["whatsapp", "Ana", "3885550101"]);
+  assert.deepEqual(vinculos(root), [{ cliente_id: ficha.id, canal: "whatsapp", identificador: "5493885550101" }]);
   assert.equal(root.estado.sesiones.length, 1);
+  assert.equal(root.estado.sesiones[0].cliente_id, ficha.id);
 });
 
 test("un número inválido se rechaza sin tocar nada", async () => {
@@ -446,7 +486,6 @@ test("un mensaje común no busca autos ni asesores y la consulta es de whatsapp"
 
 // ── Ahorro de WhatsApp: Meta cobra cada mensaje que sale ──
 
-const TEL = "5493885550101";
 const pausa = (ms) => new Promise((listo) => setTimeout(listo, ms));
 const ultimoPedido = (anthropic) => JSON.stringify(anthropic.pedidos.at(-1).messages.at(-1));
 
@@ -559,4 +598,73 @@ test("sin recordatorio reciente, la charla es de venta como siempre", async () =
   const anthropic = claudeFalso();
   await atenderMensaje({ telefono: "5493885550101", texto: "Hola", ahora }, deps(root, anthropic));
   assert.doesNotMatch(anthropic.pedidos[0].system.at(-1).text, /recordatorio de pago/);
+});
+
+// ── Una persona, una ficha: quien ya era cliente no se duplica ──
+
+const WA_ANA = "5493887000101"; // el WhatsApp de Ana: su teléfono con el 54 9 adelante
+const anaDeLaWeb = { id: 8, canal: "web", nombre: "Ana Gómez", telefono: "3887000101", dni: "30000101" };
+
+test("quien ya era cliente por la web usa esa ficha: se le vincula el canal y no se crea otra", async () => {
+  const root = baseFalsa({ clientes: [anaDeLaWeb] });
+  await atenderMensaje({ telefono: WA_ANA, nombre: "ana", texto: "Hola", ahora }, deps(root));
+  assert.deepEqual(root.estado.clientes.map((c) => c.id), [8], "ninguna ficha nueva");
+  assert.deepEqual(vinculos(root), [{ cliente_id: 8, canal: "whatsapp", identificador: WA_ANA }]);
+  assert.equal(root.estado.sesiones[0].cliente_id, 8);
+  assert.deepEqual(root.estado.historial.map((h) => h.cliente_id), [8, 8], "la charla queda en la ficha de la web");
+});
+
+test("el segundo mensaje del mismo número reutiliza la ficha", async () => {
+  const root = baseFalsa();
+  await atenderMensaje({ telefono: TEL, nombre: "Ana", texto: "Hola", ahora }, deps(root));
+  await atenderMensaje({ telefono: TEL, nombre: "Ana", texto: "¿Y en cuotas?", ahora }, deps(root));
+  const [{ id }, ...otras] = root.estado.clientes;
+  assert.deepEqual(otras, [], "una sola ficha");
+  assert.equal(vinculos(root).length, 1);
+  assert.deepEqual(root.estado.historial.map((h) => h.cliente_id), [id, id, id, id]);
+});
+
+test("el nombre del perfil de WhatsApp no pisa el nombre ya cargado", async () => {
+  const root = baseFalsa({ clientes: [anaDeLaWeb] });
+  const anthropic = claudeFalso();
+  await atenderMensaje({ telefono: WA_ANA, nombre: "ana ✨", texto: "Hola", ahora }, deps(root, anthropic));
+  assert.equal(root.estado.clientes[0].nombre, "Ana Gómez");
+  assert.match(anthropic.pedidos[0].system.at(-1).text, /llamarse "Ana Gómez"/);
+});
+
+test("el nombre del perfil de WhatsApp completa una ficha que no tenía nombre", async () => {
+  const root = baseFalsa({ clientes: [{ ...anaDeLaWeb, nombre: null }] });
+  await atenderMensaje({ telefono: WA_ANA, nombre: "Ana", texto: "Hola", ahora }, deps(root));
+  assert.equal(root.estado.clientes[0].nombre, "Ana");
+});
+
+test("la ficha nueva y su canal se crean juntos en una transacción (con la base raíz, no con un tx)", async () => {
+  const root = baseFalsa();
+  await atenderMensaje({ telefono: TEL, texto: "Hola", ahora }, deps(root));
+  assert.equal(root.estado.transacciones, 1);
+  assert.equal(vinculos(root).length, 1);
+});
+
+test("quien tenía una financiación cargada por la web: mi_financiacion la encuentra desde su WhatsApp", async () => {
+  const root = baseFalsa({ clientes: [anaDeLaWeb] });
+  const financiaciones = [{ cliente_id: 8, cantidad_cuotas: 12, precio_cuota: 150000, dia_pago: 10, pagos: [{ numero: 1 }] }];
+  // La base del agente solo conoce las financiaciones por el id de la ficha, como la real.
+  const dbAgente = {
+    verificacion_intentos: { count: async () => 0, create: async ({ data }) => data },
+    clientes: { findUnique: async ({ where }) => root.estado.clientes.find((c) => c.id === where.id) ?? null },
+    financiaciones: { findMany: async ({ where }) => financiaciones.filter((f) => f.cliente_id === where.cliente_id) },
+  };
+  const respuestas = [
+    { stop_reason: "tool_use", usage: {}, content: [{ type: "tool_use", id: "t1", name: "mi_financiacion", input: { dni_ultimos: "0101" } }] },
+    { stop_reason: "end_turn", usage: {}, content: [{ type: "text", text: "Te quedan 11 cuotas." }] },
+  ];
+  const pedidos = [];
+  const anthropic = { messages: { create: async (pedido) => (pedidos.push(pedido), respuestas.shift()) } };
+
+  await atenderMensaje({ telefono: WA_ANA, texto: "¿Cuántas cuotas me quedan?", ahora }, { ...deps(root, anthropic), dbAgente });
+
+  const [{ content: resultado }] = pedidos[1].messages.at(-1).content;
+  const consulta = JSON.parse(resultado);
+  assert.equal(consulta.verificado, true);
+  assert.equal(consulta.financiaciones[0].cuotas_pendientes, 11);
 });

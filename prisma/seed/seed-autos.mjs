@@ -10,9 +10,27 @@
 //
 // El wipe borra (soft delete) solo lo cargado acá, identificado por la marca
 // SEED_MARCA al final de la descripción.
+//
+// Solo corre contra la base local: se niega a cualquier otra, sin override.
 
-import { prisma } from "../../src/lib/prisma.js";
-import { crearVehiculo } from "../../src/services/vehiculos.service.js";
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { baseAutorizada, destinoDeLaBase } from "../../src/lib/base-local.js";
+
+// El chequeo va antes de importar el cliente de Prisma, que es quien lee el .env: se lee acá para mirar la URL.
+const ARCHIVO_ENV = fileURLToPath(new URL("../../.env", import.meta.url));
+if (existsSync(ARCHIVO_ENV)) process.loadEnvFile(ARCHIVO_ENV);
+const urlBase = process.env.DATABASE_URL;
+if (!baseAutorizada(urlBase)) {
+  console.error(
+    `DATABASE_URL apunta a ${destinoDeLaBase(urlBase)}, que no es una base local.\n` +
+      "Este seed carga autos de prueba (y con --wipe los archiva): solo corre contra la base local."
+  );
+  process.exit(1);
+}
+
+const { prisma } = await import("../../src/lib/prisma.js");
+const { crearVehiculo } = await import("../../src/services/vehiculos.service.js");
 
 const SEED_MARCA = "[seed]";
 

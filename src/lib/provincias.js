@@ -357,5 +357,23 @@ export function telefonoLocal(valor) {
   return `${area} ${conGuion}`;
 }
 
+/**
+ * Los 10 dígitos nacionales (área + abonado) sin 54, 0, 9 ni 15, o `null` si no
+ * es un número argentino reconocible. Es la forma en que se guarda y se compara
+ * el teléfono de un cliente: dos escrituras del mismo número dan el mismo valor.
+ *
+ *   5493884708347    → "3884708347"
+ *   0388 15 470-8347 → "3884708347"
+ *
+ * Con dígitos de más o de menos devuelve `null`: preferimos no reconocerlo antes
+ * que igualar dos números distintos.
+ */
+export function telefonoNacional(valor) {
+  const d = provinciaDeTelefono(valor);
+  if (!d) return null;
+  const nacional = d.area + d.abonado;
+  return nacional.length === 10 ? nacional : null;
+}
+
 // Las jurisdicciones que la tabla puede devolver (para tests y filtros).
 export const PROVINCIAS = [...new Set(Object.values(AREAS))].sort();

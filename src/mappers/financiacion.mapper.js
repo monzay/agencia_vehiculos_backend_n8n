@@ -36,7 +36,9 @@ export function mapFinanciacion(f) {
   const cuotas = f.cantidad_cuotas ?? 0;
   const precio = f.precio_cuota != null ? Number(f.precio_cuota) : 0;
 
-  const pagados = new Set((f.pagos ?? []).map((p) => p.numero));
+  // El filtro real es el `where` de cada include (solo vigentes): esto además
+  // descarta un pago anulado cuando llega la fila completa con `deleted_at`.
+  const pagados = new Set((f.pagos ?? []).filter((p) => !p.deleted_at).map((p) => p.numero));
   const cronograma = calcularCronograma(f.created_at, cuotas, f.dia_pago, pagados);
 
   const cuotasPagadas = pagados.size;
