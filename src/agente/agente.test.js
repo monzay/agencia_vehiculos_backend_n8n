@@ -41,6 +41,29 @@ const entrada = (consumos = []) => ({
   registrarConsumo: async (c) => consumos.push(c),
 });
 
+test("si una herramienta cambia de consulta, las siguientes del turno usan la nueva y la respuesta la informa", async () => {
+  const updates = [];
+  const dbConsultas = {
+    autos: { findFirst: async () => ({ id: 7 }) },
+    chat_estado: {
+      findUnique: async ({ where }) => ({ id: where.id, auto_id: where.id === 900 ? 5 : 7 }),
+      update: async (args) => (updates.push(args), args),
+    },
+    vehiculo_cliente: { findFirst: async () => null },
+  };
+  const anthropic = claudeFalso([
+    pideHerramienta(["t1", "registrar_calificacion", { auto_ref: "7", pago_tipo: "contado" }]),
+    pideHerramienta(["t2", "derivar_a_vendedor", { motivo: "quiere reservar" }]),
+    texto("Listo, te paso con un asesor."),
+  ]);
+  const r = await responderConIA(
+    { ...entrada(), ctx: { ...ctx, db: dbConsultas, consultaPorAuto: async () => 901 } },
+    { anthropic }
+  );
+  assert.deepEqual(updates.map((u) => u.where.id), [901, 901], "registrar y derivar escriben en la consulta del auto nuevo");
+  assert.equal(r.sesionId, 901);
+});
+
 test("responde con el texto de Claude y registra el costo de la llamada", async () => {
   const consumos = [];
   const anthropic = claudeFalso([texto("¡Hola! ¿En qué te ayudo?")]);

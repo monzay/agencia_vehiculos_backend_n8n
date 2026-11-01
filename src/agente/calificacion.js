@@ -33,16 +33,14 @@ export function puntaje(sesion = {}) {
   return Math.max(0, total);
 }
 
-// Lo clave para poder calificar: la forma de pago y, si financia, si tiene
-// recibo o garante. Hasta entonces queda "en calificación" (null), para que una
-// conversación que recién empieza no se vea fría (decisión del 11/10/2026).
-const respondioLoClave = (s) => definido(s.pago_tipo) && (s.pago_tipo !== "financiado" || definido(s.credito_ok));
-
+// La consulta nace fría (0 puntos) y la temperatura se adapta con cada
+// respuesta, aunque todavía no haya dicho cómo paga (decisión del 31/10/2026).
 export function clasificar(sesion = {}) {
   const s = sesion ?? {};
-  if (!respondioLoClave(s)) return null;
+  // Las dos reglas que pisan el puntaje: financiar depende del recibo o garante.
+  // Con recibo, la duda (quién decide, cuándo viene) es de agenda, no de plata.
   if (sinRecibo(s)) return "FRIO";
-  if (conRecibo(s) && (s.decisor === "consulta" || s.disponibilidad === "no_sabe")) return "CALIENTE";
+  if (conRecibo(s)) return "CALIENTE";
   const total = puntaje(s);
   if (total >= UMBRAL_CALIENTE) return "CALIENTE";
   if (total >= UMBRAL_TIBIO) return "TIBIO";

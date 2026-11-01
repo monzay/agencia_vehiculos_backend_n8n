@@ -2,7 +2,8 @@ import { z } from "zod";
 import { responderConIA } from "./agente.js";
 import { duracionOgg, transcribirConGroq, MODELO_GROQ } from "./audio.js";
 import { LIMITES, MENSAJES_FIJOS, decidirAtencion, audioPermitido, historialParaClaude, recortar } from "./limites.js";
-import { pendientes, respondido } from "./calificacion.js";
+import { puntaje, clasificar, pendientes, respondido } from "./calificacion.js";
+import { consultaPorAuto } from "./consultas-por-auto.js";
 import { datosDeLaWeb, linkDelCatalogo } from "./origen-web.js";
 import { whereDisponible } from "./auto-publico.js";
 import { enviosDeRespuesta, REACCION_CIERRE } from "./envios.js";
@@ -93,25 +94,38 @@ async function asesorDeLaWeb(root, slug) {
   return { vendedor_id: vendedor?.id ?? null, atribuido: Boolean(vendedor) };
 }
 
-async function conAutoDeLaWeb(root, sesion, auto) {
+// Desde la web por un auto: si la consulta abierta no tenía auto, ese pasa a ser el
+// de interés y suma sus puntos; si era por otro, va en su propia consulta.
+async function conAutoDeLaWeb(root, { sesion, clienteId, ahora }, auto) {
   if (!auto?.disponible || sesion.auto_id === auto.id) return sesion;
-  await root.chat_estado.update({ where: { id: sesion.id }, data: { auto_id: auto.id } });
-  return { ...sesion, auto_id: auto.id };
+  if (sesion.auto_id != null) {
+    const id = await consultaPorAuto({ db: root, clienteId, sesionId: sesion.id, ahora }, auto.id);
+    return root.chat_estado.findUnique({ where: { id } });
+  }
+  const conAuto = { ...sesion, auto_id: auto.id };
+  const temperatura = { score: puntaje(conAuto), clasificacion: clasificar(conAuto) };
+  await root.chat_estado.update({ where: { id: sesion.id }, data: { auto_id: auto.id, ...temperatura } });
+  return { ...conAuto, ...temperatura };
 }
 
 // La conversación sigue en la misma sesión mientras haya actividad en las
-// últimas 24 h; si no, empieza una nueva.
+// últimas 24 h; si no, empieza una nueva. Con una consulta por auto, sigue en la
+// del último mensaje.
 async function sesionDe(root, clienteId, ahora, web) {
-  const ultima = await root.chat_estado.findFirst({ where: { cliente_id: clienteId }, orderBy: { id: "desc" } });
+  const ultima = await root.chat_estado.findFirst({ where: { cliente_id: clienteId }, orderBy: [{ ultimo_mensaje: "desc" }, { id: "desc" }] });
   const actividad = ultima?.ultimo_mensaje ?? ultima?.sesion_inicio;
   const vigente = actividad && ahora - new Date(actividad) < SESION_VIGENTE_MS;
-  if (vigente) return conAutoDeLaWeb(root, ultima, web.auto);
+  if (vigente) return conAutoDeLaWeb(root, { sesion: ultima, clienteId, ahora }, web.auto);
+  // Nace fría, con los puntos de lo que ya se sabe (el auto si viene de la web).
+  const inicial = web.auto?.disponible ? { auto_id: web.auto.id } : {};
   return root.chat_estado.create({
     data: {
       cliente_id: clienteId,
       origen: web.ref ? "web" : "whatsapp",
       ultimo_mensaje: ahora,
-      ...(web.auto?.disponible && { auto_id: web.auto.id }),
+      ...inicial,
+      score: puntaje(inicial),
+      clasificacion: clasificar(inicial),
       ...(await asesorDeLaWeb(root, web.asesor)),
     },
   });
@@ -198,8 +212,10 @@ async function correspondeReaccionar({ root, cliente, sesion }, texto, datos) {
 }
 
 // Después de gastar en Claude la respuesta sale igual: un fallo al guardar queda en el log.
+// Si la IA pasó a la consulta de otro auto, el turno se cierra en esa.
 async function cerrarTurno(turno, r) {
-  const { root, sesion, ahora } = turno;
+  const { root, ahora } = turno;
+  const sesion = r.sesionId ? { id: r.sesionId } : turno.sesion;
   const motivo = r.derivar ? `El agente no pudo responder (${r.motivo}).` : null;
   const resultados = await Promise.allSettled([
     guardarMensaje(turno, "saliente", r.texto, unMsDespues(ahora)),
@@ -269,6 +285,8 @@ async function responderConAgente(turno, imagenes, deps) {
         sesionId: sesion.id,
         urlPublica: process.env.PUBLIC_WEB_URL,
         ahora,
+        // Abrir o retomar la consulta de otro auto: con el usuario del backend, solo para este cliente.
+        consultaPorAuto: (sesionId, autoId) => consultaPorAuto({ db: root, clienteId: cliente.id, sesionId, ahora }, autoId),
         cobranza: turno.cobranza && { financiacionId: turno.cobranza.financiacionId, avisoId: turno.cobranza.avisoId },
       },
       registrarConsumo: ({ modelo, usage }) =>

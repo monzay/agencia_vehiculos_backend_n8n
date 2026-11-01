@@ -19,13 +19,27 @@ function soloColumnas(objeto, columnas) {
 }
 const cumple = (fila, [campo, esperado]) => (esperado?.not === undefined ? (fila[campo] ?? null) === esperado : fila[campo] !== esperado.not);
 
+// Consultas como las devuelve Prisma: filtradas por auto y por fecha, y en el orden pedido (desc).
+const consultasQue = (sesiones, where = {}) =>
+  sesiones.filter((s) => (where.auto_id === undefined || s.auto_id === where.auto_id) && (!where.ultimo_mensaje || s.ultimo_mensaje >= where.ultimo_mensaje.gte));
+function enOrden(filas, orderBy = []) {
+  const campos = [orderBy].flat().map((o) => Object.keys(o)[0]);
+  return [...filas].sort((a, b) => {
+    for (const campo of campos) {
+      const diferencia = (b[campo] ?? 0) - (a[campo] ?? 0);
+      if (diferencia) return diferencia;
+    }
+    return 0;
+  });
+}
+
 // Base simulada con estado en memoria para lo que toca el orquestador.
 // `cliente` es la ficha del número de las pruebas (TEL), ya vinculada a su canal de WhatsApp;
 // `clientes` son fichas sueltas, sin ese vínculo.
-function baseFalsa({ cliente = null, clientes = [], sesion = null, mensajesHoy = 0, consumosHoy = 0, gastoMes = 0, gastoClienteHoy = 0, usado = null, ubicacion = null, autos = [], vendedores = [], aviso = null } = {}) {
+function baseFalsa({ cliente = null, clientes = [], sesion = null, sesiones = [], mensajesHoy = 0, consumosHoy = 0, gastoMes = 0, gastoClienteHoy = 0, usado = null, ubicacion = null, autos = [], vendedores = [], aviso = null } = {}) {
   const fichas = [...(cliente ? [{ canal: "whatsapp", ...cliente }] : []), ...clientes].map((ficha) => ({ ...FICHA_VACIA, ...ficha }));
   const canales = cliente ? [{ id: 1, cliente_id: cliente.id, canal: "whatsapp", identificador: TEL }] : [];
-  const e = { clientes: fichas, canales, transacciones: 0, sesiones: sesion ? [sesion] : [], historial: [], consumos: [], updates: [], consultas: [], bajas: [], alertas: [] };
+  const e = { clientes: fichas, canales, transacciones: 0, sesiones: [...(sesion ? [sesion] : []), ...sesiones], historial: [], consumos: [], updates: [], consultas: [], bajas: [], alertas: [] };
   let proximaFicha = 77;
   const fichasQue = (where = {}) => e.clientes.filter((ficha) => Object.entries(soloColumnas(where, COLUMNAS_CLIENTE)).every((par) => cumple(ficha, par)));
   const primeraFicha = async ({ where }) => fichasQue(where)[0] ?? null;
@@ -65,7 +79,8 @@ function baseFalsa({ cliente = null, clientes = [], sesion = null, mensajesHoy =
       },
     },
     chat_estado: {
-      findFirst: async () => e.sesiones.at(-1) ?? null,
+      findFirst: async ({ where, orderBy } = {}) => enOrden(consultasQue(e.sesiones, where), orderBy)[0] ?? null,
+      findUnique: async ({ where }) => e.sesiones.find((s) => s.id === where.id) ?? null,
       create: async ({ data }) => (e.sesiones.push({ id: 900 + e.sesiones.length, ...data }), e.sesiones.at(-1)),
       update: async (args) => (e.updates.push(args), args),
     },
@@ -83,7 +98,7 @@ function baseFalsa({ cliente = null, clientes = [], sesion = null, mensajesHoy =
       },
       create: async ({ data }) => (e.historial.push(data), data),
     },
-    vehiculo_cliente: { findFirst: async () => usado },
+    vehiculo_cliente: { findFirst: async () => usado, create: async ({ data }) => data },
     ubicacion: { findUnique: async () => ubicacion },
     ia_consumos: {
       aggregate: async ({ where }) =>
@@ -332,6 +347,13 @@ test("la sesión nueva nace con ultimo_mensaje (así vence a las 24 h)", async (
   assert.deepEqual(root.estado.sesiones[0].ultimo_mensaje, ahora);
 });
 
+test("la consulta nueva nace con 0 puntos y fría", async () => {
+  const root = baseFalsa({ cliente: { id: 50 } });
+  await atenderMensaje({ telefono: "5493885550101", texto: "Hola", ahora }, deps(root));
+  assert.equal(root.estado.sesiones[0].score, 0);
+  assert.equal(root.estado.sesiones[0].clasificacion, "FRIO");
+});
+
 test("una sesión de hace 25 h no se reutiliza; una de hace 23 h, sí", async () => {
   const hace = (h) => new Date(ahora.getTime() - h * 3_600_000);
   const vieja = baseFalsa({ cliente: { id: 50 }, sesion: { id: 1, ultimo_mensaje: hace(25) } });
@@ -463,10 +485,52 @@ test("sin link de un asesor la consulta queda sin asignar, venga de la web o esc
   }
 });
 
-test("desde la web con la consulta ya abierta: el auto de la web pasa a ser el de interés", async () => {
+test("desde la web nace fría con los puntos del auto de interés", async () => {
+  const root = baseFalsa({ autos: [peugeot] });
+  await atenderMensaje({ telefono: "5493885550101", texto: DE_LA_WEB, ahora }, deps(root));
+  assert.equal(root.estado.sesiones[0].score, 2);
+  assert.equal(root.estado.sesiones[0].clasificacion, "FRIO");
+});
+
+test("desde la web con la consulta abierta sin auto: el auto de la web pasa a ser el de interés y suma sus puntos", async () => {
   const root = baseFalsa({ sesion: { id: 1, ultimo_mensaje: ahora, auto_id: null }, autos: [peugeot] });
   await atenderMensaje({ telefono: "5493885550101", texto: DE_LA_WEB, ahora }, deps(root));
-  assert.ok(root.estado.updates.some((u) => u.where.id === 1 && u.data.auto_id === 5));
+  assert.ok(root.estado.updates.some((u) => u.where.id === 1 && u.data.auto_id === 5 && u.data.score === 2 && u.data.clasificacion === "FRIO"));
+});
+
+test("desde la web por otro auto con la consulta abierta: abre otra consulta para ese auto", async () => {
+  const root = baseFalsa({ sesion: { id: 1, ultimo_mensaje: ahora, auto_id: 9, pago_tipo: "contado" }, autos: [peugeot] });
+  await atenderMensaje({ telefono: TEL, texto: DE_LA_WEB, ahora }, deps(root));
+  const nueva = root.estado.sesiones.find((s) => s.auto_id === 5);
+  assert.ok(nueva, "abre la consulta del Peugeot");
+  assert.equal(nueva.pago_tipo, "contado", "con las respuestas de la persona");
+  assert.equal(root.estado.updates.some((u) => u.where.id === 1 && "auto_id" in u.data), false, "no pisa el auto de la otra consulta");
+  assert.equal(root.estado.updates.at(-1).where.id, nueva.id, "el turno se cierra en la consulta nueva");
+});
+
+test("el turno se cierra en la consulta del auto que quedó activo", async () => {
+  const root = baseFalsa({ sesion: { id: 1, ultimo_mensaje: ahora, auto_id: 9 }, autos: [peugeot] });
+  const respuestas = [
+    { stop_reason: "tool_use", usage: {}, content: [{ type: "tool_use", id: "t1", name: "registrar_calificacion", input: { auto_ref: "A12B" } }] },
+    { stop_reason: "end_turn", usage: {}, content: [{ type: "text", text: "¡Buenísimo el 208!" }] },
+  ];
+  const anthropic = { messages: { create: async () => respuestas.shift() } };
+
+  await atenderMensaje({ telefono: TEL, texto: "Mejor el Peugeot 208", ahora }, { ...deps(root, anthropic), dbAgente: root });
+
+  const nueva = root.estado.sesiones.find((s) => s.auto_id === 5);
+  assert.ok(nueva, "la IA registró otro auto: hay consulta por el Peugeot");
+  const cierre = root.estado.updates.at(-1);
+  assert.equal(cierre.where.id, nueva.id);
+  assert.deepEqual(cierre.data.ultimo_mensaje, ahora);
+});
+
+test("la conversación sigue en la consulta del último mensaje", async () => {
+  const hace = (h) => new Date(ahora.getTime() - h * 3_600_000);
+  const root = baseFalsa({ cliente: { id: 50 }, sesiones: [{ id: 1, ultimo_mensaje: hace(1), auto_id: 5 }, { id: 2, ultimo_mensaje: hace(5), auto_id: 7 }] });
+  await atenderMensaje({ telefono: TEL, texto: "Hola", ahora }, deps(root));
+  assert.equal(root.estado.sesiones.length, 2, "no abre otra");
+  assert.equal(root.estado.updates.at(-1).where.id, 1);
 });
 
 test("desde la web por un auto que ya no está: no se carga y se le avisa al agente", async () => {

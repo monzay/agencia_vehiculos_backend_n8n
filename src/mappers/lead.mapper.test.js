@@ -2,20 +2,16 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { clasificacionDeSesion, mapClienteToLead, mapClienteToLeadDetalle } from "./lead.mapper.js";
 
-// Decisión del 11/10/2026: una consulta que ya está respondiendo preguntas pero
-// todavía no tiene temperatura se muestra "En calificación", no fría.
+// Decisión del 31/10/2026: la consulta nace fría y siempre tiene temperatura
+// guardada; el panel muestra esa (las de venta no se clasifican).
 
 test("con temperatura guardada, se muestra esa", () => {
   assert.equal(clasificacionDeSesion({ clasificacion: "CALIENTE", pago_tipo: "contado" }), "CALIENTE");
 });
 
-test("respondiendo preguntas sin temperatura todavía: en calificación", () => {
-  assert.equal(clasificacionDeSesion({ clasificacion: null, pago_tipo: "financiado", score: 0 }), "EN_CALIFICACION");
-  assert.equal(clasificacionDeSesion({ clasificacion: null, auto_id: 5, score: 2 }), "EN_CALIFICACION");
-});
-
-test("solo saludó: consulta general (sin clasificar)", () => {
-  assert.equal(clasificacionDeSesion({ clasificacion: null, score: 0 }), null);
+test("sin temperatura guardada no se inventa una (ya no existe \"en calificación\")", () => {
+  assert.equal(clasificacionDeSesion({ clasificacion: null, pago_tipo: "financiado", score: 0 }), null);
+  assert.equal(clasificacionDeSesion({ clasificacion: null, auto_id: 5, score: 2 }), null);
 });
 
 test("quiere vender su auto: no se clasifica", () => {

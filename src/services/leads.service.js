@@ -33,8 +33,7 @@ export async function listarLeads() {
   const leads = clientes.map((c) => mapClienteToLead(c, autosMap));
 
   // Orden: mas "calientes" primero, luego por score y actividad reciente.
-  // "En calificación" queda debajo de las que ya tienen temperatura y arriba de las generales.
-  const peso = { CALIENTE: 3, TIBIO: 2, FRIO: 1, EN_CALIFICACION: 0.5 };
+  const peso = { CALIENTE: 3, TIBIO: 2, FRIO: 1 };
   leads.sort((a, b) => {
     const pc = (peso[b.clasificacion] ?? 0) - (peso[a.clasificacion] ?? 0);
     if (pc !== 0) return pc;

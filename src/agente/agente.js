@@ -20,17 +20,20 @@ const textoDe = (respuesta) =>
 const LIMITE_ALCANZADO = "Límite de consultas alcanzado: respondé al cliente con la información que ya tenés.";
 
 // De a una y en orden: así dos herramientas del mismo turno no compiten (p. ej.
-// los intentos de verificar el DNI) y las fotos salen en el orden pedido.
+// los intentos de verificar el DNI) y las fotos salen en el orden pedido. Si una
+// pasa a la consulta de otro auto, las siguientes trabajan sobre esa.
 async function resolverHerramientas(usos, ctx, disponibles) {
   const resultados = [];
   let fotos = [];
   let ficha = null;
+  let ctxActual = ctx;
   for (const [i, uso] of usos.entries()) {
     if (i >= disponibles) {
       resultados.push({ type: "tool_result", tool_use_id: uso.id, is_error: true, content: LIMITE_ALCANZADO });
       continue;
     }
-    const r = await ejecutarHerramienta(uso.name, uso.input, ctx);
+    const r = await ejecutarHerramienta(uso.name, uso.input, ctxActual);
+    if (r.sesionId) ctxActual = { ...ctxActual, sesionId: r.sesionId };
     if (uso.name === "enviar_fotos_auto" && !r.esError) {
       fotos = [...fotos, ...(r.resultado.fotos ?? [])];
       ficha = ficha ?? r.resultado.ficha ?? null;
@@ -41,7 +44,7 @@ async function resolverHerramientas(usos, ctx, disponibles) {
         : { type: "tool_result", tool_use_id: uso.id, content: JSON.stringify(r.resultado) }
     );
   }
-  return { resultados, fotos, ficha };
+  return { resultados, fotos, ficha, ctx: ctxActual };
 }
 
 // Un fallo al guardar el costo no le corta la respuesta al cliente: queda en el log
@@ -70,6 +73,7 @@ export async function responderConIA({ mensajes, contexto, ctx, registrarConsumo
   let sinHerramientas = false;
   let fotos = [];
   let ficha = null;
+  let ctxTurno = ctx;
   // Claude a veces contesta en el mismo turno en que usa una herramienta y después
   // no agrega nada (o repite lo mismo): se manda la respuesta final y, si viene
   // vacía, lo que había escrito antes.
@@ -101,7 +105,8 @@ export async function responderConIA({ mensajes, contexto, ctx, registrarConsumo
       if (sinHerramientas) return respaldo("demasiadas_herramientas");
       const usos = respuesta.content.filter((b) => b.type === "tool_use");
       const disponibles = LIMITES.herramientasPorMensaje - herramientasUsadas;
-      const { resultados, fotos: nuevas, ficha: fichaNueva } = await resolverHerramientas(usos, ctx, disponibles);
+      const { resultados, fotos: nuevas, ficha: fichaNueva, ctx: ctxNuevo } = await resolverHerramientas(usos, ctxTurno, disponibles);
+      ctxTurno = ctxNuevo;
       fotos = [...fotos, ...nuevas];
       ficha = ficha ?? fichaNueva;
       herramientasUsadas += Math.min(usos.length, disponibles);
@@ -114,6 +119,8 @@ export async function responderConIA({ mensajes, contexto, ctx, registrarConsumo
     }
 
     const texto = textoDe(respuesta) || textos.filter(Boolean).join("\n");
-    return texto ? { ok: true, texto, fotos, ficha } : respaldo("sin_texto");
+    // Si el turno pasó a la consulta de otro auto, el orquestador lo cierra en esa.
+    const otraConsulta = ctxTurno.sesionId !== ctx.sesionId && { sesionId: ctxTurno.sesionId };
+    return texto ? { ok: true, texto, fotos, ficha, ...otraConsulta } : respaldo("sin_texto");
   }
 }

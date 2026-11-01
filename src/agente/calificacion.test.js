@@ -5,12 +5,12 @@ import { puntaje, clasificar, pendientes, respondido } from "./calificacion.js";
 // Reglas del bot actual: auto de la web +2 · contado +3 / financiado 0 ·
 // recibo +2 / sin recibo −2 · usado +1 · decide solo +2 / consulta −1 ·
 // esta semana +3 / próximas +1 / no sabe −1 · nunca baja de 0.
-// Temperatura: ≥7 caliente, ≥3 tibio; con recibo y (consulta o no sabe) →
-// caliente; financiado sin recibo → frío (pisa todo).
+// Temperatura: ≥7 caliente, ≥3 tibio; financiado con recibo → caliente y
+// financiado sin recibo → frío (las dos pisan el puntaje).
 
-test("sesión sin respuestas: puntaje 0 y sin clasificar", () => {
+test("sesión sin respuestas: puntaje 0 y frío", () => {
   assert.equal(puntaje({}), 0);
-  assert.equal(clasificar({}), null);
+  assert.equal(clasificar({}), "FRIO");
 });
 
 test("cada respuesta suma sus puntos", () => {
@@ -37,28 +37,37 @@ test("puntaje entre 3 y 6: tibio", () => {
   assert.equal(clasificar({ pago_tipo: "contado", entrega_usado: false }), "TIBIO");
 });
 
-test("puntaje menor a 3 con lo clave respondido: frío", () => {
-  assert.equal(clasificar({ pago_tipo: "financiado", credito_ok: 1 }), "FRIO");
+test("puntaje menor a 3: frío", () => {
+  assert.equal(clasificar({ pago_tipo: "contado", decisor: "consulta", disponibilidad: "no_sabe" }), "FRIO");
 });
 
-// Decisión del 11/10/2026: sin lo clave respondido queda "en calificación"
-// (null), para que una conversación que recién empieza no se vea fría.
+// Decisión del 31/10/2026: la consulta nace fría y la temperatura se adapta con
+// cada respuesta, aunque todavía no haya dicho cómo paga.
 
-test("sin la forma de pago todavía no tiene temperatura", () => {
-  assert.equal(clasificar({ auto_id: 5, decisor: "solo", disponibilidad: "esta_semana" }), null);
+test("sin la forma de pago se califica por el puntaje que lleva", () => {
+  assert.equal(clasificar({ auto_id: 5 }), "FRIO");
+  assert.equal(clasificar({ auto_id: 5, entrega_usado: true }), "TIBIO");
+  assert.equal(clasificar({ auto_id: 5, decisor: "solo", disponibilidad: "esta_semana" }), "CALIENTE");
 });
 
-test("financia pero todavía no dijo si tiene recibo: sin temperatura", () => {
-  assert.equal(clasificar({ pago_tipo: "financiado", entrega_usado: true }), null);
+test("financia y todavía no dijo si tiene recibo: se califica por el puntaje", () => {
+  assert.equal(clasificar({ pago_tipo: "financiado", entrega_usado: true }), "FRIO");
+  assert.equal(clasificar({ pago_tipo: "financiado", auto_id: 5, entrega_usado: true }), "TIBIO");
 });
 
-test("contado ya alcanza para tener temperatura", () => {
+test("contado solo ya es tibio", () => {
   assert.equal(clasificar({ pago_tipo: "contado" }), "TIBIO");
 });
 
 test("con recibo aunque lo consulte con alguien: caliente", () => {
   const s = { pago_tipo: "financiado", credito_ok: 1, decisor: "consulta" };
   assert.equal(clasificar(s), "CALIENTE");
+});
+
+test("con recibo o garante es caliente, sume lo que sume", () => {
+  assert.equal(clasificar({ pago_tipo: "financiado", credito_ok: 1 }), "CALIENTE");
+  assert.equal(clasificar({ auto_id: 5, pago_tipo: "financiado", credito_ok: 1 }), "CALIENTE");
+  assert.equal(clasificar({ pago_tipo: "financiado", credito_ok: 1, decisor: "solo", disponibilidad: "proximas" }), "CALIENTE");
 });
 
 test("con recibo aunque no sepa cuándo viene: caliente", () => {

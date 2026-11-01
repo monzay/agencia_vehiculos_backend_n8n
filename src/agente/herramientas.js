@@ -84,6 +84,15 @@ async function autoDeInteres(db, ref) {
   return auto?.id ?? null;
 }
 
+// Una consulta por auto: si el cliente se interesa en otro auto, sus respuestas van
+// a la consulta de ese auto, que abre o retoma el backend (`ctx.consultaPorAuto`).
+async function consultaDelAuto(ctx, autoId) {
+  if (!autoId || !ctx.consultaPorAuto) return ctx.sesionId;
+  const actual = await ctx.db.chat_estado.findUnique({ where: { id: ctx.sesionId }, select: { auto_id: true } });
+  if (actual?.auto_id == null || actual.auto_id === autoId) return ctx.sesionId;
+  return ctx.consultaPorAuto(ctx.sesionId, autoId);
+}
+
 // Con la visita acordada, el vendedor queda avisado para esperarlo con el auto listo.
 // Si ya estaba avisado por otro motivo (una derivación), no se pisa.
 function cambiosDeSesion(input, autoId, momento, yaAvisado) {
@@ -275,6 +284,8 @@ const HERRAMIENTAS = [
     // No estricta: el modo estricto de Claude admite hasta 16 campos opcionales
     // sumando todas las herramientas, y esta sola tiene 16. Igual se valida con zod.
     estricta: false,
+    // Puede pasar a la consulta de otro auto: devuelve en qué consulta quedó.
+    cambiaConsulta: true,
     esquema: z.strictObject({
       auto_ref: textoLibre(20).nullish().describe("Código (ref) del auto que le interesa, tal como lo devuelven las herramientas."),
       pago_tipo: z.enum(["contado", "financiado"]).nullish(),
@@ -293,10 +304,12 @@ const HERRAMIENTAS = [
       disponibilidad: z.enum(["esta_semana", "proximas", "no_sabe"]).nullish().describe("Cuándo puede venir a la agencia."),
       visita_propuesta: textoLibre(120).nullish().describe("Cuándo acordó venir: un día, una hora, una semana o una fecha, por ejemplo 'sábado a la mañana'."),
     }),
-    async ejecutar(input, { db, sesionId, ahora }) {
-      requiereSesion({ sesionId });
+    async ejecutar(input, ctx) {
+      requiereSesion(ctx);
+      const { db, ahora } = ctx;
       const momento = ahora ?? new Date();
       const autoId = await autoDeInteres(db, input.auto_ref);
+      const sesionId = await consultaDelAuto(ctx, autoId);
       const actual = await db.chat_estado.findUnique({
         where: { id: sesionId },
         select: { auto_id: true, pago_tipo: true, anticipo: true, credito_ok: true, entrega_usado: true, decisor: true, disponibilidad: true, visita_propuesta: true, requiere_vendedor: true },
@@ -308,7 +321,7 @@ const HERRAMIENTAS = [
         data: { ...cambios, score: puntaje(vigente), clasificacion: clasificar(vigente), updated_at: momento },
       });
       const usado = await guardarUsado(db, sesionId, input, momento);
-      return { registrado: true, faltan: pendientes(vigente, usado) };
+      return { resultado: { registrado: true, faltan: pendientes(vigente, usado) }, sesionId };
     },
   },
   {
@@ -391,7 +404,11 @@ export async function ejecutarHerramienta(nombre, entrada, ctx) {
   }
 
   try {
-    return { esError: false, resultado: await herramienta.ejecutar(validado.data, ctx) };
+    const salida = await herramienta.ejecutar(validado.data, ctx);
+    if (!herramienta.cambiaConsulta) return { esError: false, resultado: salida };
+    // El id de la consulta queda para el orquestador: a la IA no le llega.
+    const otraConsulta = salida.sesionId !== ctx.sesionId;
+    return { esError: false, resultado: salida.resultado, ...(otraConsulta && { sesionId: salida.sesionId }) };
   } catch (err) {
     console.error(`[agente] la herramienta ${nombre} falló:`, err?.message);
     return { esError: true, error: "No se pudo completar la consulta. Ofrecé derivar a un vendedor." };

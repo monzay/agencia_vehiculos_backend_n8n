@@ -3,7 +3,7 @@
 //
 // Un cliente puede tener varias filas en `chat_estado` (varias sesiones de
 // chat). De todas ellas derivamos:
-//   - clasificacion: CALIENTE | TIBIO | FRIO (la guardada), EN_CALIFICACION o null (ver clasificacionDeSesion)
+//   - clasificacion: CALIENTE | TIBIO | FRIO (la guardada) o null (ver clasificacionDeSesion)
 //   - score: el maximo entre las sesiones
 //   - autos consultados: los `auto_ref` distintos referenciados en sus sesiones
 //   - ultima actividad, paso actual y datos de la sesion "principal"
@@ -11,22 +11,12 @@
 import { mapAutoToVehiculo } from "./vehiculo.mapper.js";
 
 
-// Clasificacion que se muestra de una sesion.
-// Quedan SIN clasificar (null):
-//   - consultas generales (solo saludo/menu): derivar FRIO por score 0 las
-//     mostraria como "consulta fria" sin serlo.
-//   - venta/consignacion: no pasan por la calificacion del bot, no son leads
-//     de compra frios/tibios/calientes.
-// Con señales pero sin temperatura guardada, la consulta está "en calificación":
-// la temperatura se pone recién cuando respondió lo clave (decisión del
-// 11/10/2026), así una conversación que empieza no se ve fría.
+// Clasificacion que se muestra de una sesion: la guardada, porque la consulta
+// nace fría y se recalcula con cada respuesta (decisión del 31/10/2026).
+// Venta/consignacion no pasan por la calificacion del bot: quedan sin clasificar.
 export function clasificacionDeSesion(sesion) {
   if (sesion?.tipo_lead === "venta") return null;
-  if (sesion?.clasificacion) return sesion.clasificacion;
-  const conSenales =
-    sesion != null &&
-    (sesion.auto_id != null || sesion.pago_tipo != null || (sesion.score ?? 0) > 0);
-  return conSenales ? "EN_CALIFICACION" : null;
+  return sesion?.clasificacion ?? null;
 }
 
 function fechaMax(fechas) {
