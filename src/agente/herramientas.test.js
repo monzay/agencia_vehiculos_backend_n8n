@@ -615,11 +615,10 @@ test("avisar_administracion no acepta tipos inventados ni links en el detalle", 
 
 const CUIL_DE_PRUEBA = "20123456786"; // DNI 12345678
 
-// Base del backend lista para consultar: verificación prendida, términos publicados,
-// cliente que financia con recibo y que ya dijo que sí.
+// Base del backend lista para consultar: términos publicados, cliente que financia con
+// recibo y que ya dijo que sí.
 function baseParaVerificar() {
   return baseFalsa({
-    "configuracion.findUnique": { clave: "verificacion_crediticia", valor: "1" },
     "terminos_versiones.findFirst": { id: 3 },
     "chat_estado.findUnique": { pago_tipo: "financiado", credito_ok: 1 },
     "consentimientos.findFirst": { id: 1, acepta: true },

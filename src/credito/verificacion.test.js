@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { registrarConsentimiento, verificarSituacion, estadoCredito, CLAVE_CONFIG } from "./verificacion.js";
+import { registrarConsentimiento, verificarSituacion, estadoCredito } from "./verificacion.js";
 
 const AHORA = new Date("2026-11-01T15:00:00Z");
 const DIA_MS = 24 * 3_600_000;
@@ -9,11 +9,10 @@ const OTRO_CUIL = "27301256782";
 const FINANCIA = { id: 7, pago_tipo: "financiado", credito_ok: 1 };
 
 // Base en memoria con lo que usa la verificación. findFirst devuelve el último que cumple.
-function baseFalsa({ activa = true, terminos = [{ id: 3 }], sesion = FINANCIA, cliente = { id: 1, dni: null, cuil: null }, otrosClientes = [], consentimientos = [], consultas = [] } = {}) {
+function baseFalsa({ terminos = [{ id: 3 }], sesion = FINANCIA, cliente = { id: 1, dni: null, cuil: null }, otrosClientes = [], consentimientos = [], consultas = [] } = {}) {
   const estado = { consentimientos, consultas, cliente, actualizacionesDeSesion: 0 };
   const ultimo = (filas, cumple) => filas.filter(cumple).at(-1) ?? null;
   const db = {
-    configuracion: { findUnique: async ({ where }) => (activa && where.clave === CLAVE_CONFIG ? { clave: CLAVE_CONFIG, valor: "1" } : null) },
     terminos_versiones: { findFirst: async () => terminos.at(-1) ?? null },
     consentimientos: {
       findFirst: async ({ where }) => ultimo(estado.consentimientos, (c) => c.cliente_id === where.cliente_id),
@@ -58,15 +57,19 @@ function bcraFalso(respuesta = { estado: "ok", deudas: null, cheques: null }) {
 const aceptado = { id: 1, cliente_id: 1, terminos_version_id: 3, acepta: true };
 const ctx = (db, bcra) => ({ db, clienteId: 1, sesionId: 7, ahora: AHORA, bcra });
 
-test("con la verificación apagada no se consulta", async () => {
-  for (const apagada of [{ activa: false }, { terminos: [] }]) {
-    const { db } = baseFalsa({ ...apagada, consentimientos: [aceptado] });
-    const bcra = bcraFalso();
-    assert.equal((await verificarSituacion(ctx(db, bcra), CUIL)).consultado, false);
-    assert.equal((await registrarConsentimiento(ctx(db), true)).registrado, false);
-    assert.equal(await estadoCredito({ db, clienteId: 1, sesion: FINANCIA, ahora: AHORA }), null);
-    assert.equal(bcra.llamadas, 0);
-  }
+test("sin política publicada no se consulta", async () => {
+  const { db } = baseFalsa({ terminos: [], consentimientos: [aceptado] });
+  const bcra = bcraFalso();
+  assert.equal((await verificarSituacion(ctx(db, bcra), CUIL)).consultado, false);
+  assert.equal((await registrarConsentimiento(ctx(db), true)).registrado, false);
+  assert.equal(await estadoCredito({ db, clienteId: 1, sesion: FINANCIA, ahora: AHORA }), null);
+  assert.equal(bcra.llamadas, 0);
+});
+
+test("con la política publicada está activa: no depende de ninguna configuración", async () => {
+  const { db } = baseFalsa();
+  assert.equal(db.configuracion, undefined, "la base falsa no tiene configuración: leerla rompería");
+  assert.equal(await estadoCredito({ db, clienteId: 1, sesion: FINANCIA, ahora: AHORA }), "pedir_consentimiento");
 });
 
 test("el consentimiento se guarda con la versión vigente de los términos", async () => {

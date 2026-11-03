@@ -4,10 +4,8 @@ import { prisma } from "../lib/prisma.js";
 // Se declaran las claves conocidas y su tipo para parsear/serializar de forma
 // consistente (la columna `valor` es texto).
 
-// `verificacion_crediticia`: consulta al BCRA desde el bot (src/credito). Apagada hasta que
-// la agencia tenga la autorización del BCRA y publique su política de privacidad.
-const BOOL_KEYS = ["reparticion_equitativa", "verificacion_crediticia"];
-const DEFAULTS = { reparticion_equitativa: true, verificacion_crediticia: false };
+const BOOL_KEYS = ["reparticion_equitativa"];
+const DEFAULTS = { reparticion_equitativa: true };
 
 function parsear(clave, valor) {
   if (BOOL_KEYS.includes(clave)) return valor === "1" || valor === "true";

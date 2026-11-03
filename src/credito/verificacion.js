@@ -6,12 +6,12 @@ import { versionVigente } from "../services/terminos.service.js";
 //
 // - Es SOLO INFORMATIVA: el semáforo queda para el asesor; no cambia el puntaje ni la
 //   temperatura, y a la IA no le llega (no puede contárselo al cliente).
-// - Solo con la verificación prendida por la agencia Y sus términos de privacidad
-//   publicados, con un "sí" vigente del cliente (Ley 25.326, art. 5 y 6).
+// - Siempre activa (decisión del dueño del 03/11/2026: no se puede apagar). Solo hace falta
+//   que la agencia haya publicado sus términos, porque sin ellos no hay qué aceptar, y un
+//   "sí" vigente del cliente (Ley 25.326, art. 5 y 6).
 // - Corre con el usuario de base del backend, como `consultaPorAuto`: el del agente no
 //   tiene permisos sobre estas tablas.
 
-export const CLAVE_CONFIG = "verificacion_crediticia";
 const FINALIDAD = "consulta_crediticia";
 const VIGENCIA_MS = 30 * 24 * 3_600_000; // el dato del BCRA es mensual
 // Un error (BCRA caído, límite) frena los reintentos solo un rato: después se puede volver a pedir.
@@ -20,7 +20,7 @@ const ESPERA_TRAS_ERROR_MS = 3_600_000;
 export const SIN_VERIFICACION = "La verificación crediticia no está activa: seguí con la charla.";
 
 const MOTIVOS = {
-  apagada: SIN_VERIFICACION,
+  sinTerminos: SIN_VERIFICACION,
   noCorresponde: "Solo se verifica si financia y ya dijo si tiene recibo o garante.",
   sinPermiso: "El cliente no autorizó la consulta: no la hagas sin su sí.",
   cuilInvalido: "El CUIL no es válido: pedíselo de nuevo (son 11 números).",
@@ -30,13 +30,6 @@ const MOTIVOS = {
 
 const no = (motivo) => ({ consultado: false, motivo });
 const financiaYDijoLoDelRecibo = (sesion) => sesion?.pago_tipo === "financiado" && sesion.credito_ok != null;
-
-// Prendida por la agencia y con términos publicados: sin términos no hay qué aceptar.
-async function terminosSiEstaActiva(db) {
-  const [config, terminos] = await Promise.all([db.configuracion.findUnique({ where: { clave: CLAVE_CONFIG } }), versionVigente(db)]);
-  const prendida = config?.valor === "1" || config?.valor === "true";
-  return prendida ? terminos : null;
-}
 
 const ultimoConsentimiento = (db, clienteId) =>
   db.consentimientos.findFirst({ where: { cliente_id: clienteId, finalidad: FINALIDAD, deleted_at: null }, orderBy: { id: "desc" } });
@@ -54,8 +47,8 @@ const errorReciente = (db, clienteId, ahora) => consultaDesde(db, clienteId, "er
  * `wamid` es el mensaje de WhatsApp en que respondió: la prueba del consentimiento.
  */
 export async function registrarConsentimiento({ db, clienteId, ahora, wamid = null }, acepta) {
-  const terminos = await terminosSiEstaActiva(db);
-  if (!terminos) return { registrado: false, motivo: MOTIVOS.apagada };
+  const terminos = await versionVigente(db);
+  if (!terminos) return { registrado: false, motivo: MOTIVOS.sinTerminos };
   await db.consentimientos.create({
     data: { cliente_id: clienteId, terminos_version_id: terminos.id, finalidad: FINALIDAD, acepta, wamid, created_at: ahora },
   });
@@ -99,7 +92,7 @@ function resumenDe(respuesta) {
  * @returns {Promise<{ consultado: boolean, motivo?: string }>}
  */
 export async function verificarSituacion({ db, clienteId, sesionId, ahora, bcra }, cuilTexto) {
-  if (!(await terminosSiEstaActiva(db))) return no(MOTIVOS.apagada);
+  if (!(await versionVigente(db))) return no(MOTIVOS.sinTerminos);
   const sesion = await db.chat_estado.findUnique({ where: { id: sesionId }, select: { pago_tipo: true, credito_ok: true } });
   if (!financiaYDijoLoDelRecibo(sesion)) return no(MOTIVOS.noCorresponde);
   const consentimiento = await ultimoConsentimiento(db, clienteId);
@@ -118,12 +111,12 @@ export async function verificarSituacion({ db, clienteId, sesionId, ahora, bcra 
 
 /**
  * En qué punto está la verificación para el contexto del agente: pedir el permiso, pedir el
- * CUIL o nada (apagada, no financia, dijo que no, ya se consultó en los últimos 30 días o el
+ * CUIL o nada (sin términos, no financia, dijo que no, ya se consultó en los últimos 30 días o el
  * BCRA falló hace menos de una hora).
  * @returns {Promise<"pedir_consentimiento"|"pedir_cuil"|null>}
  */
 export async function estadoCredito({ db, clienteId, sesion, ahora }) {
-  if (!financiaYDijoLoDelRecibo(sesion) || !(await terminosSiEstaActiva(db))) return null;
+  if (!financiaYDijoLoDelRecibo(sesion) || !(await versionVigente(db))) return null;
   if ((await conResultadoVigente(db, clienteId, ahora)) || (await errorReciente(db, clienteId, ahora))) return null;
   const consentimiento = await ultimoConsentimiento(db, clienteId);
   if (!consentimiento) return "pedir_consentimiento";

@@ -2,8 +2,9 @@
 
 > Decisiones del dueño del 2026-11-01: el semáforo del BCRA es SOLO INFORMATIVO (no suma ni
 > resta puntos ni cambia la temperatura), el CUIL se le pide directo al cliente y la regla
-> "sin recibo → FRIO" no se toca. El filtro arranca APAGADO hasta tener la autorización del
-> BCRA para uso comercial y la revisión legal (Ley 25.326).
+> "sin recibo → FRIO" no se toca. El 2026-11-03 el dueño decidió que esté siempre activo, sin
+> opción para apagarlo: lo único que lo frena es no tener la política de privacidad publicada.
+> La autorización del BCRA y la revisión legal (Ley 25.326) quedan a cargo de la agencia.
 > Tras la revisión de código y seguridad (2026-11-01), el dueño decidió: (a) se consulta aunque
 > la ficha no tenga DNI contra qué comparar el CUIL; el asesor ve el nombre que da el BCRA y
 > verifica en persona (riesgo aceptado: un tercero podría dar un CUIL ajeno); (b) el semáforo
@@ -168,15 +169,25 @@ como prueba.
 <!-- test: src/agente/herramientas.test.js › "registrar_consentimiento pasa el sí o el no del cliente" -->
 
 ### Requirement: Cuándo se consulta
-El sistema MUST consultar solo si la verificación está activa en la configuración de la
-agencia (apagada por defecto), el cliente financia y ya respondió si tiene recibo o
-garante. Con pago de contado MUST NOT consultarse.
+La verificación MUST estar siempre activa, sin opción para apagarla. El sistema MUST consultar
+solo si la agencia publicó su política de privacidad, el cliente financia y ya respondió si
+tiene recibo o garante. Con pago de contado MUST NOT consultarse.
 <!-- id: verificacion.verificarSituacion -->
 
-#### Scenario: Verificación apagada
-- **WHEN** la agencia no activó la verificación crediticia
+#### Scenario: Sin política publicada
+- **WHEN** la agencia todavía no publicó su política de privacidad
 - **THEN** no se pide consentimiento ni se consulta
-<!-- test: src/credito/verificacion.test.js › "con la verificación apagada no se consulta" -->
+<!-- test: src/credito/verificacion.test.js › "sin política publicada no se consulta" -->
+
+#### Scenario: Con la política publicada
+- **WHEN** la política está publicada
+- **THEN** la verificación está activa, sin depender de ninguna configuración
+<!-- test: src/credito/verificacion.test.js › "con la política publicada está activa: no depende de ninguna configuración" -->
+
+#### Scenario: No se puede apagar
+- **WHEN** alguien intenta guardar un valor para apagarla en la configuración
+- **THEN** se ignora
+<!-- test: src/services/config.service.test.js › "la verificación del BCRA no se puede apagar desde la configuración" -->
 
 #### Scenario: Paga de contado
 - **WHEN** el cliente paga de contado o todavía no dijo lo del recibo o garante

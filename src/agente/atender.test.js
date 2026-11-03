@@ -761,16 +761,15 @@ test("quien tenía una financiación cargada por la web: mi_financiacion la encu
 
 // ── Verificación crediticia (BCRA) ──
 
-// La verificación prendida, con términos publicados y sin respuestas del cliente todavía.
+// Con términos publicados y sin respuestas del cliente todavía.
 function conVerificacionActiva(root, { falla = false } = {}) {
   return Object.assign(root, {
-    configuracion: {
-      findUnique: async () => {
+    terminos_versiones: {
+      findFirst: async () => {
         if (falla) throw new Error("se cayó la base");
-        return { clave: "verificacion_crediticia", valor: "1" };
+        return { id: 1 };
       },
     },
-    terminos_versiones: { findFirst: async () => ({ id: 1 }) },
     consentimientos: { findFirst: async () => null },
     consultas_crediticias: { findFirst: async () => null },
   });

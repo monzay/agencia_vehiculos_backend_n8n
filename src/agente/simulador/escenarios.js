@@ -117,7 +117,7 @@ export const ESCENARIOS = [
     },
   },
   {
-    // Solo sirve con la verificación crediticia prendida en la base local. El BCRA es simulado:
+    // Solo sirve con la política de privacidad publicada en la base local. El BCRA es simulado:
     // el CUIL es inventado (con el dígito verificador bien) y no se consulta a nadie.
     id: "financia_bcra",
     nombre: "Diego",
