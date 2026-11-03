@@ -422,6 +422,32 @@ test("si otro proceso ya guardó el mismo mensaje (choque del índice único), s
   assert.equal(anthropic.pedidos.length, 0);
 });
 
+// ── Intervención humana: el bot pausado ──
+
+test("con la conversación tomada por una persona, guarda el entrante y no llama a Claude ni envía", async () => {
+  const root = baseFalsa({ cliente: { id: 50 }, sesion: { id: 1, ultimo_mensaje: ahora, bot_pausado: true } });
+  const anthropic = claudeFalso();
+  const r = await atenderMensaje({ telefono: TEL, wamid: "w1", texto: "¿hay alguien?", ahora }, deps(root, anthropic));
+  assert.equal(r.conIA, false);
+  assert.equal(r.envios.length, 0, "no sale nada por WhatsApp");
+  assert.equal(anthropic.pedidos.length, 0, "no gasta en IA");
+  assert.equal(root.estado.consumos.length, 0);
+  assert.deepEqual(
+    root.estado.historial.map((h) => [h.direccion, h.mensaje, h.paso_nodo]),
+    [["entrante", "¿hay alguien?", "agente_ia"]],
+    "el mensaje del cliente queda en el historial para el panel y para cuando el bot retome"
+  );
+  assert.equal(root.estado.updates.at(-1).data.ultimo_mensaje, ahora, "la sesión sigue viva");
+});
+
+test("reintento con la conversación tomada: no se guarda dos veces", async () => {
+  const root = baseFalsa({ cliente: { id: 50 }, sesion: { id: 1, ultimo_mensaje: ahora, bot_pausado: true } });
+  await atenderMensaje({ telefono: TEL, wamid: "w1", texto: "hola?", ahora }, deps(root));
+  const r = await atenderMensaje({ telefono: TEL, wamid: "w1", texto: "hola?", ahora }, deps(root));
+  assert.equal(r.duplicado, true);
+  assert.equal(root.estado.historial.filter((h) => h.wamid === "w1").length, 1);
+});
+
 // ── Conversación propia del agente ──
 
 test("el agente arma su contexto y cuenta el límite del día solo con su propia conversación", async () => {
@@ -731,4 +757,72 @@ test("quien tenía una financiación cargada por la web: mi_financiacion la encu
   const consulta = JSON.parse(resultado);
   assert.equal(consulta.verificado, true);
   assert.equal(consulta.financiaciones[0].cuotas_pendientes, 11);
+});
+
+// ── Verificación crediticia (BCRA) ──
+
+// La verificación prendida, con términos publicados y sin respuestas del cliente todavía.
+function conVerificacionActiva(root, { falla = false } = {}) {
+  return Object.assign(root, {
+    configuracion: {
+      findUnique: async () => {
+        if (falla) throw new Error("se cayó la base");
+        return { clave: "verificacion_crediticia", valor: "1" };
+      },
+    },
+    terminos_versiones: { findFirst: async () => ({ id: 1 }) },
+    consentimientos: { findFirst: async () => null },
+    consultas_crediticias: { findFirst: async () => null },
+  });
+}
+
+async function conWebPublica(fn) {
+  const antes = process.env.PUBLIC_WEB_URL;
+  process.env.PUBLIC_WEB_URL = "https://agencia.com";
+  try {
+    return await fn();
+  } finally {
+    if (antes === undefined) delete process.env.PUBLIC_WEB_URL;
+    else process.env.PUBLIC_WEB_URL = antes;
+  }
+}
+
+const financiaConRecibo = { id: 900, cliente_id: 50, pago_tipo: "financiado", credito_ok: 1, ultimo_mensaje: new Date(ahora.getTime() - 60_000) };
+
+test("con la verificación activa y el cliente financiando, el agente recibe el pedido de permiso con el link de privacidad", async () => {
+  await conWebPublica(async () => {
+    const root = conVerificacionActiva(baseFalsa({ cliente: { id: 50 }, sesion: financiaConRecibo }));
+    const anthropic = claudeFalso("Dale");
+    await atenderMensaje({ telefono: TEL, texto: "tengo recibo de sueldo", ahora }, deps(root, anthropic));
+    const contexto = anthropic.pedidos[0].system[1].text;
+    assert.match(contexto, /Verificación crediticia: pedile permiso/);
+    assert.ok(contexto.includes("https://agencia.com/privacidad"));
+  });
+});
+
+test("si falla averiguar en qué va la verificación crediticia, la respuesta sale igual", async () => {
+  await conWebPublica(async () => {
+    const root = conVerificacionActiva(baseFalsa({ cliente: { id: 50 }, sesion: financiaConRecibo }), { falla: true });
+    const anthropic = claudeFalso("Dale");
+    const r = await atenderMensaje({ telefono: TEL, texto: "tengo recibo", ahora }, deps(root, anthropic));
+    assert.equal(r.texto, "Dale");
+    assert.doesNotMatch(anthropic.pedidos[0].system[1].text, /Verificación crediticia/);
+  });
+});
+
+test("el consentimiento guarda el wamid del mensaje en que el cliente respondió", async () => {
+  await conWebPublica(async () => {
+    const guardados = [];
+    const root = conVerificacionActiva(baseFalsa({ cliente: { id: 50 }, sesion: financiaConRecibo }));
+    root.consentimientos.create = async ({ data }) => (guardados.push(data), data);
+    const respuestas = [
+      { stop_reason: "tool_use", usage: { input_tokens: 10, output_tokens: 5 }, content: [{ type: "tool_use", id: "t1", name: "registrar_consentimiento", input: { acepta: true } }] },
+      { stop_reason: "end_turn", usage: { input_tokens: 10, output_tokens: 5 }, content: [{ type: "text", text: "Gracias" }] },
+    ];
+    const anthropic = { messages: { create: async () => respuestas.shift() } };
+    await atenderMensaje({ telefono: TEL, wamid: "wamid.DEL_SI", texto: "sí, autorizo", ahora }, deps(root, anthropic));
+    assert.equal(guardados.length, 1);
+    assert.equal(guardados[0].acepta, true);
+    assert.equal(guardados[0].wamid, "wamid.DEL_SI");
+  });
 });

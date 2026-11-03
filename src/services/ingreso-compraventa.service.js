@@ -6,6 +6,7 @@ import { firmar, desfirmar, impresosDe } from "./legajo-contrato.service.js";
 import { PARA_DETALLE } from "./ingresos.service.js";
 import { autoConConsignacion, cerrarVenta, abrirVenta } from "./vehiculos.service.js";
 import { autoParaVender } from "./auto-venta.service.js";
+import { entrarEnPreparacion, salirDePreparacion } from "./preparaciones.service.js";
 import { identificacionParaBoleto, difiereDeLaFicha } from "../lib/identificacion-vehiculo.js";
 
 // El boleto de compraventa: de un auto que la agencia compra (compra directa),
@@ -141,20 +142,30 @@ export async function armarImpresosCompraventa(ingresoId) {
 }
 
 // Se relee con el auto entregado incluido: el mapper lo necesita para mostrarlo.
-const releer = (contrato, ingreso) =>
-  prisma.compraventa_contratos
+const releer = (contrato, ingreso, tx) =>
+  tx.compraventa_contratos
     .findUnique({ where: { id: contrato.id }, include: INCLUDE_CONTRATO })
     .then((c) => mapCompraventa(c, senaDelIngreso(ingreso)));
 
+// Con la firma, el usado que recibe la agencia pasa a Preparación.
 export async function firmarCompraventa(ingresoId) {
-  const ingreso = await ingresoVigente(ingresoId);
-  exigirBoletoAlDia(ingreso);
-  return releer(await firmar(prisma.compraventa_contratos, ingreso, ingreso.compraventa_contratos), ingreso);
+  return prisma.$transaction(async (tx) => {
+    const ingreso = await ingresoVigente(ingresoId, tx);
+    exigirBoletoAlDia(ingreso);
+    const contrato = await firmar(tx.compraventa_contratos, ingreso, ingreso.compraventa_contratos);
+    await entrarEnPreparacion(ingreso, tx);
+    return releer(contrato, ingreso, tx);
+  });
 }
 
 export async function desfirmarCompraventa(ingresoId) {
-  const ingreso = await ingresoVigente(ingresoId);
-  return releer(await desfirmar(prisma.compraventa_contratos, ingreso.compraventa_contratos), ingreso);
+  return prisma.$transaction(async (tx) => {
+    const ingreso = await ingresoVigente(ingresoId, tx);
+    if (ingreso.estado === "vendido") throw error("El auto figura vendido: deshacé la venta antes de desfirmar.", 409);
+    const contrato = await desfirmar(tx.compraventa_contratos, ingreso.compraventa_contratos);
+    await salirDePreparacion(ingreso, tx);
+    return releer(contrato, ingreso, tx);
+  });
 }
 
 // Venta al contado o con parte de pago: el auto de la agencia se marca vendido
@@ -168,6 +179,7 @@ export async function venderAutoDelBoleto(ingresoId) {
     if (!vendeLaAgencia(ingreso.modalidad) || !boleto?.auto_entregado_id || boleto.deleted_at) {
       throw error("Primero cargá el boleto con el vehículo que vende la agencia.", 409);
     }
+    if (!boleto.firmado_at) throw error("Firmá el boleto antes de marcar vendido.", 409);
     const auto = await autoConConsignacion({ id: boleto.auto_entregado_id }, tx);
     if (!auto) throw error("El vehículo del boleto ya no existe.", 404);
     if (auto.vendido_at) throw error("Ese vehículo ya figura como vendido.", 409);
@@ -185,6 +197,9 @@ export async function deshacerVentaDelBoleto(ingresoId) {
     const autoId = ingreso.compraventa_contratos?.auto_entregado_id;
     const auto = autoId ? await autoConConsignacion({ id: autoId }, tx) : null;
     if (!auto?.vendido_at) throw error("El vehículo de este boleto no figura como vendido.", 409);
+    // Sin esto, el cliente seguiría recibiendo avisos de cuotas de una venta que no existe.
+    if (ingreso.financiaciones?.length) throw error("Este trámite tiene financiación: eliminala antes de deshacer la venta.", 409);
+    if (ingreso.tramite_hitos?.length) throw error("Este trámite tiene cobro, entrega o transferencia marcados: desmarcalos antes de deshacer la venta.", 409);
 
     await abrirVenta(tx, auto);
     await tx.consignacion_ingresos.update({ where: { id: ingreso.id }, data: { estado: "recepcion", estado_at: new Date() } });

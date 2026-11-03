@@ -34,6 +34,22 @@ function vehiculoDeSesion(sesion, contexto) {
   ) ?? null;
 }
 
+// El último resultado del BCRA, para el asesor. SOLO INFORMATIVO: no entra en la
+// clasificación. `consultas_crediticias` llega con la más reciente primero (leads.service).
+// estado "error" = no se pudo consultar (sin verificar).
+export function creditoDelCliente(cliente) {
+  const ultima = cliente.consultas_crediticias?.[0];
+  if (!ultima) return null;
+  return {
+    estado: ultima.estado,
+    semaforo: ultima.semaforo ?? null,
+    periodo: ultima.periodo ?? null,
+    // Con qué nombre tiene el BCRA ese CUIL: el asesor verifica en persona que es quien escribió.
+    nombre: ultima.nombre_bcra ?? null,
+    fecha: new Date(ultima.consultado_at).toISOString(),
+  };
+}
+
 export function mapClienteToLead(cliente, autosMap = {}) {
   const sesiones = cliente.chat_estado ?? [];
 
@@ -118,6 +134,7 @@ export function mapClienteToLead(cliente, autosMap = {}) {
     canal: cliente.canal,
     creado: cliente.created_at ? new Date(cliente.created_at).toISOString() : null,
 
+    credito: creditoDelCliente(cliente),
     clasificacion,           // la de la sesión de mayor score (ver clasificacionDeSesion)
     ultimaConsulta,          // { clasificacion, fecha } de la sesión más reciente
     score: scoreMax,

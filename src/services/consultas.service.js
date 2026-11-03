@@ -2,6 +2,18 @@ import { prisma } from "../lib/prisma.js";
 import { SESION_UTIL } from "../lib/consultas-utiles.js";
 import { telefonosParaBuscar } from "../lib/busqueda-telefono.js";
 import { mapConsultaResumen, mapConsultaVenta, mapMensaje, construirRespuestas } from "../mappers/consulta.mapper.js";
+import { INCLUDE_AVANCE } from "./consulta-avance.service.js";
+import { ULTIMA_CONSULTA_CREDITICIA } from "./leads.service.js";
+import { PASO_HUMANO } from "../agente/pasos.js";
+import { crearEnvioWhatsapp } from "../agente/whatsapp-envio.js";
+import { telefonoWhatsApp } from "./avisos-cuotas.service.js";
+
+// WhatsApp solo deja enviar texto libre dentro de las 24 h desde el último mensaje del cliente.
+const VENTANA_ATENCION_MS = 24 * 60 * 60 * 1000;
+const MAX_TEXTO = 4096;
+
+const dentroDeVentana = (fecha, ahora = new Date()) =>
+  fecha ? ahora.getTime() - new Date(fecha).getTime() < VENTANA_ATENCION_MS : false;
 
 // `cliente_canales` guarda solo los de mensajería; "web" existe únicamente en la ficha.
 const CANALES_MENSAJERIA = ["whatsapp", "facebook", "instagram"];
@@ -80,7 +92,12 @@ export async function listarConsultas({ limite = 20, offset = 0, q = "", clasif 
     prisma.chat_estado.findMany({
       where,
       // El mapper muestra `canales[0]`: ordenados por id, el canal de una persona con varios es siempre el mismo.
-      include: { clientes: { include: { canales: { select: { canal: true }, orderBy: { id: "asc" } } } } },
+      include: {
+        clientes: {
+          include: { canales: { select: { canal: true }, orderBy: { id: "asc" } }, consultas_crediticias: ULTIMA_CONSULTA_CREDITICIA },
+        },
+        ...INCLUDE_AVANCE,
+      },
       orderBy: { sesion_inicio: "desc" }, // consultas más recientes primero
       skip,
       take: take + 1,
@@ -168,10 +185,10 @@ export async function listarConsultasVenta({ limite = 10, offset = 0, q = "", mo
   return { items: pagina.map((s) => mapConsultaVenta(s, s.clientes)), hayMas, total };
 }
 
-// DETALLE: los mensajes entrantes (respuestas del cliente) de UNA consulta.
-// Como `historial_mensajes` guarda por cliente, se acota a la ventana de tiempo
-// de esa sesión: desde su inicio hasta el inicio de la sesión siguiente del
-// mismo cliente (la primera sesión toma también lo anterior a ella).
+// DETALLE: el chat completo de UNA consulta (entrantes del cliente y salientes
+// del bot y de una persona). Como `historial_mensajes` guarda por cliente, se
+// acota a la ventana de tiempo de esa sesión: desde su inicio hasta el inicio de
+// la sesión siguiente del mismo cliente (la primera sesión toma también lo anterior a ella).
 export async function obtenerConsulta(sesionId) {
   // `sesionId` viene de la URL: un id no numérico debe dar 404, no reventar Prisma.
   const id = Number(sesionId);
@@ -179,7 +196,7 @@ export async function obtenerConsulta(sesionId) {
 
   const sesion = await prisma.chat_estado.findUnique({
     where: { id },
-    include: { vehiculo_cliente: true },
+    include: { vehiculo_cliente: true, clientes: { select: { cuil: true } } },
   });
   if (!sesion) return null;
 
@@ -201,20 +218,26 @@ export async function obtenerConsulta(sesionId) {
 
   const mensajes = await prisma.historial_mensajes.findMany({
     where: {
-      direccion: "entrante",
       cliente_id: sesion.cliente_id,
       ...(Object.keys(rango).length ? { created_at: rango } : {}),
     },
-    orderBy: { created_at: "asc" },
-    select: { id: true, mensaje: true, paso_nodo: true, created_at: true },
+    orderBy: [{ created_at: "asc" }, { id: "asc" }],
+    select: { id: true, direccion: true, mensaje: true, paso_nodo: true, created_at: true },
   });
+
+  const ultimoEntrante = [...mensajes].reverse().find((m) => m.direccion === "entrante");
 
   return {
     sesionId: sesion.id,
     // Preguntas→respuestas identificadas desde lo que el bot guardó estructurado.
-    respuestas: construirRespuestas(sesion, sesion.vehiculo_cliente ?? []),
-    // Mensajes crudos del cliente (verbatim), por si se quieren leer.
-    mensajes: mensajes.map(mapMensaje),
+    respuestas: construirRespuestas(sesion, sesion.vehiculo_cliente ?? [], sesion.clientes),
+    // El chat completo, en orden: cada mensaje con su `autor` (cliente | bot | humano).
+    chat: mensajes.map(mapMensaje),
+    // Solo los mensajes crudos del cliente (verbatim), con la pregunta que respondían.
+    mensajes: mensajes.filter((m) => m.direccion === "entrante").map(mapMensaje),
+    // ¿La tomó una persona? ¿Se puede enviar texto libre (ventana de 24 h abierta)?
+    botPausado: Boolean(sesion.bot_pausado),
+    ventanaAbierta: dentroDeVentana(ultimoEntrante?.created_at),
   };
 }
 
@@ -244,4 +267,73 @@ export async function marcarConsultaAtendida(sesionId, atendido, usuario) {
       ? { at: new Date(upd.atendido_at).toISOString(), por: upd.atendido_por ?? null }
       : null,
   };
+}
+
+// Instancia por defecto para enviar por WhatsApp; en los tests se inyecta una falsa.
+const envioWhatsapp = crearEnvioWhatsapp();
+
+// La ventana de atención de WhatsApp está abierta si el cliente escribió hace menos de 24 h.
+export async function ventanaAbierta(clienteId, ahora = new Date()) {
+  const ultimo = await prisma.historial_mensajes.findFirst({
+    where: { cliente_id: clienteId, direccion: "entrante" },
+    orderBy: { created_at: "desc" },
+    select: { created_at: true },
+  });
+  return dentroDeVentana(ultimo?.created_at, ahora);
+}
+
+// Responde al cliente desde el panel (intervención humana). En orden:
+//   1. valida el texto;
+//   2. busca la sesión y su teléfono (no_encontrada si no está);
+//   3. revisa la ventana de 24 h (si está cerrada, no envía);
+//   4. envía por WhatsApp — si Meta rechaza, corta sin guardar nada;
+//   5. toma la conversación (bot_pausado), la marca atendida y guarda el saliente humano.
+// Devuelve `{ ok, ... }` con un `codigo` cuando no se pudo, para que el controller elija el estado.
+export async function responderComoHumano(sesionId, texto, usuario, { enviar = envioWhatsapp, ahora = new Date() } = {}) {
+  const id = Number(sesionId);
+  if (!Number.isInteger(id) || id <= 0) return { ok: false, codigo: "no_encontrada" };
+  const limpio = String(texto ?? "").trim();
+  if (!limpio || limpio.length > MAX_TEXTO) return { ok: false, codigo: "texto_invalido" };
+
+  const sesion = await prisma.chat_estado.findUnique({
+    where: { id },
+    include: { clientes: { select: { id: true, telefono: true } } },
+  });
+  if (!sesion) return { ok: false, codigo: "no_encontrada" };
+  // En la ficha van 10 dígitos; Meta lo necesita con el código de país.
+  const telefono = telefonoWhatsApp(sesion.clientes?.telefono);
+  if (!telefono) return { ok: false, codigo: "sin_telefono" };
+
+  if (!(await ventanaAbierta(sesion.cliente_id, ahora))) return { ok: false, codigo: "ventana_cerrada" };
+
+  // Se envía primero: si Meta lo rechaza, no queda un saliente fantasma en el historial.
+  let wamid = null;
+  try {
+    ({ wamid } = await enviar.enviarTexto({ telefono, texto: limpio }));
+  } catch (err) {
+    console.error("[consultas] no se pudo enviar el mensaje por WhatsApp:", err?.message, err?.detalle ?? "");
+    return { ok: false, codigo: "envio_fallido" };
+  }
+
+  const [mensaje] = await prisma.$transaction([
+    prisma.historial_mensajes.create({
+      data: { cliente_id: sesion.cliente_id, direccion: "saliente", mensaje: limpio, paso_nodo: PASO_HUMANO, created_at: ahora, wamid },
+    }),
+    // Tomar la conversación: el bot se calla y la consulta queda atendida por quien intervino.
+    prisma.chat_estado.update({
+      where: { id },
+      data: { bot_pausado: true, ultimo_mensaje: ahora, atendido_at: ahora, atendido_por: usuario?.nombre ?? null },
+    }),
+  ]);
+  return { ok: true, mensaje: mapMensaje(mensaje), botPausado: true };
+}
+
+// Devuelve la conversación al bot: vuelve a responder en la misma sesión.
+export async function reanudarBot(sesionId) {
+  const id = Number(sesionId);
+  if (!Number.isInteger(id) || id <= 0) return null;
+  const sesion = await prisma.chat_estado.findUnique({ where: { id } });
+  if (!sesion) return null;
+  await prisma.chat_estado.update({ where: { id }, data: { bot_pausado: false } });
+  return { sesionId: id, botPausado: false };
 }

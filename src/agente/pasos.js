@@ -6,3 +6,7 @@ export const PASO_AGENTE = "agente_ia";
 // Las reacciones 👍 se guardan aparte: son gratis (no cuentan como mensaje
 // cobrado ni contra los 1.000 gratis del mes) y no entran a la charla que lee la IA.
 export const PASO_REACCION = "agente_reaccion";
+
+// Mensajes que escribió una persona desde el panel (intervención humana). Se guardan
+// como salientes para verlos en el chat y para que el bot los lea cuando retome.
+export const PASO_HUMANO = "humano";

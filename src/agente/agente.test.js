@@ -81,7 +81,7 @@ test("pide a Claude Haiku 5.5 con esfuerzo bajo, sin temperature y con las herra
   assert.equal(p.model, "claude-haiku-5-5");
   assert.deepEqual(p.output_config, { effort: "low" });
   assert.equal("temperature" in p, false);
-  assert.equal(p.tools.length, 9);
+  assert.equal(p.tools.length, 11);
   assert.ok(p.tools.every((t) => t.strict === (t.name !== "registrar_calificacion")), "todas estrictas salvo registrar_calificacion");
   assert.equal(p.system[0].cache_control.type, "ephemeral", "las instrucciones fijas van cacheadas");
   assert.match(p.system.at(-1).text, /SEA Automotores/, "el contexto del momento va aparte");

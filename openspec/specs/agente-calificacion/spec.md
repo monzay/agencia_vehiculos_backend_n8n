@@ -34,7 +34,9 @@ El sistema MUST calcular el puntaje sumando:
 | No sabe cuándo puede venir | −1 |
 
 El puntaje MUST NOT ser menor que 0. El recibo o garante MUST NOT contar si paga de contado.
-El resultado MUST NOT depender del orden en que respondió.
+El resultado MUST NOT depender del orden en que respondió. La situación crediticia del BCRA
+MUST NOT sumar ni restar puntos ni cambiar la temperatura: es solo informativa para el asesor
+(ver `agente-credito`, decisión del 2026-11-01).
 <!-- id: calificacion.puntaje -->
 
 #### Scenario: Sesión sin respuestas

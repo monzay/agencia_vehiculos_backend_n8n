@@ -1,6 +1,6 @@
 import { prisma } from "../lib/prisma.js";
 import { mapAutoToVehiculo } from "../mappers/vehiculo.mapper.js";
-import { SIN_RESERVA, senaReservando, hoyFecha } from "../lib/senas.js";
+import { SIN_RESERVA, SIN_TRAMITE_ABIERTO, senaReservando, hoyFecha } from "../lib/senas.js";
 import { normalizarTipoVehiculo } from "../lib/tipos-vehiculo.js";
 import { normalizarDominio, normalizarIdentificacion } from "../lib/identificacion-vehiculo.js";
 
@@ -30,6 +30,14 @@ const SOLO_CONSIGNACION_PUBLICADA = {
 const moverIngresoDelAuto = (tx, autoId, desde, hacia) =>
   tx.consignacion_ingresos.updateMany({
     where: { deleted_at: null, estado: desde, consignaciones: { is: { auto_id: autoId } } },
+    data: { estado: hacia, estado_at: new Date() },
+  });
+
+// La compra de la agencia termina cuando se vende ese usado. Mientras sigue abierta, su
+// dominio queda tomado y el auto no podría volver a entrar.
+const moverCompraDelAuto = (tx, autoId, desde, hacia) =>
+  tx.consignacion_ingresos.updateMany({
+    where: { deleted_at: null, modalidad: "compra", estado: desde, preparacion: { is: { auto_id: autoId } } },
     data: { estado: hacia, estado_at: new Date() },
   });
 
@@ -161,7 +169,7 @@ function construirData(body, parcial = false) {
 // Catalogo PUBLICO: disponibles y no eliminados.
 export async function listarVehiculos() {
   const autos = await prisma.autos.findMany({
-    where: { ...VIGENTE, ...A_LA_VENTA, disponible: true, ...SIN_CONSIGNACION_CERRADA, ...SIN_RESERVA() },
+    where: { ...VIGENTE, ...A_LA_VENTA, disponible: true, ...SIN_CONSIGNACION_CERRADA, ...SIN_RESERVA(), ...SIN_TRAMITE_ABIERTO },
     orderBy: { id: "desc" },
     include: { descuentos: true, auto_promociones: { include: { promociones: true } } },
   });
@@ -226,7 +234,7 @@ async function autosDeConsignacionDocumentos() {
 // ya vendido/retirado no lo sigue mostrando.
 export async function obtenerVehiculoPorRef(ref) {
   const auto = await prisma.autos.findFirst({
-    where: { ref: String(ref), ...VIGENTE, ...A_LA_VENTA, ...SIN_CONSIGNACION_CERRADA, ...SIN_RESERVA() },
+    where: { ref: String(ref), ...VIGENTE, ...A_LA_VENTA, disponible: true, ...SIN_CONSIGNACION_CERRADA, ...SIN_RESERVA(), ...SIN_TRAMITE_ABIERTO },
     include: { descuentos: true, auto_promociones: { include: { promociones: true } } },
   });
   return auto ? mapAutoToVehiculo(auto) : null;
@@ -234,7 +242,7 @@ export async function obtenerVehiculoPorRef(ref) {
 
 export async function listarMarcas() {
   const filas = await prisma.autos.findMany({
-    where: { ...VIGENTE, ...A_LA_VENTA, disponible: true, ...SIN_CONSIGNACION_CERRADA, ...SIN_RESERVA() },
+    where: { ...VIGENTE, ...A_LA_VENTA, disponible: true, ...SIN_CONSIGNACION_CERRADA, ...SIN_RESERVA(), ...SIN_TRAMITE_ABIERTO },
     distinct: ["marca"],
     select: { marca: true },
     orderBy: { marca: "asc" },
@@ -280,10 +288,18 @@ export async function actualizarVehiculo(ref, body = {}) {
 // Si el auto es de un tercero (consignación vigente), además se cierra esa
 // consignación como vendida: el auto y el trato son el mismo hecho comercial y
 // dejarlos desincronizados hace que el auto siga apareciendo a la venta.
+// Un auto en un trámite de venta se vende desde su legajo: ahí se exige el boleto
+// firmado, y deshacer la venta también vuelve atrás el trámite.
+async function exigirSinTramiteDeVenta(autoId) {
+  const tramite = await prisma.consignacion_ingresos.findFirst({ where: { auto_interes_id: autoId, ...VIGENTE }, select: { id: true } });
+  if (tramite) throw error("Este vehículo está en un trámite de venta: manejá la venta desde su legajo, en Documentos.", 409);
+}
+
 export async function marcarVendido(ref, { precio_venta, vendido_at } = {}) {
   const auto = await autoConConsignacion({ ref: String(ref) });
   if (!auto) return null;
   if (auto.vendido_at) throw error("Ese vehículo ya figura como vendido.");
+  await exigirSinTramiteDeVenta(auto.id);
 
   const precio = precio_venta === undefined || precio_venta === null || precio_venta === ""
     ? Number(auto.precio)
@@ -303,6 +319,7 @@ export async function marcarVendido(ref, { precio_venta, vendido_at } = {}) {
 export async function deshacerVenta(ref) {
   const auto = await autoConConsignacion({ ref: String(ref) });
   if (!auto || !auto.vendido_at) return false;
+  await exigirSinTramiteDeVenta(auto.id);
   await prisma.$transaction((tx) => abrirVenta(tx, auto));
   return true;
 }
@@ -332,6 +349,7 @@ export async function cerrarVenta(tx, auto, { precio, fecha }) {
     await tx.consignaciones.update({ where: { id: consignacion.id }, data: { estado: "vendido", updated_at: new Date() } });
   }
   await moverIngresoDelAuto(tx, auto.id, "publicado", "vendido");
+  await moverCompraDelAuto(tx, auto.id, "recepcion", "vendido");
   // La seña que lo reservaba se concretó con la venta.
   await tx.senas.updateMany({
     where: { auto_id: auto.id, deleted_at: null, estado: "vigente", vence: { gte: hoyFecha() } },
@@ -349,6 +367,7 @@ export async function abrirVenta(tx, auto) {
     await tx.consignaciones.update({ where: { id: consignacion.id }, data: { estado: "en_venta", updated_at: new Date() } });
   }
   await moverIngresoDelAuto(tx, auto.id, "vendido", "publicado");
+  await moverCompraDelAuto(tx, auto.id, "vendido", "recepcion");
 }
 
 // Cierra la consignación de un auto de tercero desde la ficha del vehículo.

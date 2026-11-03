@@ -1,7 +1,10 @@
 import { Router } from "express";
 import {
+  putHito,
+  deleteHito,
   getCatalogoDocumentos,
   getPersonas,
+  getPrecarga,
   getIngresos,
   getIngreso,
   postIngreso,
@@ -41,6 +44,7 @@ router.use(requireAuth, requireRole("admin"));
 // Antes de "/:id", si no "catalogo" y "personas" se leerían como ids.
 router.get("/catalogo", getCatalogoDocumentos);
 router.get("/personas", getPersonas);
+router.get("/precarga/:sesionId", getPrecarga);
 
 router.get("/", getIngresos);
 router.post("/", postIngreso);
@@ -84,6 +88,8 @@ router.delete("/:id/compraventa/firma", deleteFirmaCompraventa);
 router.get("/:id/compraventa/impresos", getImpresosCompraventa);
 router.post("/:id/compraventa/venta", postVentaCompraventa);
 router.delete("/:id/compraventa/venta", deleteVentaCompraventa);
+router.put("/:id/hitos/:tipo", putHito);
+router.delete("/:id/hitos/:tipo", deleteHito);
 
 // Financiación del saldo de la parte de pago. Se edita después por
 // PATCH /api/financiaciones/:id, como cualquier otra financiación.

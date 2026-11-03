@@ -3,6 +3,7 @@ import { error, TOPE_MONTO, numero, opcion, textoLibre, fechaSimple } from "../l
 import { hoyFecha, senaReservando } from "../lib/senas.js";
 import { mapSena } from "../mappers/sena.mapper.js";
 import { registrarPersona, SELECT_PERFIL } from "./personas.service.js";
+import { sesionParaAvanzar } from "./consulta-avance.service.js";
 
 // Señas: el paso anterior al trámite. El cliente deja plata para reservar un
 // auto (propio o en consignación); mientras la seña reserva, el auto no se ve
@@ -101,7 +102,7 @@ export async function obtenerSena(id) {
 
 // El auto tiene que estar a la venta y libre: sin otra seña que lo reserve y,
 // si es de la agencia, sin estar comprometido en otro boleto de parte de pago.
-async function autoParaSenar(ref, tx) {
+export async function autoParaSenar(ref, tx) {
   const auto = await tx.autos.findFirst({
     where: { ref: String(ref ?? ""), ...VIGENTE },
     select: { id: true, vendido_at: true },
@@ -141,10 +142,11 @@ export async function crearSena(body = {}, usuarioId = null) {
   if (!body.cliente) throw error("Faltan los datos del cliente.");
 
   return prisma.$transaction(async (tx) => {
+    const sesionId = await sesionParaAvanzar(body.sesionId, tx);
     const auto = await autoParaSenar(body.autoRef, tx);
     const clienteId = await registrarPersona(body.cliente, tx);
     const creada = await tx.senas.create({
-      data: { ...data, auto_id: auto.id, cliente_id: clienteId, creado_por: usuarioId },
+      data: { ...data, auto_id: auto.id, cliente_id: clienteId, sesion_id: sesionId, creado_por: usuarioId },
       include: INCLUDE,
     });
     return mapSena(creada);
@@ -195,7 +197,7 @@ export async function iniciarTramite(id, usuarioId = null) {
     }
 
     const ingreso = await tx.consignacion_ingresos.create({
-      data: { modalidad: "permuta", cliente_id: sena.cliente_id, auto_interes_id: sena.auto_id, recibido_por: usuarioId },
+      data: { modalidad: "permuta", cliente_id: sena.cliente_id, sesion_id: sena.sesion_id, auto_interes_id: sena.auto_id, recibido_por: usuarioId },
       select: { id: true },
     });
     const convertida = await tx.senas.update({

@@ -161,3 +161,27 @@ test("ante un recordatorio: agencia o transferencia, y por transferencia el gere
   assert.match(INSTRUCCIONES, /avisar_administracion/);
   assert.match(INSTRUCCIONES, /avisar_administracion con numero_equivocado/);
 });
+
+test("con la verificación activa el contexto lo dice con el link de privacidad", () => {
+  const privacidadUrl = "https://agencia.com/privacidad";
+  const permiso = contextoDelMomento({ ahora, credito: "pedir_consentimiento", privacidadUrl });
+  assert.match(permiso, /Verificación crediticia: pedile permiso/);
+  assert.ok(permiso.includes(privacidadUrl));
+
+  const cuil = contextoDelMomento({ ahora, credito: "pedir_cuil", privacidadUrl });
+  assert.match(cuil, /pedile su CUIL/);
+  assert.match(cuil, /verificar_situacion_crediticia/);
+
+  assert.doesNotMatch(contextoDelMomento({ ahora, credito: null, privacidadUrl }), /Verificación crediticia/);
+  // Con un recordatorio de cuota la charla es por la cuota: no se pide nada del BCRA.
+  const cobranza = { numero: 3, cuotasTotal: 12, vencimiento: "2026-10-15", importe: 150000 };
+  assert.doesNotMatch(contextoDelMomento({ ahora, credito: "pedir_consentimiento", privacidadUrl, cobranza }), /Verificación crediticia/);
+});
+
+test("la verificación crediticia: nunca le dice el resultado ni insiste si dice que no", async () => {
+  const { INSTRUCCIONES } = await import("./instrucciones.js");
+  assert.match(INSTRUCCIONES, /## Verificación crediticia/);
+  assert.match(INSTRUCCIONES, /Nunca le digas el resultado ni si califica/);
+  assert.match(INSTRUCCIONES, /no insistas/);
+  assert.match(INSTRUCCIONES, /registrar_consentimiento/);
+});

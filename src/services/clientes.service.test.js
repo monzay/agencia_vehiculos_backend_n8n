@@ -24,6 +24,8 @@ const MODELOS = [
   "senas",
   "financiaciones",
   "consignacion_ingresos",
+  "consentimientos",
+  "consultas_crediticias",
 ];
 const ESCRITURAS = ["create", "update", "updateMany"];
 const CREADA = new Date("2026-10-01T12:00:00Z");
@@ -31,7 +33,7 @@ const ULTIMA_ACTIVIDAD = new Date("2026-10-05T08:00:00Z"); // el `updated_at` co
 const CON_ACTUALIZACION_AUTOMATICA = ["chat_estado", "consignacion_ingresos", "cliente_perfiles"];
 
 const DEFECTOS = {
-  clientes: { nombre: null, telefono: null, dni: null, email: null, deleted_at: null, fusionado_en_id: null, created_at: CREADA },
+  clientes: { nombre: null, telefono: null, dni: null, cuil: null, email: null, deleted_at: null, fusionado_en_id: null, created_at: CREADA },
   chat_estado: { updated_at: ULTIMA_ACTIVIDAD },
   cliente_perfiles: {
     apellido: null, cuit: null, domicilio: null, localidad: null, provincia: null,
@@ -858,6 +860,8 @@ function escenarioFusion(cambios = {}) {
     senas: [{ id: 600, cliente_id: 11 }],
     financiaciones: [{ id: 700, cliente_id: 11 }],
     consignacion_ingresos: [{ id: 800, cliente_id: 11 }, { id: 801, cliente_id: 12, conyuge_cliente_id: 11 }],
+    consentimientos: [{ id: 900, cliente_id: 11 }],
+    consultas_crediticias: [{ id: 950, cliente_id: 11 }, { id: 951, cliente_id: 12 }],
     ...cambios,
   });
 }
@@ -906,6 +910,16 @@ test("dos fichas con DNI distinto no se fusionan nunca (409); con el mismo DNI e
   await fusionarClientes({ origenId: 11, destinoId: 10, motivo: "mismo_dni" }, mismo.db);
   assert.equal(fichaDe(mismo, 11).fusionado_en_id, 10);
   assert.equal(fichaDe(mismo, 10).dni, "30125678");
+});
+
+test("la fusión pasa el CUIL del origen si el destino no tiene; con CUIL distintos no se fusionan (409)", async () => {
+  const completa = escenarioFusion({ clientes: [{ id: 10, canal: "web" }, { id: 11, canal: "presencial", cuil: "20123456786" }] });
+  await fusionarClientes({ origenId: 11, destinoId: 10, motivo: "manual" }, completa.db);
+  assert.equal(fichaDe(completa, 10).cuil, "20123456786");
+
+  const distintos = escenarioFusion({ clientes: [{ id: 10, canal: "web", cuil: "20123456786" }, { id: 11, canal: "presencial", cuil: "27301256782" }] });
+  await assert.rejects(fusionarClientes({ origenId: 11, destinoId: 10 }, distintos.db), (e) => e.status === 409 && /CUIL/.test(e.message));
+  assert.deepEqual(distintos.escrituras(), []);
 });
 
 test("dos documentos con letras que comparten los dígitos no son la misma persona (409); el mismo escrito distinto sí", async () => {
@@ -1062,6 +1076,8 @@ test("registra la fusión con los ids movidos por tabla, lo completado, el perfi
     consignacion_ingresos: [800],
     "consignacion_ingresos.conyuge_cliente_id": [801],
     cliente_canales: [1],
+    consentimientos: [900],
+    consultas_crediticias: [950],
     "clientes.fusionado_en_id": [13],
   });
   assert.deepEqual(fusion.detalle.completados, {});
@@ -1094,6 +1110,8 @@ test("devuelve un resumen con la cantidad de filas movidas por tabla", async () 
       consignacion_ingresos: 1,
       "consignacion_ingresos.conyuge_cliente_id": 1,
       cliente_canales: 1,
+      consentimientos: 1,
+      consultas_crediticias: 1,
       "clientes.fusionado_en_id": 1,
     },
     completados: {},

@@ -22,4 +22,10 @@ export const senaReservando = (hoy = hoyFecha()) => ({
 // Filtro para `autos`: los que NO tienen una seña reservándolos.
 export const SIN_RESERVA = () => ({ senas: { none: senaReservando() } });
 
+// Un trámite de venta abierto también compromete el auto, aunque no tenga seña.
+// Filtro para `autos`: lo usan la web y el agente, para que digan lo mismo.
+export const TRAMITE_ABIERTO = { deleted_at: null, estado: { not: "vendido" } };
+export const BOLETO_ABIERTO = { deleted_at: null, consignacion_ingresos: { deleted_at: null } };
+export const SIN_TRAMITE_ABIERTO = { tramites_interes: { none: TRAMITE_ABIERTO }, permutas: { none: BOLETO_ABIERTO } };
+
 export const vencida = (s, hoy = hoyFecha()) => s.estado === "vigente" && new Date(s.vence) < hoy;

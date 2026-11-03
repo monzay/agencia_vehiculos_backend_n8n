@@ -32,6 +32,7 @@ openspec/
 | Prefijo / nombre | Estado |
 |---|---|
 | `agente-entrada`, `agente-cupos`, `agente-conversacion`, `agente-calificacion`, `agente-herramientas`, `agente-cobranza`, `agente-comportamiento` | Borrador (2026-10-30) |
+| `agente-credito` | Borrador (2026-11-01), revisado con el dueño; apagado por defecto |
 | `vehiculos`, `senas`, `clientes`, `financiaciones`, `financiaciones-avisos`, `ia-costos`, `autenticacion-permisos`, `tramites-*`, `entregas`, `horarios`, … | Pendientes |
 
 ## Formato de un requisito

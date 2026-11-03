@@ -23,7 +23,7 @@ function error(mensaje, status = 400) {
 const FOTO_DE_BLOB = /^https:\/\/[a-z0-9-]+\.public\.blob\.vercel-storage\.com\/vehiculos\/[\w.-]+$/i;
 const FOTO_DEL_SITIO = /^\/images\/[\w-]+(\.[\w-]+)*$/;
 
-function validarUrl(valor) {
+export function validarFotoEntrega(valor) {
   const url = typeof valor === "string" ? valor.trim() : "";
   if (!url) throw error("La URL de la imagen es obligatoria.");
   if (url.length > 500) throw error("La URL es demasiado larga (máximo 500 caracteres).");
@@ -77,7 +77,7 @@ export async function listarEntregasGestion(db = prisma) {
 }
 
 export async function crearEntrega(body = {}, db = prisma) {
-  const url = validarUrl(body.url);
+  const url = validarFotoEntrega(body.url);
   const clienteId = await clienteDeLaEntrega(body.clienteId, db);
   const creada = await db.entregas.create({ data: { url, cliente_id: clienteId }, include: CON_CLIENTE });
   return mapEntregaGestion(creada);

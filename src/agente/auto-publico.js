@@ -1,4 +1,4 @@
-import { senaReservando, SIN_RESERVA } from "../lib/senas.js";
+import { senaReservando, SIN_RESERVA, SIN_TRAMITE_ABIERTO, TRAMITE_ABIERTO, BOLETO_ABIERTO } from "../lib/senas.js";
 import { aplicarDescuento } from "../mappers/descuento.mapper.js";
 import { mapPromosDeAuto } from "../mappers/promocion.mapper.js";
 import { normalizarTipoVehiculo } from "../lib/tipos-vehiculo.js";
@@ -8,8 +8,6 @@ import { normalizarTipoVehiculo } from "../lib/tipos-vehiculo.js";
 // puede contar aunque la manipulen.
 
 const CONSIGNACION_CERRADA = { deleted_at: null, estado: { in: ["vendido", "retirado"] } };
-const TRAMITE_ABIERTO = { deleted_at: null, estado: { not: "vendido" } };
-const BOLETO_ABIERTO = { deleted_at: null, consignacion_ingresos: { deleted_at: null } };
 const MAX_FOTOS = 4;
 
 // Autos que el agente puede ofrecer: a la venta, visibles, sin seña vigente y
@@ -20,8 +18,7 @@ export const whereDisponible = () => ({
   disponible: true,
   consignaciones: { none: CONSIGNACION_CERRADA },
   ...SIN_RESERVA(),
-  tramites_interes: { none: TRAMITE_ABIERTO },
-  permutas: { none: BOLETO_ABIERTO },
+  ...SIN_TRAMITE_ABIERTO,
 });
 
 // Lo que hay que traer de la base para armar la ficha y saber si está disponible.

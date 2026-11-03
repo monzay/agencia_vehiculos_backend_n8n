@@ -3,6 +3,7 @@ import { TIPOS_VEHICULO, normalizarTipoVehiculo } from "../lib/tipos-vehiculo.js
 import { whereDisponible, selectFicha, autoPublico, fotosPublicas } from "./auto-publico.js";
 import { puntaje, clasificar, pendientes } from "./calificacion.js";
 import { linkDelCatalogo } from "./origen-web.js";
+import { SIN_VERIFICACION } from "../credito/verificacion.js";
 
 // Las herramientas del agente vendedor. Cada una es un "formulario" con
 // casilleros fijos (zod): la IA solo puede pedir que se ejecute completándolo.
@@ -12,8 +13,10 @@ import { linkDelCatalogo } from "./origen-web.js";
 // (identificados por el número de WhatsApp). Así ninguna herramienta puede
 // consultar ni tocar datos de otra persona.
 //
-// ctx = { db, clienteId, sesionId, urlPublica, ahora, cobranza }
+// ctx = { db, clienteId, sesionId, urlPublica, ahora, cobranza, consultaPorAuto, credito }
 // `cobranza` = { financiacionId, avisoId } si el número recibió un recordatorio de cuota.
+// `credito` = { registrarConsentimiento(acepta), verificar(cuil) }: la verificación con el
+// BCRA, atada a este cliente por el backend (src/credito/verificacion.js).
 
 const MAX_AUTOS = 5;
 const MAX_CANDIDATOS_SIMILARES = 20;
@@ -325,6 +328,35 @@ const HERRAMIENTAS = [
     },
   },
   {
+    nombre: "registrar_consentimiento",
+    descripcion:
+      "Guarda si el cliente autoriza consultar su situación crediticia en el BCRA. Usala solo después de pedirle permiso como dice 'Verificación crediticia', con su respuesta: true solo si dijo que sí claramente.",
+    // Lo que falla acá puede traer el CUIL en el mensaje: el log lleva solo el código.
+    datosPersonales: true,
+    esquema: z.strictObject({
+      acepta: z.boolean().describe("true si autorizó la consulta; false si dijo que no o no quedó claro."),
+    }),
+    async ejecutar({ acepta }, { credito }) {
+      if (!credito) return { registrado: false, motivo: SIN_VERIFICACION };
+      return credito.registrarConsentimiento(acepta);
+    },
+  },
+  {
+    nombre: "verificar_situacion_crediticia",
+    descripcion:
+      "Consulta la situación crediticia del cliente en el BCRA con su CUIL, solo si ya autorizó. El resultado lo ve el asesor: a vos solo te dice si se hizo. Nunca le digas al cliente si califica o no.",
+    datosPersonales: true,
+    esquema: z.strictObject({
+      cuil: z.string().trim().min(11).max(15).regex(/^[\d\s.-]+$/).describe("El CUIL que dio el cliente: 11 números."),
+    }),
+    // El semáforo nunca vuelve a la IA: solo si se consultó o por qué no.
+    // La consulta va atada a la sesión vigente del turno (puede haber pasado a la de otro auto).
+    async ejecutar({ cuil }, { credito, sesionId }) {
+      if (!credito) return { consultado: false, motivo: SIN_VERIFICACION };
+      return credito.verificar(cuil, sesionId);
+    },
+  },
+  {
     nombre: "derivar_a_vendedor",
     descripcion:
       "Pasa la conversación a un vendedor. Usala si el cliente pide hablar con una persona, quiere negociar el precio o una tasa, reservar o señar un auto, tasar su usado, está enojado, o si no podés resolver lo que pide.",
@@ -410,7 +442,8 @@ export async function ejecutarHerramienta(nombre, entrada, ctx) {
     const otraConsulta = salida.sesionId !== ctx.sesionId;
     return { esError: false, resultado: salida.resultado, ...(otraConsulta && { sesionId: salida.sesionId }) };
   } catch (err) {
-    console.error(`[agente] la herramienta ${nombre} falló:`, err?.message);
+    const detalle = herramienta.datosPersonales ? err?.code ?? err?.name : err?.message;
+    console.error(`[agente] la herramienta ${nombre} falló:`, detalle);
     return { esError: true, error: "No se pudo completar la consulta. Ofrecé derivar a un vendedor." };
   }
 }

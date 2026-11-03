@@ -34,6 +34,15 @@ En el contexto de cada mensaje tenés lo que el cliente ya respondió y lo que f
 - Igual preguntá lo del recorrido (contado o financiado, anticipo, recibo o garante): son datos para el vendedor, no para hablar de números.
 - Esto no aplica a una financiación que el cliente YA tiene con la agencia ni a un recordatorio de cuota (ver más abajo).
 
+## Verificación crediticia
+Solo cuando el contexto dice "Verificación crediticia". Es para que el asesor llegue preparado: no decide nada ni cambia cómo lo atendés.
+- Para pedir permiso, con tus palabras y en un solo mensaje: que para armarle opciones de financiación que le sirvan, el asesor puede consultar su situación en la Central de Deudores del BCRA; que sus datos se usan solo para eso; el link de privacidad del contexto; y que te responda sí o no.
+- Guardá su respuesta con registrar_consentimiento: true solo si dijo que sí claramente.
+- Si dice que sí, pedile su CUIL (son 11 números; figura en el recibo de sueldo o en la constancia de ANSES) y usá verificar_situacion_crediticia.
+- Si dice que no, no insistas ni le preguntes por qué: seguí con el recorrido como siempre. No cambia nada para él.
+- Nunca le digas el resultado ni si califica: decile que el asesor le arma las opciones cuando venga.
+- Si la herramienta dice que el CUIL no es válido, pedíselo una vez más; si dice que no coincide con sus datos, no lo consultes y ofrecé un vendedor.
+
 ## El cierre: la visita
 - Preguntá cuándo puede venir a ver el auto. Puede contestarte un día, una hora, una semana o una fecha: cualquiera sirve. Si te dice solo una semana ("la semana que viene"), eso ya es la respuesta: no le insistas con el día.
 - Antes de confirmar, mirá los horarios con horarios_atencion. Si lo que dice cae en un día u horario cerrado, ofrecele lo más cercano en que esté abierto.
@@ -150,7 +159,16 @@ function recordatorioDeCuota(cobranza) {
   return `Le mandamos un recordatorio de pago: cuota ${cobranza.numero} de ${cobranza.cuotasTotal}, vence el ${dia}/${mes}/${anio}, importe ${formatoPesos.format(cobranza.importe)}. Atendelo como dice "Recordatorio de cuota".`;
 }
 
-export function contextoDelMomento({ asesora, agencia, direccion, mapsUrl, catalogoUrl, consultaWeb, cobranza, ahora = new Date(), nombreCliente, respondido, faltan } = {}) {
+// En qué punto está la verificación crediticia (ver src/credito/verificacion.js › estadoCredito).
+function verificacionCrediticia(credito, privacidadUrl) {
+  if (credito === "pedir_consentimiento") {
+    return `Verificación crediticia: pedile permiso para consultar su situación en el BCRA, después de lo del recibo o garante (ver "Verificación crediticia"). Link de privacidad: ${privacidadUrl}`;
+  }
+  if (credito === "pedir_cuil") return "Verificación crediticia: el cliente autorizó la consulta: pedile su CUIL y usá verificar_situacion_crediticia.";
+  return null;
+}
+
+export function contextoDelMomento({ asesora, agencia, direccion, mapsUrl, catalogoUrl, consultaWeb, cobranza, ahora = new Date(), nombreCliente, respondido, faltan, credito, privacidadUrl } = {}) {
   const nombre = nombreSeguro(nombreCliente);
   const fecha = ahora.toLocaleString("es-AR", {
     timeZone: "America/Argentina/Buenos_Aires",
@@ -170,7 +188,7 @@ export function contextoDelMomento({ asesora, agencia, direccion, mapsUrl, catal
     consultaDesdeLaWeb(consultaWeb),
     recordatorioDeCuota(cobranza),
     // Con un recordatorio la charla es por la cuota: el recorrido de venta no se empuja.
-    ...(cobranza ? [] : estadoDelRecorrido(respondido, faltan)),
+    ...(cobranza ? [] : [...estadoDelRecorrido(respondido, faltan), verificacionCrediticia(credito, privacidadUrl)]),
   ]
     .filter(Boolean)
     .join("\n");

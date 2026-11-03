@@ -14,17 +14,18 @@ consulta y devuelve un resultado acotado. `registrar_calificacion` está en
 ## Requirements
 
 ### Requirement: Lista cerrada de herramientas
-El sistema MUST ofrecerle al agente exactamente estas 9 herramientas: `buscar_autos`,
+El sistema MUST ofrecerle al agente exactamente estas 11 herramientas: `buscar_autos`,
 `buscar_similares`, `ver_auto`, `enviar_fotos_auto`, `mi_financiacion`, `horarios_atencion`,
-`registrar_calificacion`, `derivar_a_vendedor` y `avisar_administracion`. MUST NOT existir
-herramientas para dar descuentos, reservar autos ni ejecutar SQL. Todas MUST ser estrictas,
-salvo `registrar_calificacion`.
+`registrar_calificacion`, `registrar_consentimiento`, `verificar_situacion_crediticia`,
+`derivar_a_vendedor` y `avisar_administracion`. MUST NOT existir herramientas para dar
+descuentos, reservar autos ni ejecutar SQL. Todas MUST ser estrictas, salvo
+`registrar_calificacion`. Las dos de crédito están en `agente-credito` (2026-11-01).
 <!-- id: herramientas.HERRAMIENTAS -->
 
 #### Scenario: Las herramientas disponibles
 - **WHEN** se arman las herramientas para Claude
-- **THEN** son 9, todas estrictas salvo `registrar_calificacion`
-<!-- test: src/agente/herramientas.test.js › "hay 9 herramientas con formularios estrictos, salvo registrar_calificacion" -->
+- **THEN** son 11, todas estrictas salvo `registrar_calificacion`
+<!-- test: src/agente/herramientas.test.js › "hay 11 herramientas con formularios estrictos, salvo registrar_calificacion" -->
 
 #### Scenario: Herramientas prohibidas
 - **WHEN** se revisa la lista

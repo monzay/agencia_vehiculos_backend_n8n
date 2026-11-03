@@ -9,6 +9,8 @@ import { conUsado, vendeLaAgencia } from "../lib/modalidades.js";
 import { aplicarDescuento } from "./descuento.mapper.js";
 import { mapPromosDeAuto } from "./promocion.mapper.js";
 import { requisitosContrato } from "../lib/requisitos-contrato.js";
+import { seguimientoTramite } from "../lib/seguimiento-tramite.js";
+import { etapaDe } from "../lib/requisitos-preparacion.js";
 
 const iso = (d) => (d ? new Date(d).toISOString() : null);
 // Los vencimientos son fecha sin hora: se recortan para que no se corran de día
@@ -20,7 +22,7 @@ const hoy = () => new Date().toISOString().slice(0, 10);
 
 // Los datos del vehículo que declara el sistema. Son la referencia contra la
 // que se comparan los papeles.
-const datosVehiculo = (i) => ({
+export const datosVehiculo = (i) => ({
   dominio: i.dominio,
   marca: i.marca,
   modelo: i.modelo,
@@ -157,6 +159,7 @@ export function mapIngreso(i, { conDetalle = false } = {}) {
   const base = {
     id: i.id,
     modalidad: i.modalidad, // consignacion | compra | permuta | contado
+    sesionId: i.sesion_id ?? null, // la consulta de la que nació
     // Si el trámite recibe un vehículo del cliente: sin usado no hay papeles ni recibos.
     conUsado: conUsado(i),
     // El auto que compra el cliente (parte de pago o venta al contado).
@@ -213,8 +216,13 @@ export function mapIngreso(i, { conDetalle = false } = {}) {
     financiacion,
     sena: senaDe(i),
     beneficios: beneficiosDe(i),
+    // { cobrado?: "AAAA-MM-DD", entregado?: …, transferido?: … }
+    hitos: Object.fromEntries((i.tramite_hitos ?? []).map((h) => [h.tipo, soloFecha(h.fecha)])),
+    fotoEntrega: i.entregas?.[0]?.url ?? null,
+    preparacion: i.preparacion && !i.preparacion.deleted_at ? { id: i.preparacion.id, etapa: etapaDe(i.preparacion) } : null,
   };
   // Solo la consignación tiene este requisito: compra y permuta firman un boleto.
-  if (i.modalidad !== "consignacion") return detalle;
-  return { ...detalle, requisitosContrato: requisitosContrato(detalle) };
+  const conRequisitos =
+    i.modalidad === "consignacion" ? { ...detalle, requisitosContrato: requisitosContrato(detalle) } : detalle;
+  return { ...conRequisitos, seguimiento: seguimientoTramite(conRequisitos) };
 }

@@ -1,4 +1,4 @@
-import "dotenv/config";
+import "./lib/cargar-env.js";
 import { crearApp } from "./app.js";
 import { prisma } from "./lib/prisma.js";
 

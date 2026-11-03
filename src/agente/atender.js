@@ -13,6 +13,8 @@ import { PASO_AGENTE, PASO_REACCION } from "./pasos.js";
 import { gastoDelMes, topeConfigurado, registrarConsumoClaude, registrarConsumoGroq } from "../services/ia-consumos.service.js";
 import { avisoReciente, darDeBaja, esBaja, BAJA_CONFIRMADA } from "../services/avisos-cuotas.service.js";
 import { resolverCliente } from "../services/clientes.service.js";
+import { estadoCredito, registrarConsentimiento, verificarSituacion } from "../credito/verificacion.js";
+import { crearClienteBcra } from "../credito/bcra.js";
 
 // Orquestador: lo que pasa cada vez que llega un mensaje de WhatsApp.
 //   1. reconoce al cliente por su número de WhatsApp o por el teléfono de una ficha que ya existe (o lo crea);
@@ -28,6 +30,9 @@ const MAX_TEXTO_WHATSAPP = 4096;
 const MAX_ARCHIVO_BASE64 = 7_000_000; // ~5 MB, el máximo que acepta Claude por imagen
 const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
 const BYTES_AUDIO_MIN = 100; // menos que esto no es un audio: no se manda a Groq
+
+// Uno para todo el proceso: el límite de consultas del BCRA es por IP.
+const bcraPorDefecto = crearClienteBcra();
 
 const archivoBase64 = (tipos) =>
   z.object({ media_type: z.enum(tipos), data: z.string().max(MAX_ARCHIVO_BASE64).regex(BASE64) });
@@ -188,6 +193,16 @@ async function responderFijo(turno, respuesta, motivo) {
   return { texto: respuesta, fotos: [], envios: enviosDeRespuesta({ texto: respuesta }), conIA: false };
 }
 
+// Con la conversación tomada por una persona (`bot_pausado`), el agente solo guarda lo que
+// escribe el cliente: no llama a Claude, no envía nada y no gasta cupo. El historial queda
+// completo para el panel y para cuando el bot retome.
+async function enPausa(turno) {
+  const { root, sesion, ahora } = turno;
+  await guardarEntrantes(turno);
+  await root.chat_estado.update({ where: { id: sesion.id }, data: { ultimo_mensaje: ahora } });
+  return { pausado: true, texto: null, fotos: [], envios: [], conIA: false };
+}
+
 // Despedida con la charla cerrada: 👍 al mensaje del cliente, sin IA y gratis.
 async function reaccionar(turno) {
   const { root, sesion, ahora, wamid } = turno;
@@ -242,12 +257,23 @@ function conversacionParaClaude(filas, nuevo) {
   return [...turnos.slice(0, -1), { role: "user", content: [{ type: "text", text: ultimo.content }, ...nuevo] }];
 }
 
+// En qué va la verificación crediticia (pedir permiso, pedir el CUIL o nada). Sin la web
+// pública no hay link de privacidad que pasar, y un fallo acá no frena la respuesta.
+async function creditoDelTurno({ root, cliente, sesion, ahora }) {
+  if (!process.env.PUBLIC_WEB_URL) return null;
+  return estadoCredito({ db: root, clienteId: cliente.id, sesion, ahora }).catch((err) => {
+    console.error("[agente] no se pudo ver el estado de la verificación crediticia:", err?.message);
+    return null;
+  });
+}
+
 // Lo que el agente necesita saber en este mensaje: la agencia (nombre, dirección,
 // mapa) y en qué punto del recorrido de venta está el cliente.
 async function contextoDelTurno({ root, cliente, sesion, ahora, autoWeb, cobranza }) {
-  const [usado, ubicacion] = await Promise.all([
+  const [usado, ubicacion, credito] = await Promise.all([
     root.vehiculo_cliente.findFirst({ where: { sesion_id: sesion.id, contexto: "trade_in", deleted_at: null } }),
     root.ubicacion.findUnique({ where: { id: 1 }, select: { nombre: true, direccion: true, maps_url: true } }),
+    creditoDelTurno({ root, cliente, sesion, ahora }),
   ]);
   return {
     asesora: process.env.AGENTE_NOMBRE,
@@ -261,6 +287,8 @@ async function contextoDelTurno({ root, cliente, sesion, ahora, autoWeb, cobranz
     cobranza,
     respondido: respondido(sesion, usado),
     faltan: pendientes(sesion, usado),
+    credito,
+    privacidadUrl: credito && new URL("/privacidad", process.env.PUBLIC_WEB_URL).href,
   };
 }
 
@@ -288,6 +316,13 @@ async function responderConAgente(turno, imagenes, deps) {
         // Abrir o retomar la consulta de otro auto: con el usuario del backend, solo para este cliente.
         consultaPorAuto: (sesionId, autoId) => consultaPorAuto({ db: root, clienteId: cliente.id, sesionId, ahora }, autoId),
         cobranza: turno.cobranza && { financiacionId: turno.cobranza.financiacionId, avisoId: turno.cobranza.avisoId },
+        // Verificación con el BCRA: con el usuario del backend, solo para este cliente.
+        credito: {
+          // El wamid del mensaje en que respondió queda como prueba del consentimiento.
+          registrarConsentimiento: (acepta) => registrarConsentimiento({ db: root, clienteId: cliente.id, ahora, wamid }, acepta),
+          verificar: (cuil, sesionId) =>
+            verificarSituacion({ db: root, clienteId: cliente.id, sesionId, ahora, bcra: deps.bcra ?? bcraPorDefecto }, cuil),
+        },
       },
       registrarConsumo: ({ modelo, usage }) =>
         registrarConsumoClaude({ sesionId: sesion.id, clienteId: cliente.id, modelo, usage }, root),
@@ -366,6 +401,9 @@ async function atender(datos, deps) {
     wamid: p.wamid,
   }));
   const base = { root, cliente, sesion, ahora, wamid: datos.wamid ?? null, paso: PASO_AGENTE, autoWeb, entrantes };
+
+  // La conversación la tomó una persona desde el panel: el bot no responde, solo registra.
+  if (sesion.bot_pausado) return enPausa(base);
 
   // BAJA a un recordatorio de cuota: regla fija, sin IA.
   if (esBaja(texto) && (await darDeBaja({ db: root, telefono: datos.telefono, ahora }))) {

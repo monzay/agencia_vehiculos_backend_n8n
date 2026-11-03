@@ -37,7 +37,7 @@ const MAX_IDENTIFICADOR = 120;
 const TIMEOUT_FUSION_MS = 30_000;
 
 // Lo que se completa de la ficha, campo por campo.
-const GRUPOS_FICHA = [["nombre"], ["telefono"], ["dni"], ["email"]];
+const GRUPOS_FICHA = [["nombre"], ["telefono"], ["dni"], ["cuil"], ["email"]];
 // Del perfil, lo que va junto se completa junto: un CBU con el alias de otra cuenta, o un
 // teléfono alternativo sin su vínculo (lo prohíbe un CHECK), serían datos mezclados.
 const GRUPOS_PERFIL = [
@@ -64,6 +64,8 @@ export const FILAS_HIJAS = Object.freeze([
   hija("consignacion_ingresos"),
   hija("consignacion_ingresos", "conyuge_cliente_id"),
   hija("cliente_canales"),
+  hija("consentimientos"),
+  hija("consultas_crediticias"),
   hija("clientes", "fusionado_en_id"),
 ]);
 
@@ -330,6 +332,9 @@ async function fusionar({ origenId, destinoId, motivo }, tx) {
   const dniDestino = claveDni(destino.dni);
   if (dniOrigen && dniDestino && dniOrigen !== dniDestino) {
     throw error("Las fichas tienen DNI distintos: no son la misma persona.", 409);
+  }
+  if (origen.cuil && destino.cuil && origen.cuil !== destino.cuil) {
+    throw error("Las fichas tienen CUIL distintos: no son la misma persona.", 409);
   }
   await verificarConyuges(origenId, destinoId, tx);
 

@@ -1,3 +1,4 @@
+import { marcarHito, desmarcarHito } from "../services/tramite-hitos.service.js";
 import {
   listarIngresos,
   obtenerIngreso,
@@ -31,9 +32,20 @@ import {
 import { extraerDatos } from "../services/extraccion.service.js";
 import { crearFinanciacionDeIngreso } from "../services/financiaciones.service.js";
 import { buscarPersonas } from "../services/personas.service.js";
+import { precargaDeConsulta } from "../services/precarga-tramite.service.js";
 import { CATALOGO } from "../lib/documentos-catalogo.js";
 
 const NO_ENCONTRADO = { ok: false, error: "Ingreso no encontrado" };
+
+export async function getPrecarga(req, res, next) {
+  try {
+    const precarga = await precargaDeConsulta(req.params.sesionId);
+    if (!precarga) return res.status(404).json({ ok: false, error: "Consulta no encontrada" });
+    res.json({ ok: true, data: precarga });
+  } catch (err) {
+    next(err);
+  }
+}
 
 // El catálogo de papeles se sirve tal cual: el panel dibuja los formularios y
 // la lista de "qué se completa a mano" leyendo esto, así no hay dos copias de
@@ -170,6 +182,23 @@ export async function postExtraccion(req, res, next) {
 export async function postEstado(req, res, next) {
   try {
     res.json({ ok: true, data: await cambiarEstadoIngreso(req.params.id, req.body?.estado) });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// Cobrado, Entregado y Transferido de una venta.
+export async function putHito(req, res, next) {
+  try {
+    res.json({ ok: true, data: await marcarHito(req.params.id, req.params.tipo, req.body ?? {}, req.usuario.id) });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function deleteHito(req, res, next) {
+  try {
+    res.json({ ok: true, data: await desmarcarHito(req.params.id, req.params.tipo) });
   } catch (err) {
     next(err);
   }

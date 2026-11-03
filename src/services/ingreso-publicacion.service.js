@@ -16,7 +16,7 @@ import { marcarVendido, deshacerVenta } from "./vehiculos.service.js";
 
 const VIGENTE = { deleted_at: null };
 // Los estados que se eligen desde Documentos. "vendido" no está: lo pone la
-// venta en Vehículos, y se deshace desde ahí.
+// venta, y se deshace con Deshacer venta, en el legajo.
 const ESTADOS = ["recepcion", "publicado", "retirado"];
 
 function error(mensaje, status = 400) {
@@ -32,7 +32,7 @@ const PARA_DETALLE = {
   consignacion_documentos: { where: VIGENTE, orderBy: { id: "asc" }, include: { usuarios: { select: { id: true, nombre: true } } } },
 };
 
-async function ingresoVigente(ingresoId, tx = prisma) {
+async function consignacionVigente(ingresoId, tx = prisma) {
   const n = Number(ingresoId);
   if (!Number.isInteger(n) || n <= 0) throw error("Ingreso no encontrado.", 404);
   const ingreso = await tx.consignacion_ingresos.findFirst({ where: { id: n, ...VIGENTE }, include: PARA_DETALLE });
@@ -40,15 +40,19 @@ async function ingresoVigente(ingresoId, tx = prisma) {
   // Publicar y retirar mueven la fila de `consignaciones`, que es la venta por
   // cuenta de un tercero. Un auto comprado o permutado ya es de la agencia.
   if (ingreso.modalidad !== "consignacion") throw error("Publicar o retirar desde acá es solo para consignaciones.", 409);
-  if (ingreso.estado === "vendido") {
-    throw error("Este auto figura vendido. Para cambiarlo, deshacé la venta desde Vehículos.", 409);
-  }
+  return ingreso;
+}
+
+// Publicar, retirar o vender: un auto vendido primero tiene que deshacer la venta.
+async function ingresoVigente(ingresoId, tx = prisma) {
+  const ingreso = await consignacionVigente(ingresoId, tx);
+  if (ingreso.estado === "vendido") throw error("Este auto figura vendido. Para cambiarlo, deshacé la venta desde el legajo.", 409);
   return ingreso;
 }
 
 // El `ref` es el identificador público del catálogo y se numera solo. Se calcula
 // dentro de la transacción para que dos publicaciones simultáneas no choquen.
-async function siguienteRef(tx) {
+export async function siguienteRef(tx) {
   const r = await tx.$queryRawUnsafe("SELECT COALESCE(MAX(CAST(ref AS UNSIGNED)),0)+1 AS next FROM autos");
   return String(Number(r[0].next));
 }
@@ -211,7 +215,7 @@ export async function venderIngreso(ingresoId, { precioVenta, vendidoAt } = {}) 
 // Se marcó vendido por error: el auto vuelve a estar publicado. Es la salida
 // de la venta de una consignación, ahora que Vehículos ya no muestra vendidos.
 export async function deshacerVentaIngreso(ingresoId) {
-  const ingreso = await ingresoVigente(ingresoId);
+  const ingreso = await consignacionVigente(ingresoId);
   if (ingreso.estado !== "vendido") throw error("Este ingreso no figura como vendido.", 409);
 
   const consignacion = await prisma.consignaciones.findFirst({

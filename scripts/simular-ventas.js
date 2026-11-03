@@ -12,6 +12,8 @@
 // Crea clientes "SIM ..." en la base local; sus ids quedan en la salida JSON.
 // --fotos-de-muestra: los autos sin fotos devuelven 4 fotos de muestra (no se
 // escribe nada en la base), para poder medir el envío de fotos.
+// --semaforo verde|amarillo|rojo|sin_datos|error: lo que contesta el BCRA simulado
+// (el simulador nunca consulta el BCRA real).
 
 import { writeFileSync, appendFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
@@ -35,6 +37,7 @@ const { atenderMensaje } = await import("../src/agente/atender.js");
 const { MODELO } = await import("../src/agente/agente.js");
 const { ESCENARIOS } = await import("../src/agente/simulador/escenarios.js");
 const { evaluarConversacion } = await import("../src/agente/simulador/evaluar.js");
+const { crearBcraSimulado } = await import("../src/agente/simulador/bcra-simulado.js");
 
 const MAX_TURNOS = 12;
 const FIN = "FIN";
@@ -77,6 +80,8 @@ const deps = {
   dbAgente: process.argv.includes("--fotos-de-muestra") ? conFotosDeMuestra(baseAgente) : baseAgente,
   anthropic,
   esperaRafagaMs: ESPERA_RAFAGA_MS,
+  // Nunca el BCRA real: los CUIL de los clientes simulados son inventados y podrían ser de alguien.
+  bcra: crearBcraSimulado(argumento("semaforo", "verde")),
 };
 
 function instruccionesDelCliente(escenario) {

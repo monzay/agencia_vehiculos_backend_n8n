@@ -54,3 +54,23 @@ test("el detalle del lead tampoco expone el identificador del canal", () => {
   assert.equal("canalId" in detalle, false);
   assert.equal(detalle.telefono, "3884708347");
 });
+
+// ── Verificación crediticia (BCRA): solo informativa para el asesor ──
+
+test("el lead trae el último semáforo crediticio del cliente", () => {
+  const consultado = new Date("2026-11-01T15:00:00Z");
+  const conConsulta = {
+    ...ficha,
+    consultas_crediticias: [{ estado: "ok", semaforo: "rojo", peor_situacion: 3, periodo: "202609", nombre_bcra: "PEREZ ANA", consultado_at: consultado }],
+  };
+  // El nombre del BCRA: el asesor verifica en persona que es quien escribió.
+  assert.deepEqual(mapClienteToLead(conConsulta).credito, { estado: "ok", semaforo: "rojo", periodo: "202609", nombre: "PEREZ ANA", fecha: consultado.toISOString() });
+
+  const sinVerificar = { ...ficha, consultas_crediticias: [{ estado: "error", semaforo: null, periodo: null, consultado_at: consultado }] };
+  assert.deepEqual(mapClienteToLead(sinVerificar).credito, { estado: "error", semaforo: null, periodo: null, nombre: null, fecha: consultado.toISOString() });
+});
+
+test("sin consulta crediticia el lead trae credito null", () => {
+  assert.equal(mapClienteToLead(ficha).credito, null);
+  assert.equal(mapClienteToLead({ ...ficha, consultas_crediticias: [] }).credito, null);
+});

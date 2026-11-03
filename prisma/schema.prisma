@@ -53,6 +53,7 @@ model autos {
   permutas         compraventa_contratos[]
   senas            senas[]
   tramites_interes consignacion_ingresos[] @relation("ingreso_auto_interes")
+  preparacion      preparaciones?
 
   @@index([disponible], map: "idx_disponible")
   @@index([precio], map: "idx_precio")
@@ -102,9 +103,15 @@ model chat_estado {
   tipo_lead        String?                      @db.VarChar(20)
   modalidad_venta  chat_estado_modalidad_venta?
   nombre_declarado String?                      @db.VarChar(120)
+  /// El CUIL que informó la persona en esta consulta (migración 076). El de la persona es `clientes.cuil`.
+  cuil_informado   String?                      @db.Char(11)
   clientes         clientes                     @relation(fields: [cliente_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "chat_estado_ibfk_1")
   vehiculo_cliente vehiculo_cliente[]
   ia_consumos      ia_consumos[]
+  consultas_crediticias consultas_crediticias[]
+  /// Lo que nació de esta consulta (migración 077).
+  tramites         consignacion_ingresos[]
+  senas            senas[]
 
   @@index([cliente_id], map: "idx_cliente")
   @@index([opt_out], map: "idx_opt_out")
@@ -177,6 +184,8 @@ model clientes {
   nombre                String?                 @db.VarChar(120)
   telefono              String?                 @db.VarChar(30)
   dni                   String?                 @db.VarChar(20)
+  /// CUIL que dio el cliente para la verificación crediticia (migración 075).
+  cuil                  String?                 @db.Char(11)
   email                 String?                 @db.VarChar(180)
   canal                 clientes_canal
   created_at            DateTime?               @default(now()) @db.DateTime(0)
@@ -198,9 +207,12 @@ model clientes {
   ia_consumos           ia_consumos[]
   verificacion_intentos verificacion_intentos[]
   entregas              entregas[]
+  consentimientos       consentimientos[]
+  consultas_crediticias consultas_crediticias[]
 
   @@index([telefono], map: "idx_clientes_telefono")
   @@index([dni], map: "idx_clientes_dni")
+  @@index([cuil], map: "idx_clientes_cuil")
   @@index([fusionado_en_id], map: "idx_clientes_fusionado_en")
   // + índice único funcional `uq_clientes_dni_vigente` (migración 074): el DNI no se
   //   repite entre fichas vigentes; las archivadas no cuentan. Prisma no representa
@@ -388,6 +400,7 @@ model vendedores {
 }
 
 model usuarios {
+  tramite_hitos tramite_hitos[]
   id                      Int                       @id @default(autoincrement()) @db.UnsignedInt
   nombre                  String                    @db.VarChar(120)
   email                   String                    @db.VarChar(180)
@@ -465,6 +478,74 @@ model configuracion {
   updated_at DateTime? @default(now()) @db.DateTime(0)
 }
 
+/// Texto de privacidad publicado por la agencia (migración 075). La vigente es la última
+/// sin archivar; las anteriores quedan porque los consentimientos apuntan a ellas.
+model terminos_versiones {
+  id              Int               @id @default(autoincrement()) @db.UnsignedInt
+  texto           String            @db.MediumText
+  publicado_por   String?           @db.VarChar(120)
+  created_at      DateTime          @default(now()) @db.DateTime(0)
+  deleted_at      DateTime?         @db.DateTime(0)
+  consentimientos consentimientos[]
+}
+
+/// Cada sí o no del cliente al aviso de privacidad (migración 075). Manda el último.
+model consentimientos {
+  id                    Int                       @id @default(autoincrement()) @db.UnsignedInt
+  cliente_id            Int                       @db.UnsignedInt
+  terminos_version_id   Int                       @db.UnsignedInt
+  finalidad             consentimientos_finalidad
+  acepta                Boolean
+  wamid                 String?                   @db.VarChar(128)
+  created_at            DateTime                  @default(now()) @db.DateTime(0)
+  deleted_at            DateTime?                 @db.DateTime(0)
+  cliente               clientes                  @relation(fields: [cliente_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "consentimientos_cliente_fk")
+  terminos              terminos_versiones        @relation(fields: [terminos_version_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "consentimientos_terminos_fk")
+  consultas_crediticias consultas_crediticias[]
+
+  @@index([cliente_id, finalidad], map: "idx_consentimiento_cliente")
+  @@index([terminos_version_id], map: "idx_consentimiento_terminos")
+}
+
+/// Resumen de cada consulta a la Central de Deudores del BCRA (migración 075). Solo
+/// informativo para el asesor: no toca la calificación. `estado` error = sin verificar.
+model consultas_crediticias {
+  id                Int                             @id @default(autoincrement()) @db.UnsignedInt
+  cliente_id        Int                             @db.UnsignedInt
+  sesion_id         Int?                            @db.UnsignedInt
+  consentimiento_id Int                             @db.UnsignedInt
+  estado            consultas_crediticias_estado
+  semaforo          consultas_crediticias_semaforo?
+  peor_situacion    Int?                            @db.UnsignedTinyInt
+  periodo           String?                         @db.Char(6)
+  nombre_bcra       String?                         @db.VarChar(120)
+  consultado_at     DateTime                        @db.DateTime(0)
+  deleted_at        DateTime?                       @db.DateTime(0)
+  cliente           clientes                        @relation(fields: [cliente_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "consultas_crediticias_cliente_fk")
+  sesion            chat_estado?                    @relation(fields: [sesion_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "consultas_crediticias_sesion_fk")
+  consentimiento    consentimientos                 @relation(fields: [consentimiento_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "consultas_crediticias_consentimiento_fk")
+
+  @@index([cliente_id, consultado_at], map: "idx_consulta_crediticia_cliente")
+  @@index([sesion_id], map: "idx_consulta_crediticia_sesion")
+  @@index([consentimiento_id], map: "idx_consulta_crediticia_consentimiento")
+}
+
+enum consentimientos_finalidad {
+  consulta_crediticia
+}
+
+enum consultas_crediticias_estado {
+  ok
+  error
+}
+
+enum consultas_crediticias_semaforo {
+  verde
+  amarillo
+  rojo
+  sin_datos
+}
+
 model consignaciones {
   id                    Int                    @id @default(autoincrement()) @db.UnsignedInt
   auto_id               Int                    @db.UnsignedInt
@@ -492,12 +573,64 @@ model entregas {
   id         Int       @id @default(autoincrement()) @db.UnsignedInt
   url        String    @db.VarChar(500)
   cliente_id Int?      @db.UnsignedInt
+  /// El trámite del que salió la foto (migración 078).
+  ingreso_id Int?      @db.UnsignedInt
   created_at DateTime  @default(now()) @db.DateTime(0)
   deleted_at DateTime? @db.DateTime(0)
   clientes   clientes? @relation(fields: [cliente_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "entregas_cliente_fk")
+  ingreso    consignacion_ingresos? @relation(fields: [ingreso_id], references: [id], onDelete: SetNull, onUpdate: Restrict, map: "entregas_ingreso_fk")
 
   @@index([deleted_at, id], map: "idx_vigentes")
   @@index([cliente_id], map: "idx_entrega_cliente")
+  @@index([ingreso_id], map: "idx_entrega_ingreso")
+}
+
+/// Cobrado, Entregado y Transferido de una venta (migración 078). `fecha` es el día real:
+/// no reemplaza a `compraventa_contratos.entrega_at`, que es lo pactado en el boleto.
+model tramite_hitos {
+  id         Int                   @id @default(autoincrement()) @db.UnsignedInt
+  ingreso_id Int                   @db.UnsignedInt
+  tipo       tramite_hitos_tipo
+  fecha      DateTime              @db.Date
+  creado_por Int?                  @db.UnsignedInt
+  created_at DateTime              @default(now()) @db.DateTime(0)
+  updated_at DateTime              @default(now()) @db.DateTime(0)
+  deleted_at DateTime?             @db.DateTime(0)
+  ingreso    consignacion_ingresos @relation(fields: [ingreso_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "tramite_hitos_ingreso_fk")
+  usuarios   usuarios?             @relation(fields: [creado_por], references: [id], onDelete: SetNull, onUpdate: Restrict, map: "tramite_hitos_usuario_fk")
+
+  @@unique([ingreso_id, tipo], map: "uq_ingreso_tipo")
+  @@index([creado_por], map: "tramite_hitos_usuario_fk")
+}
+
+/// De recibir un usado (compra o parte de pago) a publicarlo (migración 079). `estado` es el
+/// avance interno; Publicado y Vendido salen de `autos`. Las fotos viven en el trámite.
+model preparaciones {
+  id           Int                   @id @default(autoincrement()) @db.UnsignedInt
+  ingreso_id   Int                   @unique(map: "uq_ingreso") @db.UnsignedInt
+  estado       preparaciones_estado  @default(recibido)
+  precio_venta Decimal?              @db.Decimal(12, 2)
+  descripcion  String?               @db.Text
+  auto_id      Int?                  @unique(map: "uq_auto") @db.UnsignedInt
+  created_at   DateTime              @default(now()) @db.DateTime(0)
+  updated_at   DateTime              @default(now()) @db.DateTime(0)
+  deleted_at   DateTime?             @db.DateTime(0)
+  ingreso      consignacion_ingresos @relation(fields: [ingreso_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "preparaciones_ingreso_fk")
+  auto         autos?                @relation(fields: [auto_id], references: [id], onDelete: SetNull, onUpdate: Restrict, map: "preparaciones_auto_fk")
+
+  @@index([deleted_at, estado], map: "idx_vigentes")
+}
+
+enum preparaciones_estado {
+  recibido
+  en_preparacion
+  listo
+}
+
+enum tramite_hitos_tipo {
+  cobrado
+  entregado
+  transferido
 }
 
 model ubicacion {
@@ -608,6 +741,8 @@ model consignacion_documentos {
 model consignacion_ingresos {
   id                      Int                             @id @default(autoincrement()) @db.UnsignedInt
   cliente_id              Int                             @db.UnsignedInt
+  /// La consulta de la que nació (migración 077). Sin consulta: compra, consignación o cliente presencial.
+  sesion_id               Int?                            @db.UnsignedInt
   modalidad               consignacion_ingresos_modalidad @default(consignacion)
   conyuge_cliente_id      Int?                            @db.UnsignedInt
   consignacion_id         Int?                            @unique(map: "uq_consignacion") @db.UnsignedInt
@@ -643,7 +778,12 @@ model consignacion_ingresos {
   consignaciones          consignaciones?                 @relation(fields: [consignacion_id], references: [id], map: "consignacion_ingresos_consignacion_fk")
   conyuge                 clientes?                       @relation("consignacion_ingresos_conyuge_cliente_idToclientes", fields: [conyuge_cliente_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "consignacion_ingresos_conyuge_fk")
   usuarios                usuarios?                       @relation(fields: [recibido_por], references: [id], map: "consignacion_ingresos_usuario_fk")
+  sesion                  chat_estado?                    @relation(fields: [sesion_id], references: [id], onDelete: SetNull, onUpdate: Restrict, map: "consignacion_ingresos_sesion_fk")
+  tramite_hitos           tramite_hitos[]
+  entregas                entregas[]
+  preparacion             preparaciones?
 
+  @@index([sesion_id], map: "idx_sesion")
   @@index([conyuge_cliente_id], map: "consignacion_ingresos_conyuge_fk")
   @@index([recibido_por], map: "consignacion_ingresos_usuario_fk")
   @@index([cliente_id], map: "idx_cliente")
@@ -868,6 +1008,8 @@ model senas {
   id         Int                    @id @default(autoincrement()) @db.UnsignedInt
   auto_id    Int                    @db.UnsignedInt
   cliente_id Int                    @db.UnsignedInt
+  /// La consulta de la que nació (migración 077).
+  sesion_id  Int?                   @db.UnsignedInt
   monto      Decimal                @db.Decimal(12, 2)
   forma_pago senas_forma_pago       @default(efectivo)
   senado_at  DateTime               @default(now()) @db.DateTime(0)
@@ -884,7 +1026,9 @@ model senas {
   clientes   clientes               @relation(fields: [cliente_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "senas_cliente_fk")
   ingreso    consignacion_ingresos? @relation(fields: [ingreso_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "senas_ingreso_fk")
   usuarios   usuarios?              @relation(fields: [creado_por], references: [id], onUpdate: Restrict, map: "senas_usuario_fk")
+  sesion     chat_estado?           @relation(fields: [sesion_id], references: [id], onDelete: SetNull, onUpdate: Restrict, map: "senas_sesion_fk")
 
+  @@index([sesion_id], map: "idx_sesion")
   @@index([auto_id, estado], map: "idx_auto_estado")
   @@index([cliente_id], map: "idx_cliente")
   @@index([deleted_at, estado, vence], map: "idx_vigentes")

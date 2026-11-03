@@ -2,6 +2,7 @@ import { login, obtenerActual } from "../services/auth.service.js";
 import { actualizarUsuario } from "../services/usuarios.service.js";
 
 export async function postLogin(req, res, next) {
+
   try {
     const { email, password } = req.body || {};
     const resultado = await login(email, password);

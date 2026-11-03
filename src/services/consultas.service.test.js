@@ -2,7 +2,14 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { isDeepStrictEqual } from "node:util";
 import { prisma } from "../lib/prisma.js";
-import { listarConsultas, listarConsultasVenta, obtenerConsulta, marcarConsultaAtendida } from "./consultas.service.js";
+import {
+  listarConsultas,
+  listarConsultasVenta,
+  obtenerConsulta,
+  marcarConsultaAtendida,
+  responderComoHumano,
+  reanudarBot,
+} from "./consultas.service.js";
 
 // El servicio usa el cliente Prisma único: se le cambian las lecturas por una
 // base falsa en memoria que anota lo que le piden y devuelve `sesiones`.
@@ -49,6 +56,19 @@ const telefonosBuscados = (where) =>
   clausulas(where)
     .filter((c) => c.clientes?.telefono)
     .map((c) => c.clientes.telefono.contains);
+
+// ── Lo que nació de la consulta ──
+
+test("la lista dice si cada consulta ya avanzó a un trámite o una seña", async (t) => {
+  const tramites = [{ id: 3, modalidad: "contado", estado: "recepcion" }];
+  const pedidos = conBase(t, [sesion(1, { tramites, senas: [] }), sesion(2, { tramites: [], senas: [] })]);
+
+  const { items } = await listarConsultas();
+
+  assert.deepEqual(items[0].avance, { tipo: "tramite", id: 3, modalidad: "contado", estado: "recepcion" });
+  assert.equal(items[1].avance, null);
+  assert.deepEqual(pedidos[0].include.tramites.where, { deleted_at: null }, "un trámite cancelado no cuenta");
+});
 
 // ── Canal de cada consulta ──
 
@@ -166,18 +186,38 @@ test("los mensajes del detalle se acotan a la ventana de la sesión: desde su in
   assert.deepEqual(ventanas[0], { lt: dia(14) }, "la primera toma también lo anterior a ella");
   assert.deepEqual(ventanas[1], { gte: dia(14), lt: dia(18) });
   assert.deepEqual(ventanas[2], { gte: dia(18) }, "la última no tiene tope");
-  assert.ok(pedidos.every((p) => p.where.direccion === "entrante" && p.where.cliente_id === 5), "solo lo que escribió el cliente, de ese cliente");
+  assert.ok(pedidos.every((p) => p.where.cliente_id === 5), "solo de ese cliente");
+  assert.ok(pedidos.every((p) => !("direccion" in p.where)), "trae ambas direcciones para el chat completo");
 });
 
 test("el detalle trae las respuestas de la sesión y los mensajes del cliente con su pregunta", async (t) => {
-  const mensajes = [{ id: 7n, mensaje: "Contado", paso_nodo: "q_pago", created_at: dia(14) }];
+  const mensajes = [{ id: 7n, direccion: "entrante", mensaje: "Contado", paso_nodo: "q_pago", created_at: dia(14) }];
   conDetalle(t, { sesiones: sesionesDeUnaPersona, mensajes });
 
   const detalle = await obtenerConsulta("2");
 
   assert.equal(detalle.sesionId, 2);
   assert.deepEqual(detalle.respuestas, [{ pregunta: "¿A nombre de quién registramos la consulta?", respuesta: "Ana" }]);
-  assert.deepEqual(detalle.mensajes, [{ id: 7, mensaje: "Contado", paso: "q_pago", pregunta: "¿Cómo va a pagar?", fecha: dia(14).toISOString() }]);
+  assert.deepEqual(detalle.mensajes, [{ id: 7, autor: "cliente", mensaje: "Contado", paso: "q_pago", pregunta: "¿Cómo va a pagar?", fecha: dia(14).toISOString() }]);
+});
+
+test("el chat trae los mensajes del cliente, del bot y de una persona, en orden y con su autor", async (t) => {
+  const mensajes = [
+    { id: 1n, direccion: "entrante", mensaje: "hola", paso_nodo: "agente_ia", created_at: dia(14) },
+    { id: 2n, direccion: "saliente", mensaje: "¡Hola! ¿En qué te ayudo?", paso_nodo: "agente_ia", created_at: dia(14) },
+    { id: 3n, direccion: "saliente", mensaje: "Te atiende Juan, un asesor.", paso_nodo: "humano", created_at: dia(14) },
+  ];
+  conDetalle(t, { sesiones: sesionesDeUnaPersona, mensajes });
+
+  const detalle = await obtenerConsulta("2");
+
+  assert.deepEqual(detalle.chat.map((m) => [m.autor, m.mensaje]), [
+    ["cliente", "hola"],
+    ["bot", "¡Hola! ¿En qué te ayudo?"],
+    ["humano", "Te atiende Juan, un asesor."],
+  ]);
+  // El campo `mensajes` sigue siendo solo lo que escribió el cliente.
+  assert.deepEqual(detalle.mensajes.map((m) => m.mensaje), ["hola"]);
 });
 
 // ── Marcar una consulta como atendida ──
@@ -307,4 +347,152 @@ test("si la persona tiene una sola consulta, los mensajes del detalle no se acot
 
   assert.ok(!("created_at" in pedidos[0].where));
   assert.deepEqual(detalle.respuestas, []);
+});
+
+// ── Intervención humana: responder desde el panel y devolver al bot ──
+
+const ahora = dia(20);
+
+// Base falsa para responderComoHumano: la sesión con su cliente, el último mensaje
+// entrante (para la ventana de 24 h) y el registro de lo que se escribe.
+function conIntervencion(t, { sesion: fila, ultimoEntrante = ahora } = {}) {
+  const e = { creados: [], updates: [] };
+  const originales = {
+    chat_estado: { findUnique: prisma.chat_estado.findUnique, update: prisma.chat_estado.update },
+    historial_mensajes: { findFirst: prisma.historial_mensajes.findFirst, create: prisma.historial_mensajes.create },
+    $transaction: prisma.$transaction,
+  };
+  prisma.chat_estado.findUnique = async ({ where }) => (fila && where.id === fila.id ? fila : null);
+  prisma.chat_estado.update = async (args) => (e.updates.push(args), args);
+  prisma.historial_mensajes.findFirst = async () => (ultimoEntrante ? { created_at: ultimoEntrante } : null);
+  prisma.historial_mensajes.create = async ({ data }) => (e.creados.push(data), { id: 99n, ...data });
+  prisma.$transaction = async (ops) => Promise.all(ops);
+  t.after(() => {
+    Object.assign(prisma.chat_estado, originales.chat_estado);
+    Object.assign(prisma.historial_mensajes, originales.historial_mensajes);
+    prisma.$transaction = originales.$transaction;
+  });
+  return e;
+}
+
+// Enviador falso: anota los envíos y devuelve un wamid, o lanza si se le pide.
+function enviadorFalso({ falla = false } = {}) {
+  const envios = [];
+  const enviar = {
+    enviarTexto: async (datos) => {
+      envios.push(datos);
+      if (falla) throw Object.assign(new Error("WhatsApp respondió 400"), { status: 400 });
+      return { wamid: "wamid.OUT1" };
+    },
+  };
+  return { enviar, envios };
+}
+
+const sesionTomable = { id: 5, cliente_id: 5, bot_pausado: false, clientes: { id: 5, telefono: "3884708347" } };
+
+test("responder como persona: envía por WhatsApp, pausa el bot, marca atendida y guarda el saliente humano", async (t) => {
+  const e = conIntervencion(t, { sesion: { ...sesionTomable } });
+  const { enviar, envios } = enviadorFalso();
+
+  const r = await responderComoHumano("5", "Hola, te atiende Juan", { nombre: "Juan" }, { enviar, ahora });
+
+  assert.equal(r.ok, true);
+  assert.deepEqual(envios, [{ telefono: "543884708347", texto: "Hola, te atiende Juan" }]);
+  assert.deepEqual(e.creados[0], { cliente_id: 5, direccion: "saliente", mensaje: "Hola, te atiende Juan", paso_nodo: "humano", created_at: ahora, wamid: "wamid.OUT1" });
+  assert.equal(e.updates[0].data.bot_pausado, true);
+  assert.deepEqual([e.updates[0].data.atendido_por, e.updates[0].data.atendido_at], ["Juan", ahora]);
+  assert.equal(r.mensaje.autor, "humano");
+});
+
+test("el teléfono se manda a Meta en formato de WhatsApp, sea cual sea cómo está guardado", async (t) => {
+  conIntervencion(t, { sesion: { ...sesionTomable, clientes: { id: 5, telefono: "5493884708347" } } });
+  const { enviar, envios } = enviadorFalso();
+
+  await responderComoHumano("5", "hola", { nombre: "Juan" }, { enviar, ahora });
+
+  assert.equal(envios[0].telefono, "543884708347");
+});
+
+test("teléfono que no se puede convertir a WhatsApp: no envía a ciegas y avisa", async (t) => {
+  const e = conIntervencion(t, { sesion: { ...sesionTomable, clientes: { id: 5, telefono: "12345" } } });
+  const { enviar, envios } = enviadorFalso();
+
+  const r = await responderComoHumano("5", "hola", { nombre: "Juan" }, { enviar, ahora });
+
+  assert.equal(r.codigo, "sin_telefono");
+  assert.deepEqual([envios, e.creados, e.updates], [[], [], []], "no llama a Meta ni toca nada");
+});
+
+test("si Meta rechaza el envío, no se guarda ningún saliente ni se pausa el bot", async (t) => {
+  const e = conIntervencion(t, { sesion: { ...sesionTomable } });
+  const { enviar } = enviadorFalso({ falla: true });
+
+  const r = await responderComoHumano("5", "hola", { nombre: "Juan" }, { enviar, ahora });
+
+  assert.equal(r.ok, false);
+  assert.equal(r.codigo, "envio_fallido");
+  assert.deepEqual([e.creados, e.updates], [[], []], "no toca el historial ni la sesión");
+});
+
+test("texto vacío o demasiado largo: no envía y avisa", async (t) => {
+  const e = conIntervencion(t, { sesion: { ...sesionTomable } });
+  const { enviar, envios } = enviadorFalso();
+
+  for (const texto of ["   ", "a".repeat(4097)]) {
+    const r = await responderComoHumano("5", texto, { nombre: "Juan" }, { enviar, ahora });
+    assert.equal(r.codigo, "texto_invalido");
+  }
+  assert.deepEqual([envios, e.creados], [[], []]);
+});
+
+test("fuera de la ventana de 24 h: no envía y avisa que venció", async (t) => {
+  conIntervencion(t, { sesion: { ...sesionTomable }, ultimoEntrante: dia(18) }); // hace 48 h
+  const { enviar, envios } = enviadorFalso();
+
+  const r = await responderComoHumano("5", "hola", { nombre: "Juan" }, { enviar, ahora });
+
+  assert.equal(r.codigo, "ventana_cerrada");
+  assert.deepEqual(envios, [], "no llega a enviar");
+});
+
+test("responder en una consulta que no existe da no_encontrada", async (t) => {
+  conIntervencion(t, { sesion: null });
+  const { enviar } = enviadorFalso();
+  const r = await responderComoHumano("99", "hola", { nombre: "Juan" }, { enviar, ahora });
+  assert.equal(r.codigo, "no_encontrada");
+});
+
+test("devolver la conversación al bot pone bot_pausado en false", async (t) => {
+  const e = conIntervencion(t, { sesion: { ...sesionTomable, bot_pausado: true } });
+  const r = await reanudarBot("5");
+  assert.deepEqual(r, { sesionId: 5, botPausado: false });
+  assert.equal(e.updates[0].data.bot_pausado, false);
+});
+
+test("devolver al bot en una consulta que no existe da null", async (t) => {
+  conIntervencion(t, { sesion: null });
+  assert.equal(await reanudarBot("99"), null);
+});
+
+test("el detalle informa si la ventana está abierta y si la tomó una persona", async (t) => {
+  const reciente = new Date(Date.now() - 60_000); // el cliente escribió hace un minuto
+  const mensajes = [{ id: 1n, direccion: "entrante", mensaje: "hola", paso_nodo: "agente_ia", created_at: reciente }];
+  conDetalle(t, { sesiones: [sesion(1, { bot_pausado: true })], mensajes });
+
+  const detalle = await obtenerConsulta("1");
+
+  assert.equal(detalle.ventanaAbierta, true);
+  assert.equal(detalle.botPausado, true);
+});
+
+test("el detalle muestra el CUIL de la ficha entre los datos de la consulta", async (t) => {
+  conDetalle(t, { sesiones: [sesion(1, { sesion_inicio: dia(10), vehiculo_cliente: [], clientes: { cuil: "20123456786" } })] });
+  const buscar = prisma.chat_estado.findUnique;
+  let pedido;
+  prisma.chat_estado.findUnique = async (args) => ((pedido = args), buscar(args));
+
+  const detalle = await obtenerConsulta("1");
+
+  assert.deepEqual(pedido.include.clientes, { select: { cuil: true } }, "de la ficha pide solo el CUIL");
+  assert.deepEqual(detalle.respuestas.filter((r) => r.pregunta.includes("CUIL")), [{ pregunta: "CUIL en la ficha", respuesta: "20-12345678-6" }]);
 });

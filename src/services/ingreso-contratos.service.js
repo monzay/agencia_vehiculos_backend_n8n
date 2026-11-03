@@ -119,5 +119,6 @@ export async function firmarContrato(ingresoId) {
 
 export async function desfirmarContrato(ingresoId) {
   const ingreso = await ingresoVigente(ingresoId);
+  if (ingreso.estado === "vendido") throw error("El auto figura vendido: deshacé la venta antes de desfirmar.", 409);
   return mapContrato(await desfirmar(prisma.consignacion_contratos, ingreso.consignacion_contratos));
 }

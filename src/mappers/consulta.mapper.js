@@ -5,6 +5,10 @@
 // El DETALLE (al hacer click) trae las respuestas del cliente de esa sesión.
 
 import { provinciaDeTelefono, telefonoLocal } from "../lib/provincias.js";
+import { creditoDelCliente } from "./lead.mapper.js";
+import { avanceDeConsulta } from "../services/consulta-avance.service.js";
+import { PASO_HUMANO } from "../agente/pasos.js";
+import { formatearCuil } from "../credito/cuil.js";
 
 const PREGUNTA_NOMBRE = "¿A nombre de quién registramos la consulta?";
 
@@ -44,6 +48,8 @@ export function mapConsultaResumen(sesion, cliente, auto, vendedor) {
       : null,
     tipoLead: sesion.tipo_lead ?? null,
     clasificacion: sesion.clasificacion ?? null,
+    // Último resultado del BCRA del cliente: solo informativo, no entra en la clasificación.
+    credito: cliente ? creditoDelCliente(cliente) : null,
     // Asesor que tiene que atender la consulta (null = sin asignar todavía).
     asesor: vendedor?.nombre ?? null,
     // Marca de atendida: cuándo y quién la marcó (null = no atendida).
@@ -60,6 +66,8 @@ export function mapConsultaResumen(sesion, cliente, auto, vendedor) {
         }
       : null,
     visitaPropuesta: sesion.visita_propuesta ?? null,
+    // Si ya pasó a un trámite o una seña (null = todavía se puede avanzar).
+    avance: avanceDeConsulta(sesion),
   };
 }
 
@@ -126,11 +134,21 @@ export function preguntaDePaso(paso) {
   return !paso || paso === "webhook" ? "Mensaje del cliente" : paso;
 }
 
-// Un mensaje entrante (respuesta del cliente) para el detalle, con la pregunta
-// que estaba respondiendo (según el paso que guardó el bot).
+// Quién escribió el mensaje, para pintar la burbuja en el chat:
+// - entrante            → "cliente"
+// - saliente + "humano" → "humano" (lo escribió una persona desde el panel)
+// - saliente (resto)    → "bot"    (el agente de IA o una reacción)
+export function autorDeMensaje(m) {
+  if (m.direccion === "entrante") return "cliente";
+  return m.paso_nodo === PASO_HUMANO ? "humano" : "bot";
+}
+
+// Un mensaje del chat para el detalle. Para los entrantes (respuestas del cliente)
+// trae además la pregunta que estaba respondiendo, según el paso que guardó el bot.
 export function mapMensaje(m) {
   return {
     id: Number(m.id), // BigInt → Number
+    autor: autorDeMensaje(m),
     mensaje: m.mensaje ?? "",
     paso: m.paso_nodo ?? "",
     pregunta: preguntaDePaso(m.paso_nodo),
@@ -144,7 +162,7 @@ const DISPONIBILIDAD = { esta_semana: "Esta semana", proximas: "Próximas semana
 // Deriva las preguntas→respuestas de la consulta a partir de lo que el bot ya
 // guardó estructurado en la sesión (`sesiones`) y en `vehiculo_cliente`.
 // Así se identifica qué contestó el cliente a cada pregunta, sin adivinar.
-export function construirRespuestas(sesion, vehiculosCliente = []) {
+export function construirRespuestas(sesion, vehiculosCliente = [], cliente = null) {
   const r = [];
   const usado = vehiculosCliente.find((v) => v.contexto === "trade_in");
   const venta = vehiculosCliente.find((v) => v.contexto === "venta");
@@ -187,6 +205,8 @@ export function construirRespuestas(sesion, vehiculosCliente = []) {
     if (usado.detalles?.trim()) r.push({ pregunta: "Estado del usado", respuesta: usado.detalles.trim() });
     if (usado.precio_pedido?.trim()) r.push({ pregunta: "Cuánto pide por el usado", respuesta: usado.precio_pedido.trim() });
   }
+  if (sesion.cuil_informado) r.push({ pregunta: "CUIL informado", respuesta: formatearCuil(sesion.cuil_informado) });
+  if (cliente?.cuil && cliente.cuil !== sesion.cuil_informado) r.push({ pregunta: "CUIL en la ficha", respuesta: formatearCuil(cliente.cuil) });
   if (sesion.decisor) {
     r.push({
       pregunta: "¿Quién decide la compra?",

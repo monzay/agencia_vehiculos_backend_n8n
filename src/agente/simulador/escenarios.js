@@ -116,4 +116,30 @@ export const ESCENARIOS = [
       clasificacion: "CALIENTE",
     },
   },
+  {
+    // Solo sirve con la verificación crediticia prendida en la base local. El BCRA es simulado:
+    // el CUIL es inventado (con el dígito verificador bien) y no se consulta a nadie.
+    id: "financia_bcra",
+    nombre: "Diego",
+    primerMensaje: "Hola, quiero info de la Amarok para financiarla",
+    hechos: [
+      "Te interesa la Volkswagen Amarok V6 2020.",
+      "La querés financiar y tenés 8 millones de anticipo.",
+      "Tenés recibo de sueldo.",
+      "Si te piden permiso para consultar tu situación en el BCRA, aceptás.",
+      "Tu CUIL es 20-12345678-6.",
+      "No tenés auto usado para entregar.",
+      "Decidís vos solo.",
+      "Podés ir a la agencia este viernes a la tarde.",
+    ],
+    esperado: {
+      pago_tipo: "financiado",
+      credito_ok: true,
+      anticipo: true,
+      entrega_usado: false,
+      decisor: "solo",
+      disponibilidad: "esta_semana",
+      clasificacion: "CALIENTE",
+    },
+  },
 ];

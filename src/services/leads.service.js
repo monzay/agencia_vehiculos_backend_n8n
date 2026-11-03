@@ -6,6 +6,14 @@ import { mapClienteToLead, mapClienteToLeadDetalle } from "../mappers/lead.mappe
 // no se lista, no se cuenta ni se abre.
 const VIGENTE = { deleted_at: null };
 
+// La última verificación con el BCRA (solo informativa: el panel la muestra al asesor).
+export const ULTIMA_CONSULTA_CREDITICIA = {
+  where: { deleted_at: null },
+  orderBy: [{ consultado_at: "desc" }, { id: "desc" }],
+  take: 1,
+  select: { estado: true, semaforo: true, periodo: true, nombre_bcra: true, consultado_at: true },
+};
+
 // Resuelve, en una sola query, las filas `autos` para un conjunto de ids.
 // El mapa queda keyeado por `id` (la sesión referencia el auto por auto_id).
 async function cargarAutosPorIds(ids) {
@@ -21,7 +29,7 @@ async function cargarAutosPorIds(ids) {
 export async function listarLeads() {
   const clientes = await prisma.clientes.findMany({
     where: VIGENTE,
-    include: { chat_estado: { include: { vehiculo_cliente: true } } },
+    include: { chat_estado: { include: { vehiculo_cliente: true } }, consultas_crediticias: ULTIMA_CONSULTA_CREDITICIA },
     orderBy: { created_at: "desc" },
   });
 
@@ -101,6 +109,7 @@ export async function obtenerLead(id) {
         include: { vehiculo_cliente: true },
       },
       historial_mensajes: { orderBy: { created_at: "asc" } },
+      consultas_crediticias: ULTIMA_CONSULTA_CREDITICIA,
     },
   });
   if (!cliente) return null;

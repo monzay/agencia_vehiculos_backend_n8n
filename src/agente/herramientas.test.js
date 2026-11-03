@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { definicionesParaClaude, ejecutarHerramienta, NOMBRES_HERRAMIENTAS } from "./herramientas.js";
+import { verificarSituacion } from "../credito/verificacion.js";
 
 // Base de datos simulada: guarda cada consulta que arma una herramienta y
 // devuelve datos fijos. Así se verifica QUÉ se le pide a la base sin tocar MySQL.
@@ -48,9 +49,9 @@ const ultima = (db, modelo, metodo) => [...db.llamadas].reverse().find((l) => l.
 
 // ── Definiciones para Claude ──
 
-test("hay 9 herramientas con formularios estrictos, salvo registrar_calificacion", () => {
+test("hay 11 herramientas con formularios estrictos, salvo registrar_calificacion", () => {
   const defs = definicionesParaClaude();
-  assert.equal(defs.length, 9);
+  assert.equal(defs.length, 11);
   assert.deepEqual(defs.map((d) => d.name).sort(), [...NOMBRES_HERRAMIENTAS].sort());
   for (const d of defs) {
     assert.equal(d.strict, d.name !== "registrar_calificacion", d.name);
@@ -608,4 +609,71 @@ test("avisar_administracion no acepta tipos inventados ni links en el detalle", 
   const cobranza = { financiacionId: 12, avisoId: 4 };
   assert.equal((await ejecutarHerramienta("avisar_administracion", { tipo: "baja", detalle: null }, ctx(db, { cobranza }))).esError, true);
   assert.equal((await ejecutarHerramienta("avisar_administracion", { tipo: "otro", detalle: "mirá https://estafa.com" }, ctx(db, { cobranza }))).esError, true);
+});
+
+// ── Verificación crediticia (BCRA) ──
+
+const CUIL_DE_PRUEBA = "20123456786"; // DNI 12345678
+
+// Base del backend lista para consultar: verificación prendida, términos publicados,
+// cliente que financia con recibo y que ya dijo que sí.
+function baseParaVerificar() {
+  return baseFalsa({
+    "configuracion.findUnique": { clave: "verificacion_crediticia", valor: "1" },
+    "terminos_versiones.findFirst": { id: 3 },
+    "chat_estado.findUnique": { pago_tipo: "financiado", credito_ok: 1 },
+    "consentimientos.findFirst": { id: 1, acepta: true },
+    "clientes.findUnique": { dni: "12345678", cuil: null },
+    "clientes.findFirst": null,
+    "consultas_crediticias.findFirst": null,
+  });
+}
+
+test("verificar_situacion_crediticia no le devuelve el semáforo a la IA ni toca la calificación", async () => {
+  const root = baseParaVerificar();
+  const bcra = { consultar: async () => ({ estado: "ok", deudas: { periodos: [{ periodo: "202609", entidades: [{ situacion: 4 }] }] }, cheques: null }) };
+  const credito = { verificar: (cuil) => verificarSituacion({ db: root, clienteId: 50, sesionId: 900, ahora: new Date(), bcra }, cuil) };
+
+  const r = await ejecutarHerramienta("verificar_situacion_crediticia", { cuil: "20-12345678-6" }, ctx(baseFalsa(), { credito }));
+
+  assert.equal(r.esError, false);
+  assert.deepEqual(r.resultado, { consultado: true });
+  assert.doesNotMatch(JSON.stringify(r), /rojo|semaforo|situacion/i);
+  assert.equal(ultima(root, "consultas_crediticias", "create").args.data.semaforo, "rojo", "el asesor sí lo ve");
+  assert.deepEqual(ultima(root, "chat_estado", "update").args.data, { cuil_informado: "20123456786" }, "guarda el CUIL; no cambia puntaje ni temperatura");
+});
+
+test("registrar_consentimiento pasa el sí o el no del cliente", async () => {
+  const respuestas = [];
+  const credito = { registrarConsentimiento: async (acepta) => (respuestas.push(acepta), { registrado: true }) };
+  for (const acepta of [true, false]) {
+    const r = await ejecutarHerramienta("registrar_consentimiento", { acepta }, ctx(baseFalsa(), { credito }));
+    assert.deepEqual(r, { esError: false, resultado: { registrado: true } });
+  }
+  assert.deepEqual(respuestas, [true, false]);
+});
+
+test("sin la verificación conectada, las herramientas de crédito no hacen nada", async () => {
+  const consentimiento = await ejecutarHerramienta("registrar_consentimiento", { acepta: true }, ctx(baseFalsa()));
+  const verificacion = await ejecutarHerramienta("verificar_situacion_crediticia", { cuil: CUIL_DE_PRUEBA }, ctx(baseFalsa()));
+  assert.equal(consentimiento.resultado.registrado, false);
+  assert.equal(verificacion.resultado.consultado, false);
+});
+
+test("verificar_situacion_crediticia solo acepta números y separadores en el CUIL", async () => {
+  const credito = { verificar: async () => assert.fail("no debería consultar") };
+  for (const cuil of ["../Deudas", "20123456786 OR 1=1", "1234"]) {
+    const r = await ejecutarHerramienta("verificar_situacion_crediticia", { cuil }, ctx(baseFalsa(), { credito }));
+    assert.equal(r.esError, true, cuil);
+  }
+});
+
+test("si falla una herramienta de crédito, el log no lleva el CUIL ni el mensaje del error", async (t) => {
+  const log = t.mock.method(console, "error", () => {});
+  const credito = { verificar: async () => { throw Object.assign(new Error("Invalid clientes.update() data: { cuil: '20123456786' }"), { code: "P2000" }); } };
+  const r = await ejecutarHerramienta("verificar_situacion_crediticia", { cuil: CUIL_DE_PRUEBA }, ctx(baseFalsa(), { credito }));
+  assert.equal(r.esError, true);
+  const escrito = log.mock.calls.map((c) => c.arguments.join(" ")).join(" | ");
+  assert.doesNotMatch(escrito, /20123456786/);
+  assert.match(escrito, /P2000/);
 });

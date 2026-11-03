@@ -30,13 +30,15 @@ const MODELOS = [
   "senas",
   "financiaciones",
   "consignacion_ingresos",
+  "consentimientos",
+  "consultas_crediticias",
 ];
 const ESCRITURAS = ["create", "update", "updateMany"];
 const CREADA = new Date("2026-10-01T12:00:00Z");
 const FECHA = new Date("2026-10-10T12:00:00Z");
 
 const DEFECTOS = {
-  clientes: { nombre: null, telefono: null, dni: null, email: null, canal_id: null, deleted_at: null, fusionado_en_id: null, created_at: CREADA },
+  clientes: { nombre: null, telefono: null, dni: null, cuil: null, email: null, canal_id: null, deleted_at: null, fusionado_en_id: null, created_at: CREADA },
   cliente_perfiles: {
     apellido: null, cuit: null, domicilio: null, localidad: null, provincia: null,
     cbu: null, alias_cbu: null, banco_cbu: null, contacto_alt_telefono: null, contacto_alt_vinculo: null,

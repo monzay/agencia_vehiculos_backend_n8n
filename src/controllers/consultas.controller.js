@@ -3,7 +3,18 @@ import {
   listarConsultasVenta,
   obtenerConsulta,
   marcarConsultaAtendida,
+  responderComoHumano,
+  reanudarBot,
 } from "../services/consultas.service.js";
+
+// Por qué no se pudo responder desde el panel → estado HTTP y mensaje para el asesor.
+const ERROR_INTERVENCION = {
+  no_encontrada: { estado: 404, error: "Consulta no encontrada" },
+  texto_invalido: { estado: 400, error: "El mensaje está vacío o es demasiado largo" },
+  sin_telefono: { estado: 409, error: "La consulta no tiene un teléfono para responder" },
+  ventana_cerrada: { estado: 409, error: "La ventana de 24 h de WhatsApp está cerrada: el cliente tiene que volver a escribir" },
+  envio_fallido: { estado: 502, error: "No se pudo enviar el mensaje por WhatsApp" },
+};
 
 export async function getConsultas(req, res, next) {
   try {
@@ -46,7 +57,7 @@ export async function patchAtendido(req, res, next) {
   }
 }
 
-// Detalle de una consulta: mensajes (respuestas del cliente) de esa sesión.
+// Detalle de una consulta: el chat completo (cliente/bot/humano) de esa sesión.
 export async function getConsulta(req, res, next) {
   try {
     const consulta = await obtenerConsulta(req.params.id);
@@ -54,6 +65,30 @@ export async function getConsulta(req, res, next) {
       return res.status(404).json({ ok: false, error: "Consulta no encontrada" });
     }
     res.json({ ok: true, data: consulta });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// Responder al cliente desde el panel (intervención humana). body { texto }.
+// Toma la conversación: pausa el bot y marca la consulta como atendida.
+export async function postMensajeConsulta(req, res, next) {
+  try {
+    const r = await responderComoHumano(req.params.id, req.body?.texto, req.usuario);
+    if (r.ok) return res.json({ ok: true, data: r });
+    const { estado, error } = ERROR_INTERVENCION[r.codigo] ?? { estado: 400, error: "No se pudo responder" };
+    res.status(estado).json({ ok: false, error, codigo: r.codigo });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// Devolver la conversación al bot: vuelve a responder solo.
+export async function postDevolverBot(req, res, next) {
+  try {
+    const r = await reanudarBot(req.params.id);
+    if (!r) return res.status(404).json({ ok: false, error: "Consulta no encontrada" });
+    res.json({ ok: true, data: r });
   } catch (err) {
     next(err);
   }

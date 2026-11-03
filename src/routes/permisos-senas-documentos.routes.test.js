@@ -7,12 +7,14 @@ import express from "express";
 process.env.JWT_SECRET ??= "s".repeat(40);
 const { default: senas } = await import("./senas.routes.js");
 const { default: ingresos } = await import("./ingresos.routes.js");
+const { default: preparaciones } = await import("./preparaciones.routes.js");
 const { firmarToken } = await import("../lib/auth.js");
 
 const app = express();
 app.use(express.json());
 app.use("/api/senas", senas);
 app.use("/api/ingresos", ingresos);
+app.use("/api/preparaciones", preparaciones);
 const servidor = await new Promise((ok) => {
   const s = app.listen(0, () => ok(s));
 });
@@ -44,6 +46,26 @@ test("un asesor no puede ver señas ni documentos (ni leyendo la API directo)", 
 test("un asesor tampoco puede cambiar nada", async () => {
   assert.equal(await pedir("POST", "/api/senas", asesor), 403);
   assert.equal(await pedir("POST", "/api/ingresos", asesor), 403);
+});
+
+test("la precarga de un trámite es solo del admin", async () => {
+  assert.equal(await pedir("GET", "/api/ingresos/precarga/1", asesor), 403);
+  assert.equal(await pedir("GET", "/api/ingresos/precarga/1"), 401);
+});
+
+test("cobro, entrega y transferencia son solo del admin", async () => {
+  for (const metodo of ["PUT", "DELETE"]) {
+    assert.equal(await pedir(metodo, "/api/ingresos/1/hitos/entregado", asesor), 403, metodo);
+    assert.equal(await pedir(metodo, "/api/ingresos/1/hitos/entregado"), 401, metodo);
+  }
+});
+
+test("en Preparación el asesor lee, y escribe solo el admin", async () => {
+  assert.equal(await pedir("PATCH", "/api/preparaciones/1", asesor), 403);
+  assert.equal(await pedir("POST", "/api/preparaciones/1/publicacion", asesor), 403);
+  assert.equal(await pedir("DELETE", "/api/preparaciones/1/publicacion", asesor), 403);
+  assert.equal(await pedir("GET", "/api/preparaciones"), 401);
+  assert.equal(await pedir("GET", "/api/preparaciones/1"), 401);
 });
 
 test("sin sesión, nada", async () => {

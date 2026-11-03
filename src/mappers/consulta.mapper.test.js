@@ -157,22 +157,29 @@ test("una consulta de venta sin vehículo cargado ni cliente se arma igual, con 
 // ── Mensajes del detalle ──
 
 test("cada mensaje entrante trae la pregunta que el cliente estaba respondiendo", () => {
-  const m = mapMensaje({ id: 9n, mensaje: "Contado", paso_nodo: "q_pago", created_at: new Date("2026-10-12T15:00:00Z") });
+  const m = mapMensaje({ id: 9n, direccion: "entrante", mensaje: "Contado", paso_nodo: "q_pago", created_at: new Date("2026-10-12T15:00:00Z") });
 
-  assert.deepEqual(m, { id: 9, mensaje: "Contado", paso: "q_pago", pregunta: "¿Cómo va a pagar?", fecha: "2026-10-12T15:00:00.000Z" });
+  assert.deepEqual(m, { id: 9, autor: "cliente", mensaje: "Contado", paso: "q_pago", pregunta: "¿Cómo va a pagar?", fecha: "2026-10-12T15:00:00.000Z" });
 });
 
 test("un mensaje sin paso (datos viejos) o con un paso desconocido se muestra igual", () => {
   assert.equal(preguntaDePaso("webhook"), "Mensaje del cliente");
   assert.equal(preguntaDePaso(null), "Mensaje del cliente");
   assert.equal(preguntaDePaso("paso_nuevo"), "paso_nuevo");
-  assert.deepEqual(mapMensaje({ id: 1, mensaje: null, paso_nodo: null, created_at: null }), {
+  assert.deepEqual(mapMensaje({ id: 1, direccion: "entrante", mensaje: null, paso_nodo: null, created_at: null }), {
     id: 1,
+    autor: "cliente",
     mensaje: "",
     paso: "",
     pregunta: "Mensaje del cliente",
     fecha: null,
   });
+});
+
+test("el autor del mensaje sale de la dirección y el paso: cliente, bot o humano", () => {
+  assert.equal(mapMensaje({ id: 1, direccion: "entrante", paso_nodo: "agente_ia" }).autor, "cliente");
+  assert.equal(mapMensaje({ id: 2, direccion: "saliente", paso_nodo: "agente_ia" }).autor, "bot");
+  assert.equal(mapMensaje({ id: 3, direccion: "saliente", paso_nodo: "humano" }).autor, "humano");
 });
 
 // ── Respuestas estructuradas ──
@@ -213,4 +220,32 @@ test("las respuestas de una venta o consignación traen la modalidad y el vehíc
 
   assert.deepEqual(r.map((x) => x.respuesta), ["Consignación", "Ford", "Ka", "2018", "90000", "8000000"]);
   assert.equal(respuesta(construirRespuestas({ tipo_lead: "venta", modalidad_venta: "venta" }), "¿Venta directa o consignación?"), "Venta directa");
+});
+
+test("la consulta trae el último semáforo crediticio del cliente, o null si no se verificó", () => {
+  const consultado = new Date("2026-11-01T15:00:00Z");
+  const cliente = { id: 4, nombre: "Ana", consultas_crediticias: [{ estado: "ok", semaforo: "amarillo", periodo: "202609", nombre_bcra: "PEREZ ANA", consultado_at: consultado }] };
+  assert.deepEqual(mapConsultaResumen({ id: 9, cliente_id: 4 }, cliente, null, null).credito, {
+    estado: "ok",
+    semaforo: "amarillo",
+    periodo: "202609",
+    nombre: "PEREZ ANA",
+    fecha: consultado.toISOString(),
+  });
+  assert.equal(mapConsultaResumen({ id: 9, cliente_id: 4 }, { id: 4 }, null, null).credito, null);
+});
+
+test("la consulta muestra el CUIL informado y el de la ficha solo si es distinto", () => {
+  const INFORMADO = "27301256782";
+  const FICHA = "20123456786";
+  const filasDeCuil = (sesion, cliente) => construirRespuestas(sesion, [], cliente).filter((r) => r.pregunta.includes("CUIL"));
+
+  assert.deepEqual(filasDeCuil({ cuil_informado: INFORMADO }, { cuil: FICHA }), [
+    { pregunta: "CUIL informado", respuesta: "27-30125678-2" },
+    { pregunta: "CUIL en la ficha", respuesta: "20-12345678-6" },
+  ]);
+  assert.deepEqual(filasDeCuil({ cuil_informado: FICHA }, { cuil: FICHA }), [{ pregunta: "CUIL informado", respuesta: "20-12345678-6" }]);
+  assert.deepEqual(filasDeCuil({}, { cuil: FICHA }), [{ pregunta: "CUIL en la ficha", respuesta: "20-12345678-6" }]);
+  assert.deepEqual(filasDeCuil({}, { cuil: null }), []);
+  assert.deepEqual(filasDeCuil({}), []);
 });

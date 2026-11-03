@@ -4,6 +4,7 @@ import { mapIngreso } from "../mappers/ingreso.mapper.js";
 import { MODALIDADES, vendeLaAgencia } from "../lib/modalidades.js";
 import { autoParaVender } from "./auto-venta.service.js";
 import { registrarPersona, SELECT_PERFIL } from "./personas.service.js";
+import { sesionParaAvanzar } from "./consulta-avance.service.js";
 
 // Toma de un vehículo: el auto entró al playón en consignación, comprado o en
 // permuta. En la consignación todavía no está publicado: `consignaciones` no
@@ -57,6 +58,11 @@ export const PARA_DETALLE = {
   },
   // La seña de la que nació el trámite, si hubo: se descuenta en el boleto.
   sena: { include: { autos: { select: { ref: true, marca: true, modelo: true, anio: true, precio: true, ...BENEFICIOS } } } },
+  // Cobrado, Entregado y Transferido, y la última foto de la entrega.
+  tramite_hitos: { where: VIGENTE, select: { tipo: true, fecha: true } },
+  entregas: { where: VIGENTE, orderBy: { id: "desc" }, take: 1, select: { url: true } },
+  // Del usado que recibió la agencia: incluye las borradas, para reactivarlas al volver a firmar.
+  preparacion: { select: { id: true, estado: true, auto_id: true, deleted_at: true, auto: { select: { disponible: true, vendido_at: true, deleted_at: true } } } },
 };
 
 function error(mensaje, status = 400) {
@@ -253,14 +259,16 @@ export async function crearIngreso(body = {}, usuarioId = null) {
   if (!body.titular) throw error("Faltan los datos del titular.");
   const modalidad = body.modalidad ?? "consignacion";
   if (!MODALIDADES.includes(modalidad)) throw error(`La modalidad debe ser una de: ${MODALIDADES.join(", ")}.`);
+  if (body.sesionId && !vendeLaAgencia(modalidad)) throw error("Una compra o consignación no nace de una consulta.");
   const recepcion = { ...datosRecepcion(body), ...datosParteDePago(body, modalidad) };
 
   return prisma.$transaction(async (tx) => {
+    const sesionId = await sesionParaAvanzar(body.sesionId, tx);
     const auto = await datosAutoInteres(body, modalidad, null, tx);
     const clienteId = await registrarPersona(body.titular, tx);
 
     const creado = await tx.consignacion_ingresos.create({
-      data: { ...recepcion, ...auto, modalidad, cliente_id: clienteId, recibido_por: usuarioId },
+      data: { ...recepcion, ...auto, modalidad, cliente_id: clienteId, sesion_id: sesionId, recibido_por: usuarioId },
       include: PARA_DETALLE,
     });
     return mapIngreso(creado, { conDetalle: true });
@@ -319,11 +327,33 @@ export async function actualizarIngreso(id, body = {}) {
 //
 // Si el trámite nació de una seña, la seña vuelve a vigente: la plata sigue
 // estando y el auto sigue reservado hasta su vencimiento.
+const PARA_CANCELAR = {
+  id: true,
+  estado: true,
+  consignacion_id: true,
+  consignacion_contratos: { select: { firmado_at: true } },
+  compraventa_contratos: { select: { firmado_at: true, deleted_at: true } },
+  financiaciones: { where: VIGENTE, select: { id: true }, take: 1 },
+};
+
+// Lo que ya se le prometió a alguien se deshace primero, a la vista, y no como
+// efecto de cancelar.
+function exigirCancelable(t) {
+  if (t.estado === "vendido") throw error("Este trámite está vendido: deshacé la venta antes de cancelarlo.", 409);
+  if (t.estado === "publicado") throw error("El auto está publicado: despublicalo antes de cancelar el trámite.", 409);
+  // Sin legajo, su ficha seguiría en Vehículos y se podría volver a poner a la venta.
+  if (t.consignacion_id) throw error("Este auto ya tuvo ficha en la web: marcalo retirado en vez de cancelar el trámite.", 409);
+  if (t.financiaciones?.length) throw error("Este trámite tiene financiación: eliminala antes de cancelarlo.", 409);
+  const boletoFirmado = t.compraventa_contratos && !t.compraventa_contratos.deleted_at && t.compraventa_contratos.firmado_at;
+  if (boletoFirmado || t.consignacion_contratos?.firmado_at) throw error("El contrato está firmado: desfirmalo antes de cancelar el trámite.", 409);
+}
+
 export async function eliminarIngreso(id) {
   const n = Number(id);
   if (!Number.isInteger(n) || n <= 0) return false;
-  const existe = await prisma.consignacion_ingresos.findFirst({ where: { id: n, ...VIGENTE }, select: { id: true } });
+  const existe = await prisma.consignacion_ingresos.findFirst({ where: { id: n, ...VIGENTE }, select: PARA_CANCELAR });
   if (!existe) return false;
+  exigirCancelable(existe);
 
   await prisma.$transaction([
     prisma.consignacion_ingresos.update({ where: { id: existe.id }, data: { deleted_at: new Date() } }),
