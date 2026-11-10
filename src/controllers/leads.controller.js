@@ -5,6 +5,15 @@ import {
   resumenLeads,
 } from "../services/leads.service.js";
 import { metricasResumen } from "../services/metricas.service.js";
+import { conversionPorAsesor } from "../services/conversion.service.js";
+
+export async function getConversion(req, res, next) {
+  try {
+    res.json({ ok: true, data: await conversionPorAsesor() });
+  } catch (err) {
+    next(err);
+  }
+}
 
 export async function getMetricas(req, res, next) {
   try {

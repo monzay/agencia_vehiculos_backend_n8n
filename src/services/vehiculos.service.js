@@ -3,6 +3,8 @@ import { mapAutoToVehiculo } from "../mappers/vehiculo.mapper.js";
 import { SIN_RESERVA, SIN_TRAMITE_ABIERTO, senaReservando, hoyFecha } from "../lib/senas.js";
 import { normalizarTipoVehiculo } from "../lib/tipos-vehiculo.js";
 import { normalizarDominio, normalizarIdentificacion } from "../lib/identificacion-vehiculo.js";
+import { normalizarCombustible } from "../lib/combustibles.js";
+import { numero, TOPE_MONTO } from "../lib/contrato-campos.js";
 
 // Soft delete: solo cuentan las filas con deleted_at NULL.
 const VIGENTE = { deleted_at: null };
@@ -79,30 +81,46 @@ function condicionAEnum(condicion) {
 }
 
 // Genera el proximo `ref` numerico (la tabla lo usa como identificador unico string).
-async function siguienteRef() {
-  const r = await prisma.$queryRawUnsafe(
+// Recibe la transacción cuando el alta es parte de una (importar una lista).
+export async function siguienteRef(tx = prisma) {
+  const r = await tx.$queryRawUnsafe(
     "SELECT COALESCE(MAX(CAST(ref AS UNSIGNED)),0)+1 AS next FROM autos"
   );
   return String(Number(r[0].next));
 }
+
+// Largos de las columnas de texto de `autos`: pasarse da un error de la base
+// (500) en vez de uno de formulario.
+const MARCA_MAX = 60;
+const MODELO_MAX = 80;
+const VERSION_MAX = 80;
+
+const textoDe = (valor) => (typeof valor === "string" ? valor.trim() : "");
+
+// Monto que el auto puede no tener: vacío lo deja sin dato.
+const montoOpcional = (valor, campo) =>
+  valor === null || valor === "" ? null : numero(valor, campo, { min: 0.01, max: TOPE_MONTO });
 
 // Valida y arma el `data` para crear/editar. `parcial`=true permite campos ausentes (PATCH).
 function construirData(body, parcial = false) {
   const data = {};
 
   if (!parcial || body.marca !== undefined || body.nombre !== undefined) {
-    const marca = limpiar(body.marca ?? body.nombre);
+    const marca = textoDe(body.marca ?? body.nombre);
     if (!marca) throw error("La marca/nombre es obligatoria");
+    if (marca.length > MARCA_MAX) throw error(`La marca no puede tener más de ${MARCA_MAX} caracteres`);
     data.marca = marca;
   }
   if (!parcial || body.modelo !== undefined) {
-    const modelo = limpiar(body.modelo);
+    const modelo = textoDe(body.modelo);
     if (!modelo) throw error("El modelo es obligatorio");
+    if (modelo.length > MODELO_MAX) throw error(`El modelo no puede tener más de ${MODELO_MAX} caracteres`);
     data.modelo = modelo;
   }
+  if (body.version !== undefined) data.version = textoDe(body.version).slice(0, VERSION_MAX) || null;
   if (!parcial || body.anio !== undefined || body.year !== undefined) {
     const anio = Number(body.anio ?? body.year);
-    if (!anio || anio < 1900 || anio > 2100) throw error("El año no es valido");
+    if (!Number.isInteger(anio) || anio < 1900 || anio > 2100) throw error("El año no es valido");
     data.anio = anio;
   }
   if (!parcial || body.precio !== undefined) {
@@ -113,20 +131,8 @@ function construirData(body, parcial = false) {
     }
     data.precio = precio;
   }
-  // Lo que PAGÓ la agencia. Opcional: sin costo el auto se vende igual, solo
-  // que aporta 0 a la ganancia en vez de contar la venta entera como ganada.
-  if (body.costo !== undefined) {
-    if (body.costo === null || body.costo === "") {
-      data.costo = null;
-    } else {
-      const costo = Number(body.costo);
-      if (!(costo >= 0)) throw error("El costo no es valido");
-      if (costo > PRECIO_MAX) {
-        throw error(`El costo no puede superar $${PRECIO_MAX.toLocaleString("es-AR")}`);
-      }
-      data.costo = costo;
-    }
-  }
+  if (body.precio_contado !== undefined) data.precio_contado = montoOpcional(body.precio_contado, "El precio al contado");
+  if (body.anticipo !== undefined) data.anticipo = montoOpcional(body.anticipo, "El anticipo");
   if (body.kms !== undefined) {
     const kms = Number(body.kms) || 0;
     if (kms < 0 || kms > KMS_MAX) {
@@ -151,9 +157,7 @@ function construirData(body, parcial = false) {
   if (body.tipoVehiculo !== undefined || body.tipo_vehiculo !== undefined) {
     data.tipo_vehiculo = normalizarTipoVehiculo(body.tipoVehiculo ?? body.tipo_vehiculo);
   }
-  if (body.combustible !== undefined) {
-    data.combustible = limpiar(body.combustible) || null;
-  }
+  if (body.combustible !== undefined) data.combustible = normalizarCombustible(body.combustible);
   if (body.imgs !== undefined || body.fotos !== undefined) {
     data.fotos_json = normalizarImgs(body.imgs ?? body.fotos);
   }
@@ -252,13 +256,14 @@ export async function listarMarcas() {
 
 // ── Escrituras (CRUD) ──
 
-export async function crearVehiculo(body = {}) {
-  const data = construirData(body, false);
-  if (data.tipo === undefined) data.tipo = "usado"; // condicion por defecto
-  if (data.disponible === undefined) data.disponible = true;
-  data.ref = await siguienteRef();
+// Los datos de un alta, validados con las reglas del formulario. Sin `ref`: la
+// pone quien crea, porque al importar una lista van varias seguidas.
+export function datosDeAlta(body = {}) {
+  return { tipo: "usado", disponible: true, ...construirData(body, false) };
+}
 
-  const auto = await prisma.autos.create({ data });
+export async function crearVehiculo(body = {}) {
+  const auto = await prisma.autos.create({ data: { ...datosDeAlta(body), ref: await siguienteRef() } });
   return mapAutoToVehiculo(auto);
 }
 
@@ -368,6 +373,13 @@ export async function abrirVenta(tx, auto) {
   }
   await moverIngresoDelAuto(tx, auto.id, "vendido", "publicado");
   await moverCompraDelAuto(tx, auto.id, "vendido", "recepcion");
+  // La seña que se cerró con esta venta vuelve a reservar el auto.
+  if (auto.vendido_at) {
+    await tx.senas.updateMany({
+      where: { auto_id: auto.id, deleted_at: null, estado: "convertida", ingreso_id: null, estado_at: { gte: auto.vendido_at } },
+      data: { estado: "vigente", estado_at: new Date(), updated_at: new Date() },
+    });
+  }
 }
 
 // Cierra la consignación de un auto de tercero desde la ficha del vehículo.

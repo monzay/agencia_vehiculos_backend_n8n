@@ -4,12 +4,13 @@ import { duracionOgg, transcribirConGroq, MODELO_GROQ } from "./audio.js";
 import { LIMITES, MENSAJES_FIJOS, decidirAtencion, audioPermitido, historialParaClaude, recortar } from "./limites.js";
 import { puntaje, clasificar, pendientes, respondido } from "./calificacion.js";
 import { consultaPorAuto } from "./consultas-por-auto.js";
+import { asesorDelLink, asesorParaConsultaNueva, cambioDeAsesor } from "./reparto.js";
 import { datosDeLaWeb, linkDelCatalogo } from "./origen-web.js";
 import { whereDisponible } from "./auto-publico.js";
 import { enviosDeRespuesta, REACCION_CIERRE } from "./envios.js";
 import { debeReaccionar } from "./cierre.js";
 import { juntarRafaga, ESPERA_RAFAGA_MS } from "./rafagas.js";
-import { PASO_AGENTE, PASO_REACCION } from "./pasos.js";
+import { PASO_AGENTE, PASO_REACCION, PASO_HUMANO } from "./pasos.js";
 import { gastoDelMes, topeConfigurado, registrarConsumoClaude, registrarConsumoGroq } from "../services/ia-consumos.service.js";
 import { avisoReciente, darDeBaja, esBaja, BAJA_CONFIRMADA } from "../services/avisos-cuotas.service.js";
 import { resolverCliente } from "../services/clientes.service.js";
@@ -92,19 +93,12 @@ async function autoDeLaWeb(root, ref) {
   return { id: auto.id, ref, descripcion: [auto.marca, auto.modelo, auto.anio].filter(Boolean).join(" "), disponible: Boolean(disponible) };
 }
 
-// El asesor cuyo link trajo al cliente se queda con la consulta (como en el bot anterior).
-async function asesorDeLaWeb(root, slug) {
-  if (!slug) return {};
-  const vendedor = await root.vendedores.findFirst({ where: { slug, activo: true, deleted_at: null }, select: { id: true } });
-  return { vendedor_id: vendedor?.id ?? null, atribuido: Boolean(vendedor) };
-}
-
 // Desde la web por un auto: si la consulta abierta no tenía auto, ese pasa a ser el
 // de interés y suma sus puntos; si era por otro, va en su propia consulta.
-async function conAutoDeLaWeb(root, { sesion, clienteId, ahora }, auto) {
+async function conAutoDeLaWeb(root, { sesion, clienteId, ahora, asesorLink }, auto) {
   if (!auto?.disponible || sesion.auto_id === auto.id) return sesion;
   if (sesion.auto_id != null) {
-    const id = await consultaPorAuto({ db: root, clienteId, sesionId: sesion.id, ahora }, auto.id);
+    const id = await consultaPorAuto({ db: root, clienteId, sesionId: sesion.id, ahora, asesorLink }, auto.id);
     return root.chat_estado.findUnique({ where: { id } });
   }
   const conAuto = { ...sesion, auto_id: auto.id };
@@ -113,14 +107,28 @@ async function conAutoDeLaWeb(root, { sesion, clienteId, ahora }, auto) {
   return { ...conAuto, ...temperatura };
 }
 
+// El link de un asesor gana siempre: la consulta en la que sigue la charla pasa a ser suya,
+// aunque la tuviera otro.
+async function conAsesorDelLink(root, sesion, link) {
+  const cambio = cambioDeAsesor(sesion, link);
+  if (!Object.keys(cambio).length) return sesion;
+  await root.chat_estado.update({ where: { id: sesion.id }, data: cambio });
+  return { ...sesion, ...cambio };
+}
+
 // La conversación sigue en la misma sesión mientras haya actividad en las
 // últimas 24 h; si no, empieza una nueva. Con una consulta por auto, sigue en la
-// del último mensaje.
+// del último mensaje. La consulta nueva sin link de un asesor va por turno (ver reparto.js);
+// una abierta sin asesor no se reparte en mitad de la charla.
 async function sesionDe(root, clienteId, ahora, web) {
+  const link = await asesorDelLink(root, web.asesor);
   const ultima = await root.chat_estado.findFirst({ where: { cliente_id: clienteId }, orderBy: [{ ultimo_mensaje: "desc" }, { id: "desc" }] });
   const actividad = ultima?.ultimo_mensaje ?? ultima?.sesion_inicio;
   const vigente = actividad && ahora - new Date(actividad) < SESION_VIGENTE_MS;
-  if (vigente) return conAutoDeLaWeb(root, { sesion: ultima, clienteId, ahora }, web.auto);
+  if (vigente) {
+    const sesion = await conAutoDeLaWeb(root, { sesion: ultima, clienteId, ahora, asesorLink: link }, web.auto);
+    return conAsesorDelLink(root, sesion, link);
+  }
   // Nace fría, con los puntos de lo que ya se sabe (el auto si viene de la web).
   const inicial = web.auto?.disponible ? { auto_id: web.auto.id } : {};
   return root.chat_estado.create({
@@ -131,7 +139,7 @@ async function sesionDe(root, clienteId, ahora, web) {
       ...inicial,
       score: puntaje(inicial),
       clasificacion: clasificar(inicial),
-      ...(await asesorDeLaWeb(root, web.asesor)),
+      ...(await asesorParaConsultaNueva(root, { link })),
     },
   });
 }
@@ -295,7 +303,8 @@ async function contextoDelTurno({ root, cliente, sesion, ahora, autoWeb, cobranz
 async function responderConAgente(turno, imagenes, deps) {
   const { root, cliente, sesion, ahora, entrante, texto, wamid } = turno;
   const historial = await root.historial_mensajes.findMany({
-    where: { cliente_id: cliente.id, paso_nodo: turno.paso },
+    // Incluye lo que respondió un asesor desde el panel: al retomar, el bot sabe qué se le dijo.
+    where: { cliente_id: cliente.id, paso_nodo: { in: [turno.paso, PASO_HUMANO] } },
     orderBy: { id: "desc" },
     take: LIMITES.historialMensajes,
     select: { direccion: true, mensaje: true },

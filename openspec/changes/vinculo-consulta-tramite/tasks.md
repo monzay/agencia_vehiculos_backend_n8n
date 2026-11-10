@@ -9,5 +9,5 @@
 - [x] Prueba por la API contra la base local
 - [x] Prueba en navegador sin interfaz contra la base local
 - [ ] Prueba del dueño en el panel
-- [ ] Aplicar la 077 en producción, antes del backend
+- [x] Aplicar la 077 en producción, antes del backend (03/11/2026)
 - [ ] `openspec archive vinculo-consulta-tramite`

@@ -62,6 +62,14 @@ test("trae los datos del cliente y lo que respondió en la consulta", async () =
   assert.equal(p.anticipo, undefined, "el anticipo queda a la vista, no como monto");
 });
 
+test("trae el anticipo que la agencia cargó en el vehículo", async () => {
+  const conAnticipo = await precargaDeConsulta(10, base({ auto: { ...AUTO, anticipo: 4000000 } }));
+  assert.equal(conAnticipo.auto.anticipo, 4000000);
+
+  const sinAnticipo = await precargaDeConsulta(10, base());
+  assert.equal(sinAnticipo.auto.anticipo, null);
+});
+
 test("el CUIL del perfil manda sobre el de la ficha", async () => {
   const sinPerfil = await precargaDeConsulta(10, base());
   assert.equal(sinPerfil.cliente.cuit, "20990000115");

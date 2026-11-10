@@ -8,5 +8,5 @@
 - [x] Revisión de código: sin hallazgos críticos ni altos pendientes
 - [x] Prueba por la API y en navegador sin interfaz contra la base local (la subida real de fotos, no)
 - [ ] Prueba del dueño en el panel
-- [ ] Aplicar la 079 en producción, antes del backend
+- [x] Aplicar la 079 en producción, antes del backend (03/11/2026)
 - [ ] `openspec archive preparacion-usados`

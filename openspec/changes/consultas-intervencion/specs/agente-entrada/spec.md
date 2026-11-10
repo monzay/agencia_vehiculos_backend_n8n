@@ -30,4 +30,4 @@ en orden, junto con los del propio agente (`paso_nodo = "agente_ia"`).
 #### Scenario: Historial con un tramo atendido por una persona
 - **WHEN** la sesión tuvo un tramo respondido por el asesor y luego el bot retoma
 - **THEN** el historial que recibe Claude incluye lo que dijo el cliente y lo que respondió el asesor
-<!-- test: FALTA -->
+<!-- test: src/agente/atender.test.js › "al retomar, el agente lee lo que respondió el asesor, sin contarlo en el límite del día" -->

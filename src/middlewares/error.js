@@ -29,6 +29,8 @@ const MENSAJES_DE_UNICO = {
   uq_usuarios_email_activo: "Ya existe un usuario con ese email.",
   uq_clientes_dni_vigente: "Ya hay otra ficha con ese DNI.",
   uq_canal_identificador: "Ese número ya está vinculado a otra ficha.",
+  // Dos confirmaciones de la misma lista a la vez: la segunda choca acá (migración 081).
+  uq_importacion_huella: "Esta lista ya se importó desde otra pantalla. Recargá Vehículos para ver los autos.",
 };
 // Prisma lo informa como "MysqlError { code: 3819 ... }" y las consultas SQL
 // directas como "Code: `3819`".

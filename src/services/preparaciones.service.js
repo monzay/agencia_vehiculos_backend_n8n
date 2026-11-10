@@ -132,7 +132,7 @@ function exigirRequisitos(p) {
 }
 
 // `costo` es lo que pagó la agencia: el valor de toma del boleto. Contabilidad calcula
-// el margen con él. No se pisa al volver a publicar, porque se pudo corregir en Vehículos.
+// el margen con él. Se escribe solo al crear la ficha: volver a publicar no lo pisa.
 const fichaNueva = async (p, tx) => {
   const { ingreso } = p;
   return tx.autos.create({

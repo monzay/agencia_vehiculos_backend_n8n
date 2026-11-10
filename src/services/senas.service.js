@@ -102,7 +102,8 @@ export async function obtenerSena(id) {
 
 // El auto tiene que estar a la venta y libre: sin otra seña que lo reserve y,
 // si es de la agencia, sin estar comprometido en otro boleto de parte de pago.
-export async function autoParaSenar(ref, tx) {
+// `excluirSenaId`: al revalidar una seña existente, que no se choque consigo misma.
+export async function autoParaSenar(ref, tx, excluirSenaId = null) {
   const auto = await tx.autos.findFirst({
     where: { ref: String(ref ?? ""), ...VIGENTE },
     select: { id: true, vendido_at: true },
@@ -110,7 +111,8 @@ export async function autoParaSenar(ref, tx) {
   if (!auto) throw error("Elegí el vehículo que se seña.");
   if (auto.vendido_at) throw error("Ese vehículo ya figura como vendido.", 409);
 
-  const reservado = await tx.senas.findFirst({ where: { auto_id: auto.id, ...senaReservando() }, select: { id: true } });
+  const otraSena = excluirSenaId ? { id: { not: excluirSenaId } } : {};
+  const reservado = await tx.senas.findFirst({ where: { auto_id: auto.id, ...senaReservando(), ...otraSena }, select: { id: true } });
   if (reservado) throw error("Ese vehículo ya tiene una seña que lo reserva.", 409);
 
   const comprometido = await tx.compraventa_contratos.findFirst({
@@ -158,6 +160,8 @@ export async function crearSena(body = {}, usuarioId = null) {
 export async function actualizarSena(id, body = {}) {
   const sena = await senaVigente(id);
   if (sena.estado !== "vigente") throw error("Solo se edita una seña vigente.", 409);
+  // Extenderla vuelve a reservar el auto: tiene que seguir libre.
+  if (body.vence !== undefined) await autoParaSenar(sena.autos.ref, prisma, sena.id);
 
   const actualizada = await prisma.senas.update({
     where: { id: sena.id },
@@ -195,6 +199,8 @@ export async function iniciarTramite(id, usuarioId = null) {
     if (sena.autos.consignaciones.length) {
       throw error("El vehículo está en consignación: no entra en una parte de pago. La seña se cierra al marcarlo vendido.", 409);
     }
+    // Pudo entrar en otro trámite mientras la seña estaba vigente.
+    await autoParaSenar(sena.autos.ref, tx, sena.id);
 
     const ingreso = await tx.consignacion_ingresos.create({
       data: { modalidad: "permuta", cliente_id: sena.cliente_id, sesion_id: sena.sesion_id, auto_interes_id: sena.auto_id, recibido_por: usuarioId },

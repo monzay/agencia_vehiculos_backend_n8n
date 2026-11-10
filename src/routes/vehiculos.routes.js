@@ -11,6 +11,8 @@ import {
   postVentaVehiculo,
   deleteVentaVehiculo,
   postConsignacionVehiculo,
+  postLeerListaVehiculos,
+  postImportarVehiculos,
 } from "../controllers/vehiculos.controller.js";
 import { requireAuth, requireRole, usuarioOpcional } from "../middlewares/auth.js";
 import { rateLimit } from "../middlewares/rateLimit.js";
@@ -28,6 +30,19 @@ router.get("/admin/todos", requireAuth, getVehiculosAdmin);
 // Crear / editar / eliminar: SOLO admin.
 const soloAdmin = [requireAuth, requireRole("admin")];
 router.post("/", ...soloAdmin, postVehiculo);
+
+// Importar la lista del catálogo. Leerla cuesta plata y tarda: se limita por
+// usuario, igual que el escaneo de papeles en Documentos.
+const porUsuario = (req) => String(req.usuario?.id ?? req.ip);
+const limiteLecturaLista = rateLimit({
+  ventanaMs: 60_000,
+  max: 5,
+  clave: porUsuario,
+  mensaje: "Demasiadas lecturas seguidas. Esperá un minuto y probá de nuevo.",
+});
+const limiteImportacion = rateLimit({ ventanaMs: 60_000, max: 10, clave: porUsuario });
+router.post("/importar/leer", ...soloAdmin, limiteLecturaLista, postLeerListaVehiculos);
+router.post("/importar", ...soloAdmin, limiteImportacion, postImportarVehiculos);
 router.patch("/:ref", ...soloAdmin, patchVehiculo);
 router.delete("/:ref", ...soloAdmin, deleteVehiculo);
 

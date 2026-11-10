@@ -232,7 +232,7 @@ export async function actualizarAsesor(id, body = {}) {
     data.nombre = n;
     // El slug SIGUE al nombre: si cambia el nombre, cambia el link de captación.
     // Es una decisión con costo — los links ya publicados en redes dejan de
-    // funcionar y esas consultas pasan a repartirse — y por eso el panel avisa
+    // funcionar y esas consultas pasan a repartirse por turnos — y por eso el panel avisa
     // antes de guardar.
     if (n !== existe.nombre) data.slug = await generarSlug(n, id);
   }
@@ -253,7 +253,7 @@ export async function actualizarAsesor(id, body = {}) {
     data.email = emailNuevo;
   }
   if (body.activo !== undefined) data.activo = Boolean(body.activo);
-  // Participación en el round-robin del bot (toggle por asesor desde el panel).
+  // Participación en el reparto por turnos (toggle por asesor desde el panel). El link propio vale igual.
   if (body.recibeConsultas !== undefined) data.recibe_consultas = Boolean(body.recibeConsultas);
 
   // ── Cuenta de acceso (usuarios) ──
@@ -299,7 +299,7 @@ export async function actualizarAsesor(id, body = {}) {
 }
 
 // Soft delete: marca `deleted_at` en el asesor y en su cuenta de acceso (para que
-// no pueda seguir logueando ni ser elegido por el round-robin del bot).
+// no pueda seguir logueando ni recibir consultas por turno ni por su link).
 // Devuelve false si no existe o ya estaba eliminado.
 export async function eliminarAsesor(id) {
   const existe = await prisma.vendedores.findFirst({ where: { id: Number(id), ...VIGENTE } });

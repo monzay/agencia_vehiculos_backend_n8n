@@ -1,8 +1,10 @@
 import { puntaje, clasificar } from "./calificacion.js";
+import { asesorParaConsultaNueva, cambioDeAsesor } from "./reparto.js";
 
 // Una consulta por auto (decisión del 31/10/2026): si un cliente que ya consulta
 // por un auto se interesa en otro, ese auto va en su propia consulta. La abre o la
 // retoma el backend con su usuario de base: el de la IA no puede crear consultas.
+// El asesor de la nueva lo define `reparto.js`: el link, el que ya tenía o el turno.
 
 const VIGENTE_MS = 24 * 3_600_000;
 // Lo que es de la persona y no del auto: se lleva a la consulta del otro auto.
@@ -15,22 +17,22 @@ const loQueFalta = (destino, origen) =>
   Object.fromEntries(DE_LA_PERSONA.filter((campo) => !definido(destino[campo]) && definido(origen[campo])).map((campo) => [campo, origen[campo]]));
 const temperatura = (datos) => ({ score: puntaje(datos), clasificacion: clasificar(datos) });
 
-async function retomar(db, consulta, actual) {
+async function retomar(db, consulta, actual, asesorLink) {
   const faltante = loQueFalta(consulta, actual);
-  if (Object.keys(faltante).length) {
-    await db.chat_estado.update({ where: { id: consulta.id }, data: { ...faltante, ...temperatura({ ...consulta, ...faltante }) } });
-  }
+  const completada = Object.keys(faltante).length ? { ...faltante, ...temperatura({ ...consulta, ...faltante }) } : {};
+  const cambios = { ...completada, ...cambioDeAsesor(consulta, asesorLink) };
+  if (Object.keys(cambios).length) await db.chat_estado.update({ where: { id: consulta.id }, data: cambios });
   return consulta.id;
 }
 
-async function abrir(db, { clienteId, actual, autoId, ahora }) {
+async function abrir(db, { clienteId, actual, autoId, ahora, asesorLink }) {
   const datos = { ...loQueFalta({}, actual), auto_id: autoId };
+  const asesor = await asesorParaConsultaNueva(db, { link: asesorLink, actual });
   const nueva = await db.chat_estado.create({
     data: {
       cliente_id: clienteId,
       origen: actual.origen,
-      vendedor_id: actual.vendedor_id,
-      atribuido: actual.atribuido,
+      ...asesor,
       ultimo_mensaje: ahora,
       ...datos,
       ...temperatura(datos),
@@ -52,7 +54,7 @@ async function copiarUsado(db, desdeId, hastaId) {
 }
 
 // Devuelve el id de la consulta del auto: la vigente que ya existía o una nueva.
-export async function consultaPorAuto({ db, clienteId, sesionId, ahora }, autoId) {
+export async function consultaPorAuto({ db, clienteId, sesionId, ahora, asesorLink = null }, autoId) {
   const [actual, delAuto] = await Promise.all([
     db.chat_estado.findUnique({ where: { id: sesionId } }),
     db.chat_estado.findFirst({
@@ -60,7 +62,7 @@ export async function consultaPorAuto({ db, clienteId, sesionId, ahora }, autoId
       orderBy: { id: "desc" },
     }),
   ]);
-  const id = delAuto ? await retomar(db, delAuto, actual) : await abrir(db, { clienteId, actual, autoId, ahora });
+  const id = delAuto ? await retomar(db, delAuto, actual, asesorLink) : await abrir(db, { clienteId, actual, autoId, ahora, asesorLink });
   await copiarUsado(db, sesionId, id);
   return id;
 }

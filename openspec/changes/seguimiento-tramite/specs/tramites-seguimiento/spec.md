@@ -23,7 +23,7 @@ guardar un estado aparte. Los pasos que no aplican MUST NOT aparecer.
 #### Scenario: Compra de la agencia
 - **WHEN** la agencia compra el auto
 - **THEN** los pasos son papeles, boleto y firma
-<!-- test: src/lib/seguimiento-tramite.test.js › "compra de la agencia: papeles, boleto y firma" -->
+<!-- test: src/lib/seguimiento-tramite.test.js › "compra de la agencia: papeles, boleto, firma, publicación y venta del usado" -->
 
 #### Scenario: Consignación
 - **WHEN** es una consignación

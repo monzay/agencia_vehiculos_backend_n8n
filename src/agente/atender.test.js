@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { atenderMensaje } from "./atender.js";
 import { MENSAJES_FIJOS } from "./limites.js";
 import { notaDeVoz } from "./ogg-de-prueba.js";
+import { repartoFalso } from "./reparto-de-prueba.js";
 
 const TEL = "5493885550101"; // el número de WhatsApp de casi todas las pruebas
 
@@ -21,7 +22,7 @@ const cumple = (fila, [campo, esperado]) => (esperado?.not === undefined ? (fila
 
 // Consultas como las devuelve Prisma: filtradas por auto y por fecha, y en el orden pedido (desc).
 const consultasQue = (sesiones, where = {}) =>
-  sesiones.filter((s) => (where.auto_id === undefined || s.auto_id === where.auto_id) && (!where.ultimo_mensaje || s.ultimo_mensaje >= where.ultimo_mensaje.gte));
+  sesiones.filter((s) => (s.cliente_id === undefined || where.cliente_id === undefined || s.cliente_id === where.cliente_id) && (where.auto_id === undefined || s.auto_id === where.auto_id) && (!where.ultimo_mensaje || s.ultimo_mensaje >= where.ultimo_mensaje.gte));
 function enOrden(filas, orderBy = []) {
   const campos = [orderBy].flat().map((o) => Object.keys(o)[0]);
   return [...filas].sort((a, b) => {
@@ -36,7 +37,8 @@ function enOrden(filas, orderBy = []) {
 // Base simulada con estado en memoria para lo que toca el orquestador.
 // `cliente` es la ficha del número de las pruebas (TEL), ya vinculada a su canal de WhatsApp;
 // `clientes` son fichas sueltas, sin ese vínculo.
-function baseFalsa({ cliente = null, clientes = [], sesion = null, sesiones = [], mensajesHoy = 0, consumosHoy = 0, gastoMes = 0, gastoClienteHoy = 0, usado = null, ubicacion = null, autos = [], vendedores = [], aviso = null } = {}) {
+function baseFalsa({ cliente = null, clientes = [], sesion = null, sesiones = [], mensajesHoy = 0, consumosHoy = 0, gastoMes = 0, gastoClienteHoy = 0, usado = null, ubicacion = null, autos = [], vendedores = [], usuarios = [], configuracion = {}, aviso = null } = {}) {
+  const reparto = repartoFalso({ vendedores, usuarios, configuracion });
   const fichas = [...(cliente ? [{ canal: "whatsapp", ...cliente }] : []), ...clientes].map((ficha) => ({ ...FICHA_VACIA, ...ficha }));
   const canales = cliente ? [{ id: 1, cliente_id: cliente.id, canal: "whatsapp", identificador: TEL }] : [];
   const e = { clientes: fichas, canales, transacciones: 0, sesiones: [...(sesion ? [sesion] : []), ...sesiones], historial: [], consumos: [], updates: [], consultas: [], bajas: [], alertas: [] };
@@ -45,7 +47,8 @@ function baseFalsa({ cliente = null, clientes = [], sesion = null, sesiones = []
   const primeraFicha = async ({ where }) => fichasQue(where)[0] ?? null;
   const root = {
     estado: e,
-    $transaction: async (fn) => (e.transacciones += 1, fn(root)),
+    reparto: reparto.estado,
+    $transaction: async (fn, opciones) => (e.transacciones += 1, reparto.transaccion(root, fn, opciones)),
     // El último recordatorio de cuota que recibió el número (null: ninguno).
     financiacion_avisos: {
       findFirst: async () => aviso,
@@ -60,7 +63,7 @@ function baseFalsa({ cliente = null, clientes = [], sesion = null, sesiones = []
     autos: {
       findFirst: async ({ where }) => autos.find((a) => a.ref === where.ref && (where.vendido_at !== null || a.disponible)) ?? null,
     },
-    vendedores: { findFirst: async ({ where }) => vendedores.find((v) => v.slug === where.slug) ?? null },
+    ...reparto.tablas,
     clientes: {
       findUnique: primeraFicha,
       findFirst: primeraFicha,
@@ -453,8 +456,16 @@ test("reintento con la conversación tomada: no se guarda dos veces", async () =
 test("el agente arma su contexto y cuenta el límite del día solo con su propia conversación", async () => {
   const root = baseFalsa({ cliente: { id: 50 } });
   await atenderMensaje({ telefono: "5493885550101", texto: "Hola", ahora }, deps(root));
-  assert.equal(root.estado.consultas.find((c) => c.findMany).findMany.where.paso_nodo, "agente_ia");
+  assert.deepEqual(root.estado.consultas.find((c) => c.findMany).findMany.where.paso_nodo, { in: ["agente_ia", "humano"] });
   assert.equal(root.estado.consultas.find((c) => c.count).count.where.paso_nodo, "agente_ia");
+});
+
+test("al retomar, el agente lee lo que respondió el asesor, sin contarlo en el límite del día", async () => {
+  const root = baseFalsa({ cliente: { id: 50 } });
+  await atenderMensaje({ telefono: "5493885550101", texto: "Hola", ahora }, deps(root));
+  const historial = root.estado.consultas.find((c) => c.findMany).findMany.where.paso_nodo;
+  assert.ok(historial.in.includes("humano"), "ve los mensajes del asesor");
+  assert.equal(root.estado.consultas.find((c) => c.count).count.where.paso_nodo, "agente_ia", "no le consumen cupo");
 });
 
 test("en cada mensaje el agente recibe lo que ya respondió, lo que falta y la dirección de la agencia", async () => {
@@ -478,15 +489,22 @@ test("en cada mensaje el agente recibe lo que ya respondió, lo que falta y la d
 
 const DE_LA_WEB = "Hola SEA AUTOMOTORES! Estoy interesado en el Peugeot 208 2021. ¿Podrían darme más información? (REF #A12B)";
 const peugeot = { id: 5, ref: "A12B", marca: "Peugeot", modelo: "208", anio: 2021, disponible: true };
+const asesor = (id, slug, datos = {}) => ({ id, slug, activo: true, deleted_at: null, recibe_consultas: true, ...datos });
+const PEPITO = asesor(1, "pepito");
+const JUAN = asesor(2, "juan");
+const JOSE = asesor(3, "jose");
+const EXCLUIDO = asesor(4, "excluido", { recibe_consultas: false });
+const INACTIVO = asesor(5, "inactivo", { activo: false });
+const ASESORES = [PEPITO, JUAN, JOSE, EXCLUIDO, INACTIVO];
 
 test("desde la web: la consulta arranca con origen web, el auto cargado y el asesor que trajo al cliente", async () => {
-  const root = baseFalsa({ autos: [peugeot], vendedores: [{ id: 3, slug: "juan" }] });
+  const root = baseFalsa({ autos: [peugeot], vendedores: ASESORES });
   const anthropic = claudeFalso();
   await atenderMensaje({ telefono: "5493885550101", texto: `${DE_LA_WEB} [AS:juan]`, ahora }, deps(root, anthropic));
   const sesion = root.estado.sesiones[0];
   assert.equal(sesion.origen, "web");
   assert.equal(sesion.auto_id, 5);
-  assert.equal(sesion.vendedor_id, 3);
+  assert.equal(sesion.vendedor_id, JUAN.id);
   assert.equal(sesion.atribuido, true);
   const contexto = anthropic.pedidos[0].system.at(-1).text;
   assert.match(contexto, /viene de la web consultando por "Peugeot 208 2021" \(ref A12B\)/);
@@ -495,19 +513,29 @@ test("desde la web: la consulta arranca con origen web, el auto cargado y el ase
 });
 
 test("desde la web con un asesor que no existe: la consulta queda sin asesor", async () => {
-  const root = baseFalsa({ autos: [peugeot] });
+  const root = baseFalsa({ autos: [peugeot], vendedores: [INACTIVO] });
   await atenderMensaje({ telefono: "5493885550101", texto: `${DE_LA_WEB} [AS:nadie]`, ahora }, deps(root));
   assert.equal(root.estado.sesiones[0].vendedor_id, null);
   assert.equal(root.estado.sesiones[0].atribuido, false);
 });
 
+// Con nadie en el turno (el caso con asesores habilitados está en el test siguiente).
 test("sin link de un asesor la consulta queda sin asignar, venga de la web o escriba directo", async () => {
   for (const texto of [DE_LA_WEB, "Hola, ¿tienen camionetas?"]) {
-    const root = baseFalsa({ autos: [peugeot], vendedores: [{ id: 3, slug: "juan" }] });
+    const root = baseFalsa({ autos: [peugeot], vendedores: [EXCLUIDO] });
     await atenderMensaje({ telefono: "5493885550101", texto, ahora }, deps(root));
     const [sesion] = root.estado.sesiones;
     assert.ok(sesion.vendedor_id == null, "nadie se queda con la consulta");
     assert.ok(!sesion.atribuido);
+  }
+});
+
+test("sin link de un asesor la consulta va por turno, venga de la web o escriba directo", async () => {
+  for (const texto of [DE_LA_WEB, "Hola, ¿tienen camionetas?"]) {
+    const root = baseFalsa({ autos: [peugeot], vendedores: ASESORES });
+    await atenderMensaje({ telefono: "5493885550101", texto, ahora }, deps(root));
+    const [sesion] = root.estado.sesiones;
+    assert.deepEqual([sesion.vendedor_id, sesion.atribuido], [PEPITO.id, false], texto);
   }
 });
 
@@ -731,7 +759,7 @@ test("el nombre del perfil de WhatsApp completa una ficha que no tenía nombre",
 test("la ficha nueva y su canal se crean juntos en una transacción (con la base raíz, no con un tx)", async () => {
   const root = baseFalsa();
   await atenderMensaje({ telefono: TEL, texto: "Hola", ahora }, deps(root));
-  assert.equal(root.estado.transacciones, 1);
+  assert.equal(root.estado.transacciones, 2, "la ficha con su canal y, aparte, el turno de la consulta nueva");
   assert.equal(vinculos(root).length, 1);
 });
 
@@ -824,4 +852,115 @@ test("el consentimiento guarda el wamid del mensaje en que el cliente respondió
     assert.equal(guardados[0].acepta, true);
     assert.equal(guardados[0].wamid, "wamid.DEL_SI");
   });
+});
+
+// ── Reparto por turnos y atribución por link ──
+
+const hace = (horas) => new Date(ahora.getTime() - horas * 3_600_000);
+const telefonoNumero = (n) => `549388555${String(n).padStart(4, "0")}`;
+const asignacion = (s) => [s.vendedor_id ?? null, Boolean(s.atribuido)];
+const cambiosDeAsesor = (root, id) => root.estado.updates.filter((u) => u.where.id === id && "vendedor_id" in u.data).map((u) => [u.data.vendedor_id, u.data.atribuido]);
+// El cliente 50 (TEL) con una consulta abierta hace una hora.
+const consultaAbierta = (datos = {}) => ({ id: 1, cliente_id: 50, ultimo_mensaje: hace(1), auto_id: null, vendedor_id: null, atribuido: false, ...datos });
+const baseConConsulta = (consulta, extra = {}) => baseFalsa({ cliente: { id: 50 }, sesiones: [consulta], vendedores: ASESORES, autos: [peugeot], ...extra });
+
+test("seis consultas nuevas sin link se reparten 1, 2, 3, 1, 2, 3 y el excluido nunca recibe", async () => {
+  const root = baseFalsa({ vendedores: ASESORES });
+  for (let n = 1; n <= 6; n++) await atenderMensaje({ telefono: telefonoNumero(n), texto: "Hola", ahora }, deps(root));
+  assert.deepEqual(root.estado.sesiones.map(asignacion), [[1, false], [2, false], [3, false], [1, false], [2, false], [3, false]]);
+});
+
+test("con el reparto apagado las consultas sin link quedan sin asignar", async () => {
+  const root = baseFalsa({ vendedores: ASESORES, configuracion: { reparticion_equitativa: "0" } });
+  await atenderMensaje({ telefono: TEL, texto: "Hola", ahora }, deps(root));
+  assert.deepEqual(asignacion(root.estado.sesiones[0]), [null, false]);
+});
+
+test("si ningún asesor participa, la consulta queda sin asignar", async () => {
+  const root = baseFalsa({ vendedores: [EXCLUIDO, INACTIVO] });
+  await atenderMensaje({ telefono: TEL, texto: "Hola", ahora }, deps(root));
+  assert.deepEqual(asignacion(root.estado.sesiones[0]), [null, false]);
+});
+
+test("una consulta vencida no sigue con su asesor: la nueva va por turno", async () => {
+  const root = baseConConsulta(consultaAbierta({ ultimo_mensaje: hace(30), vendedor_id: JUAN.id, atribuido: true }));
+  await atenderMensaje({ telefono: TEL, texto: "Hola de nuevo", ahora }, deps(root));
+  const nueva = root.estado.sesiones.find((s) => s.id !== 1);
+  assert.deepEqual(asignacion(nueva), [PEPITO.id, false]);
+});
+
+test("el link de un asesor que no participa del turno vale igual y no gasta turno", async () => {
+  const root = baseFalsa({ vendedores: ASESORES });
+  await atenderMensaje({ telefono: telefonoNumero(1), texto: "Hola [AS:excluido]", ahora }, deps(root));
+  await atenderMensaje({ telefono: telefonoNumero(2), texto: "Hola", ahora }, deps(root));
+  assert.deepEqual(root.estado.sesiones.map(asignacion), [[EXCLUIDO.id, true], [PEPITO.id, false]]);
+});
+
+test("el cliente de Juan que vuelve por el link de Pepito: la consulta abierta pasa a ser de Pepito", async () => {
+  const root = baseConConsulta(consultaAbierta({ vendedor_id: JUAN.id, atribuido: true }));
+  await atenderMensaje({ telefono: TEL, texto: "Hola otra vez [AS:pepito]", ahora }, deps(root));
+  assert.equal(root.estado.sesiones.length, 1, "sigue en la misma consulta");
+  assert.deepEqual(cambiosDeAsesor(root, 1), [[PEPITO.id, true]]);
+});
+
+test("el link de un asesor se queda con una consulta que estaba sin asignar", async () => {
+  const root = baseConConsulta(consultaAbierta());
+  await atenderMensaje({ telefono: TEL, texto: "Hola [AS:juan]", ahora }, deps(root));
+  assert.deepEqual(cambiosDeAsesor(root, 1), [[JUAN.id, true]]);
+  assert.equal(root.reparto.configuracion.reparto_ultimo_vendedor, null, "el link no gasta turno");
+});
+
+test("el link del mismo asesor que ya tiene la consulta no escribe nada de más", async () => {
+  const root = baseConConsulta(consultaAbierta({ vendedor_id: JUAN.id, atribuido: true }));
+  await atenderMensaje({ telefono: TEL, texto: "Hola [AS:juan]", ahora }, deps(root));
+  assert.deepEqual(cambiosDeAsesor(root, 1), []);
+});
+
+test("un link inválido (inexistente, inactivo) se ignora: la consulta abierta sigue con su asesor", async () => {
+  for (const slug of ["nadie", "inactivo"]) {
+    const root = baseConConsulta(consultaAbierta({ vendedor_id: JUAN.id, atribuido: true }));
+    await atenderMensaje({ telefono: TEL, texto: `Hola [AS:${slug}]`, ahora }, deps(root));
+    assert.deepEqual(cambiosDeAsesor(root, 1), [], slug);
+  }
+});
+
+test("una consulta abierta sin asesor no se reparte en mitad de la charla", async () => {
+  const root = baseConConsulta(consultaAbierta());
+  await atenderMensaje({ telefono: TEL, texto: "Sigo con una duda", ahora }, deps(root));
+  assert.deepEqual(cambiosDeAsesor(root, 1), []);
+  assert.equal(root.reparto.configuracion.reparto_ultimo_vendedor, null);
+});
+
+test("desde la web por el mismo auto con otro asesor: la consulta abierta pasa al del link", async () => {
+  const root = baseConConsulta(consultaAbierta({ auto_id: peugeot.id, vendedor_id: JUAN.id, atribuido: true }));
+  await atenderMensaje({ telefono: TEL, texto: `${DE_LA_WEB} [AS:pepito]`, ahora }, deps(root));
+  assert.deepEqual(cambiosDeAsesor(root, 1), [[PEPITO.id, true]]);
+});
+
+test("desde la web por otro auto con el link de Pepito: la consulta nueva es de Pepito y la anterior no se toca", async () => {
+  const root = baseConConsulta(consultaAbierta({ auto_id: 9, vendedor_id: JUAN.id, atribuido: true }));
+  await atenderMensaje({ telefono: TEL, texto: `${DE_LA_WEB} [AS:pepito]`, ahora }, deps(root));
+  const nueva = root.estado.sesiones.find((s) => s.auto_id === peugeot.id);
+  assert.deepEqual(asignacion(nueva), [PEPITO.id, true]);
+  assert.deepEqual(cambiosDeAsesor(root, 1), []);
+  assert.equal(root.reparto.configuracion.reparto_ultimo_vendedor, null);
+});
+
+test("desde la web por otro auto sin link: la consulta nueva sigue con el asesor de la anterior", async () => {
+  const root = baseConConsulta(consultaAbierta({ auto_id: 9, vendedor_id: JUAN.id, atribuido: true }));
+  await atenderMensaje({ telefono: TEL, texto: DE_LA_WEB, ahora }, deps(root));
+  const nueva = root.estado.sesiones.find((s) => s.auto_id === peugeot.id);
+  assert.deepEqual(asignacion(nueva), [JUAN.id, true]);
+});
+
+test("si el turno falla, la consulta se crea igual sin asesor y el mensaje se guarda y se responde", async (t) => {
+  const original = console.error;
+  console.error = () => {};
+  t.after(() => (console.error = original));
+  const root = baseFalsa({ vendedores: ASESORES });
+  root.reparto.fallos.push(Object.assign(new Error("timeout"), { code: "P2028" }));
+  const r = await atenderMensaje({ telefono: TEL, texto: "Hola", ahora }, deps(root));
+  assert.deepEqual(asignacion(root.estado.sesiones[0]), [null, false]);
+  assert.equal(r.conIA, true, "se responde");
+  assert.deepEqual(root.estado.historial.map((h) => h.direccion), ["entrante", "saliente"]);
 });

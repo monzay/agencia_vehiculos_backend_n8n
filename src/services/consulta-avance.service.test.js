@@ -25,7 +25,8 @@ function conBase(t, { sesion = sesionLibre, sena = null } = {}) {
   const reemplazos = {
     chat_estado: { findUnique: async () => sesion },
     autos: { findFirst: async () => ({ id: 7, ref: "A7", vendido_at: null, consignaciones: [] }) },
-    senas: { findFirst: async () => sena, create: crear("senas"), update: async ({ data }) => ({ ...sena, ...data }) },
+    // Como la base: con id es la lectura de la seña; sin id, la búsqueda de otra seña que reserve el auto.
+    senas: { findFirst: async ({ where } = {}) => (typeof where?.id === "number" ? sena : null), create: crear("senas"), update: async ({ data }) => ({ ...sena, ...data }) },
     compraventa_contratos: { findFirst: async () => null },
     consignacion_ingresos: { findFirst: async () => null, create: crear("consignacion_ingresos") },
     clientes: { findFirst: async () => FICHA, findUnique: async () => FICHA, findMany: async () => [FICHA], update: async () => FICHA, create: async () => FICHA },

@@ -8,5 +8,5 @@
 - [x] Revisión de código: sin hallazgos críticos ni altos
 - [x] Prueba por la API y en navegador sin interfaz contra la base local (la subida real de la foto, no)
 - [ ] Prueba del dueño en el panel
-- [ ] Aplicar la 078 en producción, antes del backend
+- [x] Aplicar la 078 en producción, antes del backend (03/11/2026)
 - [ ] `openspec archive cierre-venta`

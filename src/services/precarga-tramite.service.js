@@ -7,7 +7,7 @@ import { mapPersona, SELECT_PERFIL } from "./personas.service.js";
 // Lo que el botón Avanzar lleva de una consulta a los formularios de seña y de
 // venta. Solo lee: lo crea el admin al confirmar el formulario.
 //
-// Lo que dijo el cliente es orientativo. El valor de toma y el anticipo no se
+// Lo que dijo el cliente es orientativo. El valor de toma y el anticipo que dijo no se
 // precargan: quedan a la vista, en `respuestas`.
 
 const VIGENTE = { deleted_at: null };
@@ -46,7 +46,7 @@ async function motivoDeRechazo(validar) {
 async function autoDeConsulta(autoId, db) {
   const auto = await db.autos.findFirst({
     where: { id: autoId, ...VIGENTE },
-    select: { ref: true, marca: true, modelo: true, anio: true, precio: true, consignaciones: { where: VIGENTE, select: { id: true }, take: 1 } },
+    select: { ref: true, marca: true, modelo: true, anio: true, precio: true, anticipo: true, consignaciones: { where: VIGENTE, select: { id: true }, take: 1 } },
   });
   if (!auto) return null;
 
@@ -60,6 +60,7 @@ async function autoDeConsulta(autoId, db) {
     modelo: auto.modelo,
     anio: auto.anio,
     precio: auto.precio == null ? null : Number(auto.precio),
+    anticipo: auto.anticipo == null ? null : Number(auto.anticipo),
     consignado: auto.consignaciones.length > 0,
     puedeVender: !noVender,
     puedeSenar: !noSenar,

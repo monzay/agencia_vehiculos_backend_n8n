@@ -35,7 +35,7 @@ const PARA_LISTA = {
 // parte de pago y de la venta al contado los muestra.
 const BENEFICIOS = { precio: true, descuentos: true, auto_promociones: { include: { promociones: true } } };
 // El auto que compra el cliente en la parte de pago o la venta al contado.
-const AUTO_INTERES = { select: { ref: true, marca: true, modelo: true, anio: true, dominio: true, motor: true, chasis: true, ...BENEFICIOS } };
+const AUTO_INTERES = { select: { ref: true, marca: true, modelo: true, anio: true, dominio: true, motor: true, chasis: true, precio_contado: true, ...BENEFICIOS } };
 
 export const PARA_DETALLE = {
   titular: PERSONA,
@@ -203,7 +203,24 @@ async function datosAutoInteres(body, modalidad, existente, tx) {
 
 // ── Lecturas ──
 
-// `q` busca por dominio, vehículo o por el titular (nombre o DNI).
+// En curso: lo que todavía tiene algo por hacer. Una venta sigue en curso hasta que
+// se entregó y se transfirió, aunque ya figure vendida.
+const SIN_HITO = (tipo) => ({ tramite_hitos: { none: { tipo, deleted_at: null } } });
+const EN_CURSO = {
+  OR: [
+    { estado: { notIn: ["vendido", "retirado"] } },
+    { estado: "vendido", modalidad: { in: ["contado", "permuta"] }, OR: [SIN_HITO("entregado"), SIN_HITO("transferido")] },
+  ],
+};
+
+// El próximo paso del seguimiento, para mostrarlo en la lista sin abrir el legajo.
+function conProximoPaso(i) {
+  const { pasos, proximo } = mapIngreso(i, { conDetalle: true }).seguimiento;
+  return { ...mapIngreso(i), proximoPaso: pasos.find((p) => p.id === proximo)?.label ?? null };
+}
+
+// `q` busca por dominio, vehículo (el que recibe la agencia o el que vende) o por el titular (nombre o DNI).
+// `estado` acepta además "en_curso".
 export async function listarIngresos({ modalidad = "", estado = "", q = "", offset = 0, limite = 10 } = {}) {
   const take = Math.max(1, Number(limite) || 10);
   const skip = Math.max(0, Number(offset) || 0);
@@ -211,7 +228,8 @@ export async function listarIngresos({ modalidad = "", estado = "", q = "", offs
 
   const filtros = [VIGENTE];
   if (MODALIDADES.includes(modalidad)) filtros.push({ modalidad });
-  if (ESTADOS.includes(estado)) filtros.push({ estado });
+  if (estado === "en_curso") filtros.push(EN_CURSO);
+  else if (ESTADOS.includes(estado)) filtros.push({ estado });
   if (termino) {
     const digitos = termino.replace(/\D/g, "");
     filtros.push({
@@ -219,6 +237,7 @@ export async function listarIngresos({ modalidad = "", estado = "", q = "", offs
         { dominio: { contains: normalizarDominio(termino) } },
         { marca: { contains: termino } },
         { modelo: { contains: termino } },
+        { auto_interes: { is: { OR: [{ marca: { contains: termino } }, { modelo: { contains: termino } }, { dominio: { contains: normalizarDominio(termino) } }] } } },
         { titular: { nombre: { contains: termino } } },
         ...(digitos.length >= 6 ? [{ titular: { dni: { contains: digitos } } }] : []),
       ],
@@ -226,13 +245,14 @@ export async function listarIngresos({ modalidad = "", estado = "", q = "", offs
   }
   const where = { AND: filtros };
 
+  // Con el detalle: el próximo paso necesita el contrato, los hitos y la preparación.
   const [filas, total] = await Promise.all([
-    prisma.consignacion_ingresos.findMany({ where, include: PARA_LISTA, orderBy: { id: "desc" }, skip, take: take + 1 }),
+    prisma.consignacion_ingresos.findMany({ where, include: PARA_DETALLE, orderBy: { id: "desc" }, skip, take: take + 1 }),
     prisma.consignacion_ingresos.count({ where }),
   ]);
 
   const hayMas = filas.length > take;
-  return { items: (hayMas ? filas.slice(0, take) : filas).map((i) => mapIngreso(i)), hayMas, total };
+  return { items: (hayMas ? filas.slice(0, take) : filas).map(conProximoPaso), hayMas, total };
 }
 
 export async function obtenerIngreso(id) {

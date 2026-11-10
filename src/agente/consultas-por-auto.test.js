@@ -1,12 +1,20 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { consultaPorAuto } from "./consultas-por-auto.js";
+import { repartoFalso } from "./reparto-de-prueba.js";
+
+const asesor = (id, datos = {}) => ({ id, slug: `asesor-${id}`, activo: true, deleted_at: null, recibe_consultas: true, ...datos });
+const ASESORES = [asesor(1), asesor(2), asesor(3), asesor(8, { activo: false }), asesor(9, { deleted_at: new Date("2026-10-01T00:00:00Z") })];
 
 // Base simulada con las consultas (`chat_estado`) y los usados del cliente en memoria.
-function baseFalsa({ sesiones = [], usados = [] } = {}) {
+function baseFalsa({ sesiones = [], usados = [], vendedores = ASESORES } = {}) {
+  const reparto = repartoFalso({ vendedores });
   const e = { sesiones: sesiones.map((s) => ({ ...s })), usados: [...usados], creadas: [], updates: [], usadosCreados: [] };
-  return {
+  const db = {
     estado: e,
+    reparto: reparto.estado,
+    ...reparto.tablas,
+    $transaction: (fn) => reparto.transaccion(db, fn),
     chat_estado: {
       findUnique: async ({ where }) => e.sesiones.find((s) => s.id === where.id) ?? null,
       findFirst: async ({ where }) =>
@@ -26,6 +34,7 @@ function baseFalsa({ sesiones = [], usados = [] } = {}) {
       create: async ({ data }) => (e.usadosCreados.push(data), data),
     },
   };
+  return db;
 }
 
 const ahora = new Date("2026-10-31T15:00:00Z");
@@ -100,4 +109,62 @@ test("una consulta de ese auto de hace más de 24 h no se retoma", async () => {
 
   assert.notEqual(id, 900);
   assert.equal(db.estado.creadas.length, 1);
+});
+
+// ── Asesor de la consulta que se abre o se retoma (reparto por turnos) ──
+
+const CON_ASESOR = (vendedor_id, atribuido) => ({ ...consultaDelGol, vendedor_id, atribuido });
+const asesorDe = (db) => ({ vendedor_id: db.estado.creadas[0].vendedor_id, atribuido: db.estado.creadas[0].atribuido });
+
+test("otro auto sin consulta: si el asesor ya no está activo o fue borrado, la nueva va por turno", async () => {
+  for (const inactivo of [8, 9]) {
+    const db = baseFalsa({ sesiones: [CON_ASESOR(inactivo, true)] });
+    await consultaPorAuto({ db, clienteId: 50, sesionId: 900, ahora }, 7);
+    assert.deepEqual(asesorDe(db), { vendedor_id: 1, atribuido: false }, `asesor ${inactivo}`);
+    assert.equal(db.reparto.configuracion.reparto_ultimo_vendedor, "1");
+  }
+});
+
+test("otro auto sin consulta: si la consulta actual no tiene asesor, la nueva va por turno", async () => {
+  const db = baseFalsa({ sesiones: [CON_ASESOR(null, false)] });
+  await consultaPorAuto({ db, clienteId: 50, sesionId: 900, ahora }, 7);
+  assert.deepEqual(asesorDe(db), { vendedor_id: 1, atribuido: false });
+});
+
+test("otro auto sin consulta: heredar al asesor activo no gasta turno", async () => {
+  const db = baseFalsa({ sesiones: [CON_ASESOR(2, false)] });
+  await consultaPorAuto({ db, clienteId: 50, sesionId: 900, ahora }, 7);
+  assert.deepEqual(asesorDe(db), { vendedor_id: 2, atribuido: false });
+  assert.equal(db.reparto.configuracion.reparto_ultimo_vendedor, null, "el puntero no se movió");
+});
+
+test("otro auto sin consulta: el link de otro asesor gana al heredado", async () => {
+  const db = baseFalsa({ sesiones: [CON_ASESOR(2, true)] });
+  await consultaPorAuto({ db, clienteId: 50, sesionId: 900, ahora, asesorLink: { vendedor_id: 1, atribuido: true } }, 7);
+  assert.deepEqual(asesorDe(db), { vendedor_id: 1, atribuido: true });
+  assert.equal(db.reparto.configuracion.reparto_ultimo_vendedor, null, "el link no gasta turno");
+});
+
+test("otro auto con consulta abierta: el link de un asesor se la queda aunque fuera de otro", async () => {
+  const delGol = { id: 900, cliente_id: 50, auto_id: 5, vendedor_id: 2, atribuido: true, ultimo_mensaje: hace(2) };
+  const delCronos = { id: 901, cliente_id: 50, auto_id: 7, vendedor_id: 2, atribuido: true, ultimo_mensaje: ahora };
+  const db = baseFalsa({ sesiones: [delGol, delCronos] });
+
+  const id = await consultaPorAuto({ db, clienteId: 50, sesionId: 901, ahora, asesorLink: { vendedor_id: 1, atribuido: true } }, 5);
+
+  assert.equal(id, 900);
+  const cambio = db.estado.updates.find((u) => u.where.id === 900);
+  assert.deepEqual({ vendedor_id: cambio.data.vendedor_id, atribuido: cambio.data.atribuido }, { vendedor_id: 1, atribuido: true });
+});
+
+test("otro auto con consulta abierta: sin link no se toca el asesor de la que se retoma", async () => {
+  const delGol = { id: 900, cliente_id: 50, auto_id: 5, vendedor_id: 2, atribuido: true, ultimo_mensaje: hace(2), pago_tipo: null };
+  const delCronos = { id: 901, cliente_id: 50, auto_id: 7, vendedor_id: 3, atribuido: false, ultimo_mensaje: ahora, pago_tipo: "contado" };
+  const db = baseFalsa({ sesiones: [delGol, delCronos] });
+
+  await consultaPorAuto({ db, clienteId: 50, sesionId: 901, ahora }, 5);
+
+  const [{ data }] = db.estado.updates;
+  assert.equal("vendedor_id" in data, false);
+  assert.equal("atribuido" in data, false);
 });

@@ -11,6 +11,28 @@ import {
   cerrarConsignacion,
 } from "../services/vehiculos.service.js";
 import { registrarVista } from "../services/vistas.service.js";
+import { leerListaVehiculos, importarVehiculos } from "../services/importacion-vehiculos.service.js";
+
+// Lee la lista del catálogo (PDF/imagen) y devuelve la propuesta. No guarda nada.
+// Body: { archivos: ["listas/<huella>.jpg" | ".pdf", ...] }.
+export async function postLeerListaVehiculos(req, res, next) {
+  try {
+    const data = await leerListaVehiculos(req.body ?? {});
+    res.json({ ok: true, data });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// Crea los vehículos confirmados, sin publicar. Body: { archivos, vehiculos }.
+export async function postImportarVehiculos(req, res, next) {
+  try {
+    const data = await importarVehiculos(req.body ?? {}, req.usuario?.id ?? null);
+    res.status(201).json({ ok: true, data });
+  } catch (err) {
+    next(err);
+  }
+}
 
 export async function getVehiculos(req, res, next) {
   try {

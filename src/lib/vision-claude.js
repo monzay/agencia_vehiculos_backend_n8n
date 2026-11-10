@@ -30,10 +30,36 @@ export const hayProveedor = () => Boolean(process.env.ANTHROPIC_API_KEY);
 let cliente = null;
 const clienteAnthropic = () => (cliente ??= crearClienteAnthropic());
 
-// `imagenes` son URLs de Blob ya firmadas por quien llama: el modelo las
-// descarga por su cuenta, así que no hay que bajarlas ni convertirlas acá.
-// `esquema` es el esquema Zod que la respuesta tiene que cumplir.
-export async function leerDocumento({ imagenes, instruccion, esquema }) {
+// Los PDF van como documento y las imágenes como imagen, los dos por URL: el
+// modelo los descarga por su cuenta. La instrucción va al final.
+export const contenidoDeLectura = ({ imagenes = [], pdfs = [], instruccion }) => [
+  ...pdfs.map((url) => ({ type: "document", source: { type: "url", url } })),
+  ...imagenes.map((url) => ({ type: "image", source: { type: "url", url } })),
+  { type: "text", text: instruccion },
+];
+
+// Lo que contestó el modelo, o el motivo por el que no sirve.
+export function salidaDeRespuesta(respuesta) {
+  // El modelo puede negarse a responder por sus propias reglas de seguridad.
+  if (respuesta.stop_reason === "refusal") {
+    console.error(`[vision] rechazo: ${respuesta.stop_details?.category ?? "sin categoría"}`);
+    throw error("El servicio de lectura no quiso procesar esta imagen. Cargá los datos a mano.", 502);
+  }
+  // Cortada por largo, la respuesta queda a medias y no cumple el esquema.
+  if (respuesta.stop_reason === "max_tokens") {
+    throw error("El documento es muy largo para leerlo de una vez: subilo en partes, por ejemplo de a una página.", 422);
+  }
+  // `parsed_output` viene en null si la respuesta no cumplió el esquema.
+  if (!respuesta.parsed_output) {
+    throw error("El servicio de lectura devolvió una respuesta ilegible.", 502);
+  }
+  return respuesta.parsed_output;
+}
+
+// `imagenes` y `pdfs` son URLs de Blob ya firmadas por quien llama: no hay que
+// bajarlas ni convertirlas acá. `esquema` es el esquema Zod que la respuesta
+// tiene que cumplir.
+export async function leerDocumento({ imagenes = [], pdfs = [], instruccion, esquema }) {
   if (!hayProveedor()) {
     throw error("La lectura automática no está configurada: falta la clave del proveedor de IA.", 503);
   }
@@ -43,15 +69,7 @@ export async function leerDocumento({ imagenes, instruccion, esquema }) {
     respuesta = await clienteAnthropic().messages.parse({
       model: MODELO,
       max_tokens: MAX_TOKENS,
-      messages: [
-        {
-          role: "user",
-          content: [
-            ...imagenes.map((url) => ({ type: "image", source: { type: "url", url } })),
-            { type: "text", text: instruccion },
-          ],
-        },
-      ],
+      messages: [{ role: "user", content: contenidoDeLectura({ imagenes, pdfs, instruccion }) }],
       output_config: { format: zodOutputFormat(esquema) },
     });
   } catch (e) {
@@ -75,15 +93,5 @@ export async function leerDocumento({ imagenes, instruccion, esquema }) {
     throw error("El servicio de lectura no respondió. Probá de nuevo o cargá los datos a mano.", 504);
   }
 
-  // El modelo puede negarse a responder por sus propias reglas de seguridad.
-  if (respuesta.stop_reason === "refusal") {
-    console.error(`[vision] rechazo: ${respuesta.stop_details?.category ?? "sin categoría"}`);
-    throw error("El servicio de lectura no quiso procesar esta imagen. Cargá los datos a mano.", 502);
-  }
-
-  // `parsed_output` viene en null si la respuesta no cumplió el esquema.
-  if (!respuesta.parsed_output) {
-    throw error("El servicio de lectura devolvió una respuesta ilegible.", 502);
-  }
-  return respuesta.parsed_output;
+  return salidaDeRespuesta(respuesta);
 }

@@ -19,6 +19,17 @@ test("el detalle trae los hitos con su fecha y la foto de la entrega", () => {
   assert.equal(sinNada.fotoEntrega, null);
 });
 
+test("el auto del boleto trae su precio al contado", () => {
+  const fila = (precio_contado) => ({
+    id: 1,
+    modalidad: "contado",
+    estado: "recepcion",
+    auto_interes: { ref: "A1", marca: "Fiat", modelo: "Uno", anio: 2015, precio: "12000000.00", precio_contado },
+  });
+  assert.equal(mapIngreso(fila("10000000.00"), { conDetalle: true }).autoInteres.precioContado, 10000000);
+  assert.equal(mapIngreso(fila(null), { conDetalle: true }).autoInteres.precioContado, null);
+});
+
 test("el detalle trae la preparación del usado, salvo que se haya quitado", () => {
   const fila = (preparacion) => ({ id: 1, modalidad: "compra", estado: "recepcion", preparacion });
   const vigente = { id: 7, estado: "en_preparacion", auto_id: null, deleted_at: null, auto: null };

@@ -3,6 +3,7 @@ import { crearClienteAnthropic } from "../lib/anthropic.js";
 import { prisma } from "../lib/prisma.js";
 import { dbAgente } from "../agente/db.js";
 import { atenderMensaje } from "../agente/atender.js";
+import { registrarEnvioFallido } from "../agente/envio-fallido.js";
 import { crearRecibirMensaje } from "../controllers/agente.controller.js";
 import { requireSecretoAgente } from "../middlewares/secreto-agente.js";
 import { rateLimit } from "../middlewares/rateLimit.js";
@@ -20,6 +21,14 @@ export function crearRouterAgente({ atender, secretoAgente, secretoMeta }) {
     express.json({ limit: "12mb" }),
     crearRecibirMensaje({ atender, secretoMeta })
   );
+  // n8n avisa cuando Meta rechazó una respuesta: la consulta queda marcada en el panel.
+  router.post("/envio-fallido", requireSecretoAgente(secretoAgente), express.json({ limit: "10kb" }), async (req, res, next) => {
+    try {
+      res.json({ ok: true, data: await registrarEnvioFallido(req.body ?? {}) });
+    } catch (err) {
+      next(err);
+    }
+  });
   return router;
 }
 

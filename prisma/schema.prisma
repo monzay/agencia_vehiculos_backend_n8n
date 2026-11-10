@@ -28,11 +28,15 @@ model autos {
   chasis           String?                 @db.VarChar(40)
   marca            String                  @db.VarChar(60)
   modelo           String                  @db.VarChar(80)
+  /// Versión del modelo (migración 081). Los autos anteriores la tienen dentro de `modelo`.
+  version          String?                 @db.VarChar(80)
   anio             Int                     @db.UnsignedSmallInt
   tipo             autos_tipo
   tipo_vehiculo    String?                 @db.VarChar(10)
   combustible      String?                 @db.VarChar(10)
   precio           Decimal                 @db.Decimal(12, 2)
+  precio_contado   Decimal?                @db.Decimal(12, 2)
+  anticipo         Decimal?                @db.Decimal(12, 2)
   costo            Decimal?                @db.Decimal(12, 2)
   precio_venta     Decimal?                @db.Decimal(12, 2)
   vendido_at       DateTime?               @db.DateTime(0)
@@ -46,9 +50,12 @@ model autos {
   updated_at       DateTime?               @default(now()) @db.DateTime(0)
   deleted_at       DateTime?               @db.DateTime(0)
   descuento_id     Int?                    @db.UnsignedInt
+  /// De qué lista importada salió el auto (migración 081). Nulo en los cargados a mano.
+  importacion_id   Int?                    @db.UnsignedInt
   auto_promociones auto_promociones[]
   auto_vistas      auto_vistas[]
   descuentos       descuentos?             @relation(fields: [descuento_id], references: [id], onUpdate: NoAction, map: "autos_descuento_fk")
+  importacion      importaciones_vehiculos? @relation(fields: [importacion_id], references: [id], onDelete: SetNull, onUpdate: Restrict, map: "autos_importacion_fk")
   consignaciones   consignaciones[]
   permutas         compraventa_contratos[]
   senas            senas[]
@@ -61,6 +68,35 @@ model autos {
   @@index([descuento_id], map: "idx_descuento")
   @@index([vendido_at], map: "idx_vendido")
   @@index([dominio], map: "idx_dominio")
+  @@index([importacion_id], map: "idx_auto_importacion")
+}
+
+/// Una lista de vehículos confirmada desde Vehículos → Importar lista (migración 081).
+model importaciones_vehiculos {
+  id         Int                                @id @default(autoincrement()) @db.UnsignedInt
+  usuario_id Int?                               @db.UnsignedInt
+  creados    Int                                @default(0) @db.UnsignedSmallInt
+  omitidos   Int                                @default(0) @db.UnsignedSmallInt
+  created_at DateTime                           @default(now()) @db.DateTime(0)
+  deleted_at DateTime?                          @db.DateTime(0)
+  usuarios   usuarios?                          @relation(fields: [usuario_id], references: [id], onDelete: SetNull, onUpdate: Restrict, map: "importaciones_vehiculos_usuario_fk")
+  archivos   importaciones_vehiculos_archivos[]
+  autos      autos[]
+
+  @@index([usuario_id], map: "importaciones_vehiculos_usuario_fk")
+}
+
+/// Los archivos de cada importación. `huella` (SHA-256 del original) es única: el mismo archivo no
+/// se importa dos veces.
+model importaciones_vehiculos_archivos {
+  id             Int                     @id @default(autoincrement()) @db.UnsignedInt
+  importacion_id Int                     @db.UnsignedInt
+  huella         String                  @unique(map: "uq_importacion_huella") @db.Char(64)
+  pathname       String                  @db.VarChar(200)
+  created_at     DateTime                @default(now()) @db.DateTime(0)
+  importacion    importaciones_vehiculos @relation(fields: [importacion_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "importaciones_archivos_importacion_fk")
+
+  @@index([importacion_id], map: "importaciones_archivos_importacion_fk")
 }
 
 model chat_estado {
@@ -420,6 +456,7 @@ model usuarios {
   consignacion_documentos consignacion_documentos[]
   consignacion_ingresos   consignacion_ingresos[]
   senas                   senas[]
+  importaciones_vehiculos importaciones_vehiculos[]
 
   @@index([email], map: "idx_email")
   @@index([rol], map: "idx_rol")

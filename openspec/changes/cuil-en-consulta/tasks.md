@@ -7,4 +7,4 @@
 - [x] Revisión de código: sin hallazgos críticos ni altos
 - [ ] Probar en el panel
 - [ ] `openspec archive cuil-en-consulta`
-- [ ] Producción: aplicar la 076 ANTES de subir el backend (`desplegar-produccion.mjs` no la toma; sin la columna, las consultas dan 500)
+- [x] Producción: aplicada la 076 ANTES de subir el backend (`desplegar-produccion.mjs` no la toma; sin la columna, las consultas dan 500)

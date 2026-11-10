@@ -1,8 +1,7 @@
 import { error } from "./contrato-campos.js";
 
-// Dominio, motor y chasis de un auto de la agencia. El alta del vehículo no los
-// pide: se cargan en Vehículos → Editar o en el boleto cuando se vende, y en los
-// dos casos se escriben igual en la ficha.
+// Dominio, motor y chasis de un auto de la agencia. El formulario de Vehículos
+// no los pide: se cargan en el boleto cuando se vende y se escriben en la ficha.
 
 // Solo texto (o un número, que es un motor de puros dígitos): un objeto o un
 // booleano cuenta como vacío en vez de guardarse como "[OBJECT OBJECT]".

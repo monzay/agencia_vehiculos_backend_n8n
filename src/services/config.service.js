@@ -18,10 +18,12 @@ function serializar(clave, valor) {
 }
 
 // Devuelve la config como objeto tipado, completando defaults de claves faltantes.
+// Solo las claves conocidas: la tabla también guarda datos internos (como el puntero del
+// reparto por turnos, `reparto_ultimo_vendedor`) que no se exponen ni se editan desde el panel.
 export async function obtenerConfig() {
   const filas = await prisma.configuracion.findMany();
   const cfg = { ...DEFAULTS };
-  for (const f of filas) cfg[f.clave] = parsear(f.clave, f.valor);
+  for (const f of filas.filter((fila) => BOOL_KEYS.includes(fila.clave))) cfg[f.clave] = parsear(f.clave, f.valor);
   return cfg;
 }
 

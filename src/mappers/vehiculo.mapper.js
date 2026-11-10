@@ -13,8 +13,7 @@
 import { aplicarDescuento } from "./descuento.mapper.js";
 import { mapPromosDeAuto } from "./promocion.mapper.js";
 import { normalizarTipoVehiculo } from "../lib/tipos-vehiculo.js";
-
-const COMBUSTIBLES_VALIDOS = ["nafta", "gnc", "diesel"];
+import { COMBUSTIBLES } from "../lib/combustibles.js";
 
 function parseDescripcion(descripcion) {
   // "Auto · gnc" -> { tipoVehiculo: "auto", combustible: "gnc" }
@@ -28,7 +27,7 @@ function parseDescripcion(descripcion) {
 
   const combustible = partes
     .slice(1)
-    .find((p) => COMBUSTIBLES_VALIDOS.includes(p)) ?? "";
+    .find((p) => COMBUSTIBLES.includes(p)) ?? "";
 
   return { tipoVehiculo, combustible };
 }
@@ -83,6 +82,7 @@ export function mapAutoToVehiculo(auto) {
     ref: auto.ref,
     brand: auto.marca,
     model: auto.modelo,
+    version: auto.version ?? null,
     year: auto.anio,
     kms: auto.kms ?? 0,
     stock: auto.stock ?? 0, // unidades disponibles
@@ -94,6 +94,8 @@ export function mapAutoToVehiculo(auto) {
     descuento, // null o { id, nombre, tipo, valor, ... }
     precio_final, // precio ya con el descuento aplicado
     ahorro, // cuanto se ahorra respecto del precio base
+    precio_contado: auto.precio_contado != null ? Number(auto.precio_contado) : null,
+    anticipo: auto.anticipo != null ? Number(auto.anticipo) : null,
     promociones: mapPromosDeAuto(auto.auto_promociones), // promos VIGENTES del vehiculo
     color: "",
     image: primeraFoto(auto.fotos_json),
@@ -101,9 +103,8 @@ export function mapAutoToVehiculo(auto) {
     descripcion: auto.descripcion ?? "",
     disponible: Boolean(auto.disponible),
 
-    // Datos de gestión: solo llegan con valor en el listado del panel, que es
-    // el único que los pide. En el catálogo público quedan en null/false.
-    costo: auto.costo != null ? Number(auto.costo) : null,
+    // Datos de gestión: solo llegan con valor en el listado del panel. El costo
+    // de compra no va, porque este objeto también sale en la API pública.
     precio_venta: auto.precio_venta != null ? Number(auto.precio_venta) : null,
     vendido_at: auto.vendido_at ?? null,
     vendido: auto.vendido_at != null,

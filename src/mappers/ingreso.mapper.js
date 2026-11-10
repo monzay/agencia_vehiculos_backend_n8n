@@ -132,6 +132,7 @@ const autoInteresDe = (a) =>
         motor: a.motor ?? null,
         chasis: a.chasis ?? null,
         precio: aNumero(a.precio),
+        precioContado: aNumero(a.precio_contado),
       }
     : null;
 

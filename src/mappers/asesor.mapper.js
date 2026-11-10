@@ -21,7 +21,7 @@ export function mapVendedorToAsesor(v, cuenta = null) {
     // Si tiene cuenta, el email de login manda (es el que usa para entrar).
     email: cuenta?.email ?? v.email ?? "",
     activo: Boolean(v.activo),
-    // Si participa del round-robin del bot (el admin lo controla por asesor).
+    // Si participa del reparto por turnos (el admin lo controla por asesor).
     recibeConsultas: v.recibe_consultas == null ? true : Boolean(v.recibe_consultas),
     leadsActivos: v.leads_activos ?? 0,
     tieneCuenta: Boolean(cuenta),

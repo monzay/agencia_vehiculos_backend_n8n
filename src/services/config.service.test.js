@@ -28,3 +28,23 @@ test("la repartición de consultas se sigue configurando", async (t) => {
   assert.equal(escrituras[0].where.clave, "reparticion_equitativa");
   assert.equal(escrituras[0].update.valor, "0");
 });
+
+test("el puntero del reparto por turnos no sale por la API", async (t) => {
+  const { findMany } = prisma.configuracion;
+  prisma.configuracion.findMany = async () => [
+    { clave: "reparticion_equitativa", valor: "1" },
+    { clave: "reparto_ultimo_vendedor", valor: "3" },
+  ];
+  t.after(() => Object.assign(prisma.configuracion, { findMany }));
+
+  const config = await obtenerConfig();
+
+  assert.deepEqual(config, { reparticion_equitativa: true });
+});
+
+test("el puntero del reparto por turnos no se puede escribir desde la configuración", async (t) => {
+  const escrituras = conBase(t);
+  await actualizarConfig({ reparto_ultimo_vendedor: "99", reparticion_equitativa: false });
+
+  assert.deepEqual(escrituras.map((e) => e.where.clave), ["reparticion_equitativa"]);
+});
