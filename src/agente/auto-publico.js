@@ -9,6 +9,7 @@ import { normalizarTipoVehiculo } from "../lib/tipos-vehiculo.js";
 
 const CONSIGNACION_CERRADA = { deleted_at: null, estado: { in: ["vendido", "retirado"] } };
 const MAX_FOTOS = 4;
+const MAX_DESCRIPCION = 600;
 
 // Autos que el agente puede ofrecer: a la venta, visibles, sin seña vigente y
 // sin un trámite abierto que ya los comprometa.
@@ -34,6 +35,11 @@ export const selectFicha = () => ({
   tipo_vehiculo: true,
   combustible: true,
   precio: true,
+  version: true,
+  stock: true,
+  precio_contado: true,
+  anticipo: true,
+  descripcion: true,
   disponible: true,
   vendido_at: true,
   deleted_at: true,
@@ -57,6 +63,9 @@ export function disponibilidad(auto) {
 
 const listaDeFotos = (fotosJson) => (Array.isArray(fotosJson) ? fotosJson.filter((f) => typeof f === "string" && f.trim()) : []);
 
+const montoONulo = (valor) => (valor != null ? Number(valor) : null);
+const textoONulo = (valor) => (typeof valor === "string" && valor.trim() ? valor.trim() : null);
+
 export function autoPublico(auto) {
   const precio = auto.precio != null ? Number(auto.precio) : 0;
   const { descuento, precio_final, ahorro } = aplicarDescuento(precio, auto.descuentos);
@@ -69,7 +78,11 @@ export function autoPublico(auto) {
     tipo: normalizarTipoVehiculo(auto.tipo_vehiculo),
     condicion: auto.tipo === "km" ? "0km" : "usado",
     combustible: auto.combustible ?? null,
-    precio,
+    version: textoONulo(auto.version),
+    stock: auto.stock ?? null,
+    precio_lista: precio,
+    precio_contado: montoONulo(auto.precio_contado),
+    anticipo: montoONulo(auto.anticipo),
     precio_final,
     ahorro,
     descuento: descuento ? { nombre: descuento.nombre } : null,
@@ -77,6 +90,12 @@ export function autoPublico(auto) {
     tiene_fotos: listaDeFotos(auto.fotos_json).length > 0,
     disponibilidad: disponibilidad(auto),
   };
+}
+
+// La descripción la escribe la agencia con saltos de línea: va en una sola línea y recortada.
+export function fichaConDescripcion(auto) {
+  const descripcion = String(auto.descripcion ?? "").replace(/\s+/g, " ").trim().slice(0, MAX_DESCRIPCION);
+  return { ...autoPublico(auto), descripcion: descripcion || null };
 }
 
 // Las fotos como direcciones completas, para que n8n las mande por WhatsApp.

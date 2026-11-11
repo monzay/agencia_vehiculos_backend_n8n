@@ -31,6 +31,11 @@ const auto = (extra = {}) => ({
   tipo: "usado",
   tipo_vehiculo: "auto",
   precio: 9800000,
+  version: "1.6 Pack I",
+  stock: 1,
+  precio_contado: null,
+  anticipo: null,
+  descripcion: "Único dueño.\nService al día.",
   costo: 7000000,
   disponible: true,
   vendido_at: null,
@@ -54,7 +59,7 @@ test("hay 11 herramientas con formularios estrictos, salvo registrar_calificacio
   assert.equal(defs.length, 11);
   assert.deepEqual(defs.map((d) => d.name).sort(), [...NOMBRES_HERRAMIENTAS].sort());
   for (const d of defs) {
-    assert.equal(d.strict, d.name !== "registrar_calificacion", d.name);
+    assert.equal(d.strict, !["buscar_autos", "registrar_calificacion"].includes(d.name), d.name);
     assert.equal(d.input_schema.additionalProperties, false, d.name);
     assert.equal(typeof d.description, "string", d.name);
   }
@@ -121,10 +126,78 @@ test("buscar_autos excluye siempre vendidos, señados, en trámite y borrados", 
   assert.equal(where.disponible, true);
   assert.ok(where.senas?.none, "sin seña vigente");
   assert.ok(where.tramites_interes?.none, "sin trámite abierto");
-  assert.equal(where.tipo_vehiculo, "camioneta");
+  assert.deepEqual(where.AND, [{ tipo_vehiculo: "camioneta" }]);
   assert.deepEqual(where.precio, { lte: 10000000 });
   assert.deepEqual(where.anio, { gte: 2018 });
   assert.equal(take, 5);
+});
+
+const busqueda = (extra) => ({ tipo: null, condicion: null, marca: null, modelo: null, combustible: null, anio_desde: null, anio_hasta: null, km_max: null, presupuesto_max: null, presupuesto_contado_max: null, ...extra });
+const buscarConFiltros = async (filtros) => {
+  const db = baseFalsa({ "autos.findMany": [auto()] });
+  const r = await ejecutarHerramienta("buscar_autos", busqueda(filtros), ctx(db));
+  return { r, args: ultima(db, "autos", "findMany").args };
+};
+
+test("buscar_autos filtra por condición, modelo, combustible, año máximo y km máximo", async () => {
+  const { args } = await buscarConFiltros({ condicion: "0km", modelo: "Gol", combustible: "gnc", anio_hasta: 2020, km_max: 50000 });
+  const { where } = args;
+  assert.equal(where.tipo, "km");
+  assert.deepEqual(where.combustible, { in: ["gnc", "nafta_gnc"] });
+  assert.deepEqual(where.anio, { lte: 2020 });
+  assert.deepEqual(where.kms, { lte: 50000 });
+  assert.deepEqual(where.AND, [{ OR: [{ modelo: { contains: "Gol" } }, { version: { contains: "Gol" } }] }]);
+  const usado = await buscarConFiltros({ condicion: "usado", anio_desde: 2015, anio_hasta: 2020 });
+  assert.equal(usado.args.where.tipo, "usado");
+  assert.deepEqual(usado.args.where.anio, { gte: 2015, lte: 2020 });
+  assert.deepEqual(usado.args.orderBy, { id: "desc" });
+});
+
+test("buscar_autos por nafta o por GNC incluye los que andan con los dos", async () => {
+  const esperado = {
+    nafta: { in: ["nafta", "nafta_gnc"] },
+    gnc: { in: ["gnc", "nafta_gnc"] },
+    diesel: { in: ["diesel"] },
+    nafta_gnc: { in: ["nafta_gnc"] },
+  };
+  for (const [combustible, filtro] of Object.entries(esperado)) {
+    const { args } = await buscarConFiltros({ combustible });
+    assert.deepEqual(args.where.combustible, filtro, combustible);
+  }
+});
+
+test("buscar_autos con presupuesto de contado usa el precio de contado y, si no está cargado, el de lista", async () => {
+  const { args } = await buscarConFiltros({ presupuesto_contado_max: 8000000 });
+  assert.deepEqual(args.where.AND, [{ OR: [{ precio_contado: { lte: 8000000 } }, { precio_contado: null, precio: { lte: 8000000 } }] }]);
+  assert.deepEqual(args.orderBy, { precio: "desc" });
+  const lista = await buscarConFiltros({ presupuesto_max: 9000000 });
+  assert.deepEqual(lista.args.where.precio, { lte: 9000000 });
+  assert.deepEqual(lista.args.orderBy, { precio: "desc" });
+});
+
+test("buscar_autos combina el tipo auto con otros filtros sin pisarlos", async () => {
+  const { args } = await buscarConFiltros({ tipo: "auto", modelo: "Gol", presupuesto_contado_max: 8000000 });
+  const { where } = args;
+  assert.equal("OR" in where, false, "ningún OR suelto que otro pueda pisar");
+  assert.equal(where.AND.length, 3);
+  assert.deepEqual(where.AND[0], { OR: [{ tipo_vehiculo: "auto" }, { tipo_vehiculo: null }] });
+  assert.ok(where.AND.some((c) => c.OR?.some((o) => o.modelo)));
+  assert.ok(where.AND.some((c) => c.OR?.some((o) => o.precio_contado)));
+  assert.ok(where.senas?.none && where.tramites_interes?.none, "sigue excluyendo los no disponibles");
+});
+
+test("buscar_autos no trae la descripción", async () => {
+  const { r, args } = await buscarConFiltros({});
+  assert.equal("descripcion" in r.resultado.autos[0], false);
+  assert.equal(JSON.stringify(r.resultado).includes("Único dueño"), false);
+  assert.equal(args.select.descripcion, true, "se pide a la base para ver_auto, pero no se devuelve");
+});
+
+test("ver_auto trae la descripción del auto", async () => {
+  const db = baseFalsa({ "autos.findFirst": auto() });
+  const r = await ejecutarHerramienta("ver_auto", { ref: "12" }, ctx(db));
+  assert.equal(r.resultado.auto.descripcion, "Único dueño. Service al día.");
+  assert.equal(r.resultado.auto.version, "1.6 Pack I");
 });
 
 test("buscar_autos devuelve la ficha pública, sin costo", async () => {
@@ -395,8 +468,8 @@ test("buscar autos de tipo auto incluye los que no tienen tipo cargado", async (
   const db = baseFalsa({ "autos.findMany": [] });
   await ejecutarHerramienta("buscar_autos", { tipo: "auto", presupuesto_max: null, anio_desde: null, marca: null }, ctx(db));
   const { where } = ultima(db, "autos", "findMany").args;
-  assert.deepEqual(where.OR, [{ tipo_vehiculo: "auto" }, { tipo_vehiculo: null }]);
-  assert.equal("tipo_vehiculo" in where, false);
+  assert.deepEqual(where.AND, [{ OR: [{ tipo_vehiculo: "auto" }, { tipo_vehiculo: null }] }]);
+  assert.equal("OR" in where || "tipo_vehiculo" in where, false);
 });
 
 // ── horarios_atencion ──

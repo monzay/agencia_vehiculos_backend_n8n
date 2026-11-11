@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { autoPublico, disponibilidad, fotosPublicas } from "./auto-publico.js";
+import { autoPublico, fichaConDescripcion, disponibilidad, fotosPublicas } from "./auto-publico.js";
 
 const auto = {
   id: 7,
@@ -13,6 +13,11 @@ const auto = {
   tipo_vehiculo: "auto",
   combustible: "nafta",
   precio: 9800000,
+  version: "1.6 Pack I",
+  stock: 2,
+  precio_contado: 9500000,
+  anticipo: 3000000,
+  descripcion: null,
   costo: 7000000,
   precio_venta: null,
   vendido_at: null,
@@ -40,11 +45,41 @@ test("la ficha pública trae lo que necesita el cliente", () => {
   assert.equal(ficha.ref, "12");
   assert.equal(ficha.marca, "Volkswagen");
   assert.equal(ficha.anio, 2017);
-  assert.equal(ficha.precio, 9800000);
+  assert.equal(ficha.precio_lista, 9800000);
+  assert.equal("precio" in ficha, false);
   assert.equal(ficha.precio_final, 9800000);
   assert.equal(ficha.tipo, "auto");
   assert.equal(ficha.condicion, "usado");
   assert.equal(ficha.tiene_fotos, true);
+});
+
+test("la ficha del bot trae versión, stock, precio de lista, precio de contado y anticipo", () => {
+  const ficha = autoPublico({ ...auto, precio_contado: "9500000.00", anticipo: "3000000.00" });
+  assert.equal(ficha.version, "1.6 Pack I");
+  assert.equal(ficha.stock, 2);
+  assert.equal(ficha.precio_lista, 9800000);
+  assert.equal(ficha.precio_contado, 9500000);
+  assert.equal(ficha.anticipo, 3000000);
+  assert.equal("descripcion" in ficha, false);
+});
+
+test("lo que no está cargado en el auto va en null", () => {
+  const sinDatos = { ...auto, version: "  ", precio_contado: null, anticipo: null, stock: null, descripcion: "   " };
+  const ficha = autoPublico(sinDatos);
+  assert.equal(ficha.version, null);
+  assert.equal(ficha.precio_contado, null);
+  assert.equal(ficha.anticipo, null);
+  assert.equal(ficha.stock, null);
+  assert.equal(fichaConDescripcion(sinDatos).descripcion, null);
+  assert.equal(fichaConDescripcion({ ...sinDatos, descripcion: null }).descripcion, null);
+});
+
+test("la descripción va en una línea y recortada", () => {
+  const una = fichaConDescripcion({ ...auto, descripcion: "  Único dueño.\n\nService al día\t y   VTV  " });
+  assert.equal(una.descripcion, "Único dueño. Service al día y VTV");
+  assert.equal(una.precio_lista, 9800000);
+  const larga = fichaConDescripcion({ ...auto, descripcion: "a".repeat(2000) });
+  assert.equal(larga.descripcion.length, 600);
 });
 
 test("disponible: a la venta, sin seña ni trámite", () => {

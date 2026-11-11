@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { TIPOS_VEHICULO, normalizarTipoVehiculo } from "../lib/tipos-vehiculo.js";
-import { whereDisponible, selectFicha, autoPublico, fotosPublicas } from "./auto-publico.js";
+import { whereDisponible, selectFicha, autoPublico, fichaConDescripcion, fotosPublicas } from "./auto-publico.js";
+import { COMBUSTIBLES } from "../lib/combustibles.js";
 import { puntaje, clasificar, pendientes } from "./calificacion.js";
 import { linkDelCatalogo, codigoDeAuto } from "./origen-web.js";
 import { SIN_VERIFICACION } from "../credito/verificacion.js";
@@ -46,6 +47,36 @@ const textoLibre = (max, min = 1) =>
 
 // Los autos viejos sin tipo cargado cuentan como "auto".
 const filtroTipo = (tipo) => (tipo === "auto" ? { OR: [{ tipo_vehiculo: "auto" }, { tipo_vehiculo: null }] } : { tipo_vehiculo: tipo });
+
+// Un auto "nafta_gnc" anda con los dos: también cumple al buscar nafta o GNC.
+const COMBUSTIBLES_QUE_CUMPLEN = Object.freeze({
+  nafta: ["nafta", "nafta_gnc"],
+  gnc: ["gnc", "nafta_gnc"],
+  diesel: ["diesel"],
+  nafta_gnc: ["nafta_gnc"],
+});
+
+// Un filtro por cada dato que el cliente dio. Los que usan OR van juntos en AND para que no se pisen.
+function whereDeBusqueda(f) {
+  const condiciones = [
+    f.tipo && filtroTipo(f.tipo),
+    f.modelo && { OR: [{ modelo: { contains: f.modelo } }, { version: { contains: f.modelo } }] },
+    f.presupuesto_contado_max && {
+      OR: [{ precio_contado: { lte: f.presupuesto_contado_max } }, { precio_contado: null, precio: { lte: f.presupuesto_contado_max } }],
+    },
+  ].filter(Boolean);
+  const anio = { ...(f.anio_desde && { gte: f.anio_desde }), ...(f.anio_hasta && { lte: f.anio_hasta }) };
+  return {
+    ...whereDisponible(),
+    ...(f.condicion && { tipo: f.condicion === "0km" ? "km" : "usado" }),
+    ...(f.marca && { marca: { contains: f.marca } }),
+    ...(f.combustible && { combustible: { in: COMBUSTIBLES_QUE_CUMPLEN[f.combustible] } }),
+    ...(f.presupuesto_max && { precio: { lte: f.presupuesto_max } }),
+    ...(Object.keys(anio).length > 0 && { anio }),
+    ...(f.km_max && { kms: { lte: f.km_max } }),
+    ...(condiciones.length > 0 && { AND: condiciones }),
+  };
+}
 
 // Un auto pausado o sin publicar no existe para el cliente. Uno vendido sí se
 // informa, para poder ofrecerle parecidos.
@@ -171,25 +202,27 @@ const HERRAMIENTAS = [
   {
     nombre: "buscar_autos",
     descripcion:
-      "Busca autos disponibles para ofrecer. Nunca devuelve vendidos ni reservados. Usala para cualquier pregunta sobre qué autos hay, por tipo, presupuesto, año o marca. Devuelve hasta 5.",
+      "Busca autos disponibles para ofrecer. Nunca devuelve vendidos ni reservados. Usala para cualquier pregunta sobre qué autos hay: filtra por tipo, condición (0km o usado), marca, modelo o versión, combustible, año mínimo y máximo, km máximo, presupuesto máximo (contra el precio de lista) y presupuesto de contado (contra el precio de contado). Completá solo lo que el cliente dijo. Devuelve hasta 5.",
+    // No estricta: el modo estricto de Claude admite hasta 16 campos opcionales
+    // sumando todas las herramientas, y esta sola tiene 10. Igual se valida con zod.
+    estricta: false,
     esquema: z.strictObject({
-      tipo: z.enum(TIPOS_VEHICULO).nullable().describe("auto, camioneta o moto. null si no lo dijo."),
-      presupuesto_max: z.number().int().positive().max(10_000_000_000).nullable().describe("Precio máximo en pesos. null si no lo dijo."),
-      anio_desde: z.number().int().min(1950).max(2100).nullable().describe("Año mínimo. null si no lo dijo."),
-      marca: textoLibre(40).nullable().describe("Marca, por ejemplo Toyota. null si no la dijo."),
+      tipo: z.enum(TIPOS_VEHICULO).nullish().describe("auto, camioneta o moto."),
+      condicion: z.enum(["0km", "usado"]).nullish().describe("0km o usado."),
+      marca: textoLibre(40).nullish().describe("Marca, por ejemplo Toyota."),
+      modelo: textoLibre(60).nullish().describe("Modelo o versión, por ejemplo Hilux o SRV."),
+      combustible: z.enum(COMBUSTIBLES).nullish().describe("nafta, gnc, nafta_gnc o diesel."),
+      anio_desde: z.number().int().min(1950).max(2100).nullish().describe("Año mínimo."),
+      anio_hasta: z.number().int().min(1950).max(2100).nullish().describe("Año máximo."),
+      km_max: z.number().int().positive().max(2_000_000).nullish().describe("Kilómetros máximos."),
+      presupuesto_max: z.number().int().positive().max(10_000_000_000).nullish().describe("Precio de lista máximo en pesos."),
+      presupuesto_contado_max: z.number().int().positive().max(10_000_000_000).nullish().describe("Presupuesto máximo en pesos si paga de contado."),
     }),
-    async ejecutar({ tipo, presupuesto_max, anio_desde, marca }, { db }) {
-      const where = {
-        ...whereDisponible(),
-        ...(tipo && filtroTipo(tipo)),
-        ...(presupuesto_max && { precio: { lte: presupuesto_max } }),
-        ...(anio_desde && { anio: { gte: anio_desde } }),
-        ...(marca && { marca: { contains: marca } }),
-      };
+    async ejecutar(filtros, { db }) {
       const autos = await db.autos.findMany({
-        where,
+        where: whereDeBusqueda(filtros),
         select: selectFicha(),
-        orderBy: presupuesto_max ? { precio: "desc" } : { id: "desc" },
+        orderBy: filtros.presupuesto_max || filtros.presupuesto_contado_max ? { precio: "desc" } : { id: "desc" },
         take: MAX_AUTOS,
       });
       return { cantidad: autos.length, autos: autos.map(autoPublico) };
@@ -232,13 +265,13 @@ const HERRAMIENTAS = [
   {
     nombre: "ver_auto",
     descripcion:
-      "Muestra la ficha de un auto por su código: precio, descuento y promociones vigentes, km, y si está disponible, reservado o vendido. Usala antes de dar cualquier precio.",
+      "Muestra la ficha de un auto por su código: precio de lista, de contado y anticipo, versión, descripción, descuento y promociones vigentes, km, y si está disponible, reservado o vendido. Usala antes de dar cualquier precio.",
     esquema: z.strictObject({ ref }),
     async ejecutar({ ref: codigo }, { db }) {
       const refResuelto = await refExistente(db, codigo);
       if (!refResuelto) return { encontrado: false, ...codigoInexistente(codigo) };
       const auto = await db.autos.findFirst({ where: { ref: refResuelto, deleted_at: null }, select: selectFicha() });
-      return visibleParaElCliente(auto) ? { encontrado: true, auto: autoPublico(auto) } : { encontrado: false };
+      return visibleParaElCliente(auto) ? { encontrado: true, auto: fichaConDescripcion(auto) } : { encontrado: false };
     },
   },
   {
