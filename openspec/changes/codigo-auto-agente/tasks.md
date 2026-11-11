@@ -12,8 +12,11 @@
   - `1`, `#1`, `REF #1` y `(REF #1)` resuelven al auto `1`;
   - `#99999` y `Onix LTZ` dan `codigo_inexistente`;
   - un auto reservado sigue respondiendo "no está disponible".
-- [ ] Prueba de punta a punta en local con `scripts/chat-local.js`. No se pudo: la base local tiene un solo auto (la moto ref 1) y está reservado. Queda para el celular, después del deploy, o con un auto de prueba cargado en local.
+- [x] Prueba de punta a punta: el dueño la dio por cerrada el 11/11/2026. En local no se pudo (la base local tiene un solo auto, la moto ref 1, reservado); se prueba en producción desde el celular.
 - [x] Revisión de código y de seguridad: sin CRITICAL ni HIGH. Corregidos los 2 MEDIUM (un fallo del log no corta la respuesta; test del fallo al leer el auto de la consulta) y los 2 LOW (`refResuelto`, formato)
 - [x] Documentación en la bóveda: "BOT CON RAZONAMIENTO" (sección 13) y "Plan de mejora del bot"
-- [ ] Desplegar el backend: solo cuando el dueño lo pida, sin migración
+- [x] Backend desplegado el 11/11/2026, por orden del dueño, sin migración:
+  - commit `5207723`, `main` avanzado en GitHub;
+  - respaldo en el servidor: `/opt/agencia/backend.bak.20261111-035938`;
+  - verificado: `/health` 200, código nuevo dentro del contenedor, ruta protegida 401 y arranque sin errores.
 - [ ] `openspec archive codigo-auto-agente`
