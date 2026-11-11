@@ -185,3 +185,30 @@ test("la verificación crediticia: nunca le dice el resultado ni insiste si dice
   assert.match(INSTRUCCIONES, /no insistas/);
   assert.match(INSTRUCCIONES, /registrar_consentimiento/);
 });
+
+test("el contexto dice cuál es el auto de la consulta y su código", () => {
+  const autoDeLaConsulta = { ref: "13", descripcion: "Chevrolet Onix LTZ 2022" };
+  const c = contextoDelMomento({ ahora, autoDeLaConsulta });
+  assert.ok(c.includes('Auto de esta consulta: "Chevrolet Onix LTZ 2022", código 13. Usá ese código con las herramientas.'));
+  assert.doesNotMatch(c, /auto de interés/);
+
+  const conWeb = contextoDelMomento({ ahora, autoDeLaConsulta, consultaWeb: { descripcion: "Peugeot 208 2021", ref: "A12B", disponible: true } });
+  assert.ok(conWeb.indexOf("viene de la web") < conWeb.indexOf("Auto de esta consulta"), "va después de la línea de la web");
+});
+
+test("sin auto en la consulta, o si viene de la web por el mismo auto, no agrega la línea", () => {
+  assert.doesNotMatch(contextoDelMomento({ ahora }), /Auto de esta consulta/);
+  assert.doesNotMatch(contextoDelMomento({ ahora, autoDeLaConsulta: null }), /Auto de esta consulta/);
+  const mismoAuto = contextoDelMomento({
+    ahora,
+    autoDeLaConsulta: { ref: "A12B", descripcion: "Peugeot 208 2021" },
+    consultaWeb: { descripcion: "Peugeot 208 2021", ref: "A12B", disponible: true },
+  });
+  assert.doesNotMatch(mismoAuto, /Auto de esta consulta/);
+});
+
+test("si una herramienta dice que el código no existe, no le dice al cliente que el auto no está disponible", async () => {
+  const { INSTRUCCIONES } = await import("./instrucciones.js");
+  assert.match(INSTRUCCIONES, /Si una herramienta te dice que no existe un auto con ese código, el código está mal escrito: no le digas al cliente que el auto no está disponible\. Usá el código del auto de esta consulta \(está en el contexto\) o buscalo con buscar_autos\./);
+  assert.ok(INSTRUCCIONES.indexOf("Un auto vendido o reservado") < INSTRUCCIONES.indexOf("Si una herramienta te dice que no existe"));
+});

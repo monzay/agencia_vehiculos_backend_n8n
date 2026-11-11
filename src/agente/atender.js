@@ -81,6 +81,8 @@ function deAUno(clave, tarea) {
   return actual;
 }
 
+const descripcionDelAuto = (auto) => [auto.marca, auto.modelo, auto.anio].filter(Boolean).join(" ");
+
 // El auto del mensaje predefinido de la web: si está disponible pasa a ser el de
 // interés; si no, el agente lo sabe y ofrece parecidos.
 async function autoDeLaWeb(root, ref) {
@@ -90,7 +92,7 @@ async function autoDeLaWeb(root, ref) {
     root.autos.findFirst({ where: { ...whereDisponible(), ref }, select: { id: true } }),
   ]);
   if (!auto) return null;
-  return { id: auto.id, ref, descripcion: [auto.marca, auto.modelo, auto.anio].filter(Boolean).join(" "), disponible: Boolean(disponible) };
+  return { id: auto.id, ref, descripcion: descripcionDelAuto(auto), disponible: Boolean(disponible) };
 }
 
 // Desde la web por un auto: si la consulta abierta no tenía auto, ese pasa a ser el
@@ -275,13 +277,24 @@ async function creditoDelTurno({ root, cliente, sesion, ahora }) {
   });
 }
 
+// El auto de la consulta en curso, para que la IA tenga su código en cada mensaje.
+// Un fallo acá no frena la respuesta.
+async function autoDeLaConsulta(root, autoId) {
+  if (!autoId) return null;
+  return root.autos.findFirst({ where: { id: autoId }, select: { ref: true, marca: true, modelo: true, anio: true } }).catch((err) => {
+    console.error("[agente] no se pudo leer el auto de la consulta:", err?.message);
+    return null;
+  });
+}
+
 // Lo que el agente necesita saber en este mensaje: la agencia (nombre, dirección,
-// mapa) y en qué punto del recorrido de venta está el cliente.
+// mapa), el auto de la consulta y en qué punto del recorrido de venta está el cliente.
 async function contextoDelTurno({ root, cliente, sesion, ahora, autoWeb, cobranza }) {
-  const [usado, ubicacion, credito] = await Promise.all([
+  const [usado, ubicacion, credito, auto] = await Promise.all([
     root.vehiculo_cliente.findFirst({ where: { sesion_id: sesion.id, contexto: "trade_in", deleted_at: null } }),
     root.ubicacion.findUnique({ where: { id: 1 }, select: { nombre: true, direccion: true, maps_url: true } }),
     creditoDelTurno({ root, cliente, sesion, ahora }),
+    autoDeLaConsulta(root, sesion.auto_id),
   ]);
   return {
     asesora: process.env.AGENTE_NOMBRE,
@@ -292,6 +305,7 @@ async function contextoDelTurno({ root, cliente, sesion, ahora, autoWeb, cobranz
     nombreCliente: cliente.nombre,
     catalogoUrl: linkDelCatalogo(process.env.PUBLIC_WEB_URL),
     consultaWeb: autoWeb && { descripcion: autoWeb.descripcion, ref: autoWeb.ref, disponible: autoWeb.disponible },
+    autoDeLaConsulta: auto && { ref: auto.ref, descripcion: descripcionDelAuto(auto) },
     cobranza,
     respondido: respondido(sesion, usado),
     faltan: pendientes(sesion, usado),

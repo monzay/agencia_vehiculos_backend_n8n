@@ -44,7 +44,7 @@ const auto = (extra = {}) => ({
   ...extra,
 });
 
-const ctx = (db, extra = {}) => ({ db, clienteId: 50, sesionId: 900, urlPublica: "https://agencia.com", ...extra });
+const ctx = (db, extra = {}) => ({ db, clienteId: 50, sesionId: 900, urlPublica: "https://agencia.com", log: () => {}, ...extra });
 const ultima = (db, modelo, metodo) => [...db.llamadas].reverse().find((l) => l.modelo === modelo && l.metodo === metodo);
 
 // ── Definiciones para Claude ──
@@ -208,6 +208,95 @@ test("enviar_fotos_auto devuelve el link a la ficha web, para el botón 'Ver tod
   const db = baseFalsa({ "autos.findFirst": auto() });
   const r = await ejecutarHerramienta("enviar_fotos_auto", { ref: "12" }, ctx(db));
   assert.equal(r.resultado.ficha, "https://agencia.com/catalogo/12");
+});
+
+// ── Código del auto como lo escribe la IA ("#13", "REF #13") ──
+
+// Base con autos por código: la primera consulta (¿existe?) no filtra por disponibilidad;
+// la segunda sí (whereDisponible trae `disponible: true`).
+const autosPorCodigo = (porCodigo) => (a) => porCodigo[a.where.ref] ?? null;
+const sinFiltroDeDisponibilidad = (a) => !("disponible" in a.where);
+
+test("ver_auto encuentra el auto aunque la IA mande el código con # o REF", async () => {
+  const db = baseFalsa({ "autos.findFirst": autosPorCodigo({ 13: auto({ ref: "13", modelo: "Onix LTZ" }) }) });
+  for (const codigo of ["#13", "REF #13", "(REF #13)"]) {
+    const r = await ejecutarHerramienta("ver_auto", { ref: codigo }, ctx(db));
+    assert.equal(r.resultado.encontrado, true, codigo);
+    assert.equal(r.resultado.auto.ref, "13", codigo);
+    assert.equal(ultima(db, "autos", "findFirst").args.where.ref, "13", "la consulta va con el código limpio");
+  }
+});
+
+test("enviar_fotos_auto encuentra el auto aunque la IA mande el código con #, y el link de la ficha va con el código limpio", async () => {
+  const db = baseFalsa({ "autos.findFirst": autosPorCodigo({ 13: auto({ ref: "13" }) }) });
+  const r = await ejecutarHerramienta("enviar_fotos_auto", { ref: "#13" }, ctx(db));
+  assert.deepEqual(r.resultado.fotos, ["https://agencia.com/vehiculos/gol.jpg"]);
+  assert.equal(r.resultado.ficha, "https://agencia.com/catalogo/13");
+  const { where } = ultima(db, "autos", "findFirst").args;
+  assert.equal(where.ref, "13");
+  assert.equal(where.vendido_at, null, "sigue pidiendo solo autos disponibles");
+});
+
+test("buscar_similares encuentra la referencia aunque la IA mande el código con #", async () => {
+  const db = baseFalsa({
+    "autos.findFirst": autosPorCodigo({ 13: auto({ ref: "13", precio: 10000000 }) }),
+    "autos.findMany": [auto({ ref: "20", precio: 9000000 })],
+  });
+  const r = await ejecutarHerramienta("buscar_similares", { ref: "#13" }, ctx(db));
+  assert.equal(r.resultado.encontrado, true);
+  assert.equal(r.resultado.referencia.ref, "13");
+  assert.deepEqual(ultima(db, "autos", "findMany").args.where.ref, { not: "13" });
+});
+
+test("un código que existe tal cual se usa tal cual, aunque limpio coincida con otro auto", async () => {
+  const db = baseFalsa({
+    "autos.findFirst": autosPorCodigo({ REF13: auto({ ref: "REF13", modelo: "Exacto" }), 13: auto({ ref: "13", modelo: "Otro" }) }),
+  });
+  const r = await ejecutarHerramienta("ver_auto", { ref: "REF13" }, ctx(db));
+  assert.equal(r.resultado.auto.ref, "REF13");
+  assert.equal(r.resultado.auto.modelo, "Exacto");
+});
+
+test("los códigos de auto se piden sin # ni REF", () => {
+  const defs = Object.fromEntries(definicionesParaClaude().map((d) => [d.name, d.input_schema.properties]));
+  const descripciones = [
+    ...["ver_auto", "buscar_similares", "enviar_fotos_auto"].map((n) => defs[n].ref.description),
+    defs.registrar_calificacion.auto_ref.description,
+  ];
+  for (const descripcion of descripciones) {
+    assert.match(descripcion, /sin # ni la palabra REF \(para 'REF #13' es 13\)/);
+    assert.doesNotMatch(descripcion, /tal como figura en la web/);
+  }
+});
+
+test("ver_auto distingue un código que no existe de un auto que no está a la venta", async () => {
+  const inexistente = await ejecutarHerramienta("ver_auto", { ref: "999" }, ctx(baseFalsa({ "autos.findFirst": null })));
+  assert.equal(inexistente.resultado.encontrado, false);
+  assert.equal(inexistente.resultado.codigo_inexistente, true);
+  assert.match(inexistente.resultado.motivo, /No hay ningún auto con el código "999"\. No le digas al cliente que el auto no está disponible/);
+
+  const pausado = await ejecutarHerramienta("ver_auto", { ref: "12" }, ctx(baseFalsa({ "autos.findFirst": auto({ disponible: false }) })));
+  assert.deepEqual(pausado.resultado, { encontrado: false });
+});
+
+test("enviar_fotos_auto distingue un código que no existe de un auto que no está disponible", async () => {
+  const inexistente = await ejecutarHerramienta("enviar_fotos_auto", { ref: "999" }, ctx(baseFalsa({ "autos.findFirst": null })));
+  assert.deepEqual(inexistente.resultado.fotos, []);
+  assert.equal(inexistente.resultado.codigo_inexistente, true);
+  assert.match(inexistente.resultado.motivo, /No hay ningún auto con el código "999"/);
+
+  const db = baseFalsa({ "autos.findFirst": (a) => (sinFiltroDeDisponibilidad(a) ? { id: 7 } : null) });
+  const noDisponible = await ejecutarHerramienta("enviar_fotos_auto", { ref: "12" }, ctx(db));
+  assert.deepEqual(noDisponible.resultado, { fotos: [], motivo: "El auto no está disponible." });
+});
+
+test("buscar_similares avisa si el código no existe", async () => {
+  const db = baseFalsa({ "autos.findFirst": null, "autos.findMany": [] });
+  const r = await ejecutarHerramienta("buscar_similares", { ref: "999" }, ctx(db));
+  assert.equal(r.resultado.encontrado, false);
+  assert.equal(r.resultado.codigo_inexistente, true);
+  assert.match(r.resultado.motivo, /No hay ningún auto con el código "999"/);
+  assert.equal(ultima(db, "autos", "findMany"), undefined, "no busca parecidos de un auto que no existe");
 });
 
 // ── mi_financiacion ──
@@ -460,6 +549,33 @@ test("registrar_calificacion guarda el auto de interés por su código, solo si 
   assert.equal("auto_id" in ultima(otra, "chat_estado", "update").args.data, false);
 });
 
+test("registrar_calificacion guarda el auto de interés aunque la IA mande el código con #", async () => {
+  const db = baseFalsa({
+    "autos.findFirst": autosPorCodigo({ 13: { id: 5 } }),
+    "chat_estado.findUnique": { id: 900 },
+    "chat_estado.update": (a) => a,
+  });
+  const r = await ejecutarHerramienta("registrar_calificacion", { ...calificacionVacia, auto_ref: "REF #13" }, ctx(db));
+  assert.equal(ultima(db, "chat_estado", "update").args.data.auto_id, 5);
+  assert.equal("aviso" in r.resultado, false);
+});
+
+test("registrar_calificacion avisa si no guardó el auto de interés y guarda el resto", async () => {
+  const casos = [
+    { motivo: "código inexistente", autos: () => null, aviso: 'No se guardó el auto de interés: no hay ningún auto con el código "999".' },
+    { motivo: "auto fuera de venta", autos: (a) => (sinFiltroDeDisponibilidad(a) ? { id: 5 } : null), aviso: "No se guardó el auto de interés: ese auto no está a la venta." },
+  ];
+  for (const { motivo, autos, aviso } of casos) {
+    const db = baseFalsa({ "autos.findFirst": autos, "chat_estado.findUnique": { id: 900 }, "chat_estado.update": (a) => a });
+    const r = await ejecutarHerramienta("registrar_calificacion", { ...calificacionVacia, auto_ref: "999", pago_tipo: "contado" }, ctx(db));
+    const { data } = ultima(db, "chat_estado", "update").args;
+    assert.equal(r.resultado.aviso, aviso, motivo);
+    assert.equal(r.resultado.registrado, true, motivo);
+    assert.equal(data.pago_tipo, "contado", `${motivo}: el resto se guarda igual`);
+    assert.equal("auto_id" in data, false, motivo);
+  }
+});
+
 test("registrar_calificacion guarda km, detalles y cuánto pide por el usado", async () => {
   const db = baseFalsa({
     "chat_estado.findUnique": { id: 900, entrega_usado: 1 },
@@ -675,4 +791,87 @@ test("si falla una herramienta de crédito, el log no lleva el CUIL ni el mensaj
   const escrito = log.mock.calls.map((c) => c.arguments.join(" ")).join(" | ");
   assert.doesNotMatch(escrito, /20123456786/);
   assert.match(escrito, /P2000/);
+});
+
+// ── Log de cada llamada ──
+
+const espiaDeLog = () => {
+  const lineas = [];
+  return { lineas, log: (linea) => lineas.push(linea) };
+};
+
+test("cada llamada a una herramienta deja una línea en el log con la herramienta, la sesión, el código y el resultado", async (t) => {
+  t.mock.method(console, "error", () => {});
+  const { lineas, log } = espiaDeLog();
+  const db = baseFalsa({ "autos.findFirst": autosPorCodigo({ 13: auto({ ref: "13" }) }), "autos.findMany": [auto({ ref: "13" }), auto({ ref: "20" })] });
+
+  await ejecutarHerramienta("ver_auto", { ref: "#13" }, ctx(db, { log }));
+  await ejecutarHerramienta("ver_auto", { ref: "999" }, ctx(db, { log }));
+  await ejecutarHerramienta("enviar_fotos_auto", { ref: "#13" }, ctx(db, { log }));
+  await ejecutarHerramienta("buscar_autos", { tipo: null, presupuesto_max: null, anio_desde: null, marca: "Chevrolet" }, ctx(db, { log }));
+  await ejecutarHerramienta("derivar_a_vendedor", { motivo: "Quiere negociar" }, ctx(baseFalsa({ "chat_estado.update": (a) => a }), { log }));
+  await ejecutarHerramienta("buscar_autos", { tipo: null, presupuesto_max: null, anio_desde: null, marca: null }, ctx(baseFalsa({ "autos.findMany": () => { throw new Error("caída"); } }), { log }));
+
+  assert.deepEqual(lineas, [
+    '[agente] herramienta ver_auto (sesión 900) {"ref":"#13"} → {"encontrado":true,"disponibilidad":"disponible"}',
+    '[agente] herramienta ver_auto (sesión 900) {"ref":"999"} → {"encontrado":false,"codigo_inexistente":true}',
+    '[agente] herramienta enviar_fotos_auto (sesión 900) {"ref":"#13"} → {"fotos":1}',
+    '[agente] herramienta buscar_autos (sesión 900) {"marca":"Chevrolet"} → {"cantidad":2,"refs":["13","20"]}',
+    '[agente] herramienta derivar_a_vendedor (sesión 900) {"otros":["motivo"]} → {"derivado":true}',
+    "[agente] herramienta buscar_autos (sesión 900) {} → {\"error\":true}",
+  ]);
+});
+
+test("un pedido con datos inválidos también queda en el log, sin los valores", async () => {
+  const { lineas, log } = espiaDeLog();
+  const valorLargo = "A".repeat(31);
+  await ejecutarHerramienta("ver_auto", { ref: valorLargo, extra: "valor secreto" }, ctx(baseFalsa(), { log }));
+  await ejecutarHerramienta("borrar_autos", { filtro: "1=1" }, ctx(baseFalsa(), { log }));
+
+  assert.deepEqual(lineas, [
+    '[agente] herramienta ver_auto (sesión 900) {"campos":["ref","extra"]} → {"error":true}',
+    '[agente] herramienta borrar_autos (sesión 900) {"campos":["filtro"]} → {"error":true}',
+  ]);
+  assert.doesNotMatch(lineas.join("\n"), /AAAA|secreto|1=1/);
+});
+
+test("el log nunca muestra DNI, CUIL ni lo que dicta el cliente", async () => {
+  const { lineas, log } = espiaDeLog();
+  const financiacion = baseFalsa({
+    "verificacion_intentos.count": 0,
+    "verificacion_intentos.create": (a) => a,
+    "clientes.findUnique": { dni: "30111222" },
+    "financiaciones.findMany": [{ cantidad_cuotas: 12, precio_cuota: 150000, dia_pago: 10, pagos: [] }],
+  });
+  const credito = { verificar: async () => ({ consultado: true }) };
+  const calificacion = baseFalsa({ "chat_estado.findUnique": { id: 900 }, "chat_estado.update": (a) => a, "vehiculo_cliente.findFirst": null, "vehiculo_cliente.create": (a) => a });
+
+  await ejecutarHerramienta("mi_financiacion", { dni_ultimos: "1222" }, ctx(financiacion, { log, ahora: new Date("2026-10-05T15:00:00Z") }));
+  await ejecutarHerramienta("verificar_situacion_crediticia", { cuil: "20-12345678-6" }, ctx(baseFalsa(), { log, credito }));
+  await ejecutarHerramienta(
+    "registrar_calificacion",
+    { ...calificacionVacia, anticipo: "3 millones", entrega_usado: true, usado_marca: "Peugeot", usado_detalles: "choque trasero", visita_propuesta: "sábado a la mañana" },
+    ctx(calificacion, { log })
+  );
+
+  const escrito = lineas.join("\n");
+  assert.doesNotMatch(escrito, /1222|30111222|12345678|150000|1800000|3 millones|Peugeot|choque|sábado/);
+  assert.match(lineas[0], /\{"otros":\["dni_ultimos"\]\} → \{"verificado":true\}/);
+  assert.match(lineas[1], /\{"otros":\["cuil"\]\} → \{\}/);
+  assert.match(lineas[2], /"otros":\["anticipo","entrega_usado","usado_marca","usado_detalles","visita_propuesta"\]\} → \{"registrado":true\}/);
+});
+
+test("si escribir el log falla, la herramienta responde igual", async (t) => {
+  const errores = t.mock.method(console, "error", () => {});
+  const db = baseFalsa({ "autos.findFirst": autosPorCodigo({ 13: auto({ ref: "13" }) }) });
+  const conLogCaido = ctx(db, { log: () => { throw new Error("log caído") } });
+
+  const r = await ejecutarHerramienta("ver_auto", { ref: "#13" }, conLogCaido);
+  const sinFallo = await ejecutarHerramienta("ver_auto", { ref: "#13" }, ctx(db));
+
+  assert.deepEqual(r, sinFallo);
+  assert.equal(r.resultado.encontrado, true);
+  const escrito = errores.mock.calls.map((c) => c.arguments.join(" ")).join(" | ");
+  assert.match(escrito, /no se pudo registrar la llamada a la herramienta: log caído/);
+  assert.doesNotMatch(escrito, /#13/, "no loguea el pedido");
 });

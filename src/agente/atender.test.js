@@ -61,7 +61,10 @@ function baseFalsa({ cliente = null, clientes = [], sesion = null, sesiones = []
     financiacion_alertas: { createMany: async ({ data }) => (e.alertas.push(...data), { count: data.length }) },
     // Con el filtro de disponibles (vendido_at: null), un auto no disponible no aparece.
     autos: {
-      findFirst: async ({ where }) => autos.find((a) => a.ref === where.ref && (where.vendido_at !== null || a.disponible)) ?? null,
+      findFirst: async ({ where }) =>
+        where.id !== undefined
+          ? autos.find((a) => a.id === where.id) ?? null
+          : autos.find((a) => a.ref === where.ref && (where.vendido_at !== null || a.disponible)) ?? null,
     },
     ...reparto.tablas,
     clientes: {
@@ -595,6 +598,15 @@ test("desde la web por un auto que ya no está: no se carga y se le avisa al age
   assert.match(anthropic.pedidos[0].system.at(-1).text, /ya no está disponible/);
 });
 
+test("en cada mensaje el agente recibe el auto de la consulta con su código", async () => {
+  const root = baseFalsa({ sesion: { id: 1, ultimo_mensaje: ahora, auto_id: peugeot.id }, autos: [peugeot] });
+  const anthropic = claudeFalso();
+  await atenderMensaje({ telefono: TEL, texto: "Pasame las fotos", ahora }, deps(root, anthropic));
+  const contexto = anthropic.pedidos[0].system.at(-1).text;
+  assert.ok(contexto.includes('Auto de esta consulta: "Peugeot 208 2021", código A12B.'));
+  assert.doesNotMatch(contexto, /auto de interés/);
+});
+
 test("un mensaje común no busca autos ni asesores y la consulta es de whatsapp", async () => {
   const root = baseFalsa({ autos: [peugeot] });
   await atenderMensaje({ telefono: "5493885550101", texto: "hola", ahora }, deps(root));
@@ -963,4 +975,21 @@ test("si el turno falla, la consulta se crea igual sin asesor y el mensaje se gu
   assert.deepEqual(asignacion(root.estado.sesiones[0]), [null, false]);
   assert.equal(r.conIA, true, "se responde");
   assert.deepEqual(root.estado.historial.map((h) => h.direccion), ["entrante", "saliente"]);
+});
+
+// Caracterización: el camino de error de autoDeLaConsulta ya existía cuando se escribió este test.
+test("si no se puede leer el auto de la consulta, el agente responde igual", async (t) => {
+  const errores = t.mock.method(console, "error", () => {});
+  const base = baseFalsa({ sesion: { id: 1, ultimo_mensaje: ahora, auto_id: peugeot.id }, autos: [peugeot] });
+  const buscarAuto = base.autos.findFirst;
+  const root = {
+    ...base,
+    autos: { ...base.autos, findFirst: async (args) => (args.where.id !== undefined ? Promise.reject(new Error("base caída")) : buscarAuto(args)) },
+  };
+  const anthropic = claudeFalso("¡Hola!");
+  const r = await atenderMensaje({ telefono: TEL, texto: "Pasame las fotos", ahora }, deps(root, anthropic));
+  assert.equal(r.texto, "¡Hola!");
+  assert.equal(anthropic.pedidos.length, 1);
+  assert.doesNotMatch(anthropic.pedidos[0].system.at(-1).text, /Auto de esta consulta/);
+  assert.match(errores.mock.calls.map((c) => c.arguments.join(" ")).join(" | "), /no se pudo leer el auto de la consulta: base caída/);
 });

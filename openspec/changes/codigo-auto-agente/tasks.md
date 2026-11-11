@@ -1,0 +1,19 @@
+# Tareas — codigo-auto-agente
+
+- [x] Tests en rojo y código: `origen-web.js` › `codigoDeAuto` (formatos de la IA, códigos limpios, textos que no son código)
+- [x] Tests en rojo y código: `herramientas.js` › primero el código exacto y después el limpio, en `ver_auto`, `buscar_similares`, `enviar_fotos_auto` y `registrar_calificacion`
+- [x] Tests en rojo y código: `herramientas.js` › `codigo_inexistente`, `aviso` de `registrar_calificacion` y casilleros sin `#` ni REF
+- [x] Tests en rojo y código: `instrucciones.js` › línea del auto de la consulta y regla del código inexistente
+- [x] Tests en rojo y código: `atender.js` › el contexto lleva el auto de la consulta (descripción compartida con `autoDeLaWeb`)
+- [x] Tests en rojo y código: `herramientas.js` › registro de cada llamada, sin datos personales
+- [x] Suite del backend 1211/1211; cobertura de lo tocado: líneas entre 98,8 % y 100 %; `openspec validate codigo-auto-agente --strict` válido
+- [x] Prueba con Claude real: el turno "Pasa las fotos" del caso, 30 corridas: fotos en 30 de 30, ninguna dice "no disponible" y la IA manda `13` las 30 veces (antes, 2 de 30 fallaban con `#13`)
+- [x] Integración de solo lectura con el MySQL local y el usuario `agente_ia`:
+  - `1`, `#1`, `REF #1` y `(REF #1)` resuelven al auto `1`;
+  - `#99999` y `Onix LTZ` dan `codigo_inexistente`;
+  - un auto reservado sigue respondiendo "no está disponible".
+- [ ] Prueba de punta a punta en local con `scripts/chat-local.js`. No se pudo: la base local tiene un solo auto (la moto ref 1) y está reservado. Queda para el celular, después del deploy, o con un auto de prueba cargado en local.
+- [x] Revisión de código y de seguridad: sin CRITICAL ni HIGH. Corregidos los 2 MEDIUM (un fallo del log no corta la respuesta; test del fallo al leer el auto de la consulta) y los 2 LOW (`refResuelto`, formato)
+- [x] Documentación en la bóveda: "BOT CON RAZONAMIENTO" (sección 13) y "Plan de mejora del bot"
+- [ ] Desplegar el backend: solo cuando el dueño lo pida, sin migración
+- [ ] `openspec archive codigo-auto-agente`

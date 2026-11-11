@@ -14,6 +14,14 @@ export function datosDeLaWeb(texto) {
   };
 }
 
+// El código de un auto como lo escribe la IA ("#13", "REF #13", "(REF #13)") sin el
+// adorno; null si el texto no es un código.
+const CODIGO_ESCRITO = /^\(?\s*(?:ref)?[\s.:#-]*([A-Za-z0-9][A-Za-z0-9-]{0,19})\s*\)?$/i;
+
+export function codigoDeAuto(texto) {
+  return String(texto ?? "").trim().match(CODIGO_ESCRITO)?.[1] ?? null;
+}
+
 // Solo una URL https configurada: el link lo abre el cliente en su celular.
 export function linkDelCatalogo(urlPublica, ref = null) {
   const base = String(urlPublica ?? "").trim().replace(/\/+$/, "");

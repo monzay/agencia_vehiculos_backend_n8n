@@ -2,7 +2,7 @@ import { z } from "zod";
 import { TIPOS_VEHICULO, normalizarTipoVehiculo } from "../lib/tipos-vehiculo.js";
 import { whereDisponible, selectFicha, autoPublico, fotosPublicas } from "./auto-publico.js";
 import { puntaje, clasificar, pendientes } from "./calificacion.js";
-import { linkDelCatalogo } from "./origen-web.js";
+import { linkDelCatalogo, codigoDeAuto } from "./origen-web.js";
 import { SIN_VERIFICACION } from "../credito/verificacion.js";
 
 // Las herramientas del agente vendedor. Cada una es un "formulario" con
@@ -27,7 +27,12 @@ const DESFASE_AR_MS = 3 * 3_600_000;
 const MAX_INTENTOS_DNI = 3;
 const VENTANA_INTENTOS_MS = 24 * 3_600_000;
 
-const ref = z.string().trim().min(1).max(30).describe("Código del auto (ref), tal como figura en la web o en una búsqueda.");
+const ref = z
+  .string()
+  .trim()
+  .min(1)
+  .max(30)
+  .describe("Código del auto: solo el código, sin # ni la palabra REF (para 'REF #13' es 13). Lo tenés en el contexto o en el resultado de una búsqueda.");
 
 // Texto libre que dicta el cliente y que después se ve en el panel: sin HTML ni
 // links, para que nadie meta contenido malicioso a través del chat.
@@ -80,11 +85,33 @@ const sinNulos = (objeto) =>
       .map(([k, v]) => [k, unaLinea(v)])
   );
 
-// El auto de interés se toma solo si está a la venta; un código inventado no se guarda.
-async function autoDeInteres(db, ref) {
-  if (!ref) return null;
-  const auto = await db.autos.findFirst({ where: { ...whereDisponible(), ref }, select: { id: true } });
-  return auto?.id ?? null;
+// El código que mandó la IA, tal cual o limpio ("#13" -> "13"), el que exista como ref.
+// Primero el exacto: un ref que existe tal cual nunca se reinterpreta. Mira si existe,
+// no si está a la venta (por eso no filtra por deleted_at). Devuelve null si ninguno existe.
+async function refExistente(db, codigo) {
+  const exacto = String(codigo ?? "").trim();
+  for (const candidato of new Set([exacto, codigoDeAuto(codigo)].filter(Boolean))) {
+    const auto = await db.autos.findFirst({ where: { ref: candidato }, select: { id: true } });
+    if (auto) return candidato;
+  }
+  return null;
+}
+
+// Un código mal escrito no es un auto que se fue: que la IA no se lo diga al cliente así.
+const codigoInexistente = (codigo) => ({
+  codigo_inexistente: true,
+  motivo: `No hay ningún auto con el código "${codigo}". No le digas al cliente que el auto no está disponible: usá el código del auto de esta consulta (está en el contexto) o buscalo con buscar_autos.`,
+});
+
+// El auto de interés se toma solo si está a la venta; un código inventado o un auto
+// fuera de venta no se guarda y se le avisa a la IA.
+async function autoDeInteres(db, codigo) {
+  if (!codigo) return { autoId: null };
+  const refResuelto = await refExistente(db, codigo);
+  if (!refResuelto) return { autoId: null, aviso: `No se guardó el auto de interés: no hay ningún auto con el código "${codigo}".` };
+  const auto = await db.autos.findFirst({ where: { ...whereDisponible(), ref: refResuelto }, select: { id: true } });
+  if (!auto) return { autoId: null, aviso: "No se guardó el auto de interés: ese auto no está a la venta." };
+  return { autoId: auto.id };
 }
 
 // Una consulta por auto: si el cliente se interesa en otro auto, sus respuestas van
@@ -174,7 +201,9 @@ const HERRAMIENTAS = [
       "Busca autos disponibles parecidos a uno dado: mismo tipo y precio dentro de un 25% hacia arriba o abajo, el más cercano primero. Usala cuando el auto que le interesa ya no está, no le alcanza o pide algo parecido.",
     esquema: z.strictObject({ ref }),
     async ejecutar({ ref: codigo }, { db }) {
-      const referencia = await db.autos.findFirst({ where: { ref: codigo, deleted_at: null }, select: selectFicha() });
+      const refResuelto = await refExistente(db, codigo);
+      if (!refResuelto) return { encontrado: false, ...codigoInexistente(codigo) };
+      const referencia = await db.autos.findFirst({ where: { ref: refResuelto, deleted_at: null }, select: selectFicha() });
       if (!visibleParaElCliente(referencia)) return { encontrado: false };
 
       const precio = Number(referencia.precio);
@@ -183,7 +212,7 @@ const HERRAMIENTAS = [
           ...whereDisponible(),
           ...filtroTipo(normalizarTipoVehiculo(referencia.tipo_vehiculo)),
           precio: { gte: Math.round(precio * (1 - MARGEN_SIMILAR)), lte: Math.round(precio * (1 + MARGEN_SIMILAR)) },
-          ref: { not: codigo },
+          ref: { not: refResuelto },
         },
         select: selectFicha(),
         take: MAX_CANDIDATOS_SIMILARES,
@@ -206,7 +235,9 @@ const HERRAMIENTAS = [
       "Muestra la ficha de un auto por su código: precio, descuento y promociones vigentes, km, y si está disponible, reservado o vendido. Usala antes de dar cualquier precio.",
     esquema: z.strictObject({ ref }),
     async ejecutar({ ref: codigo }, { db }) {
-      const auto = await db.autos.findFirst({ where: { ref: codigo, deleted_at: null }, select: selectFicha() });
+      const refResuelto = await refExistente(db, codigo);
+      if (!refResuelto) return { encontrado: false, ...codigoInexistente(codigo) };
+      const auto = await db.autos.findFirst({ where: { ref: refResuelto, deleted_at: null }, select: selectFicha() });
       return visibleParaElCliente(auto) ? { encontrado: true, auto: autoPublico(auto) } : { encontrado: false };
     },
   },
@@ -215,11 +246,13 @@ const HERRAMIENTAS = [
     descripcion: "Devuelve las fotos de un auto disponible para mandárselas al cliente por WhatsApp.",
     esquema: z.strictObject({ ref }),
     async ejecutar({ ref: codigo }, { db, urlPublica }) {
-      const auto = await db.autos.findFirst({ where: { ...whereDisponible(), ref: codigo }, select: { fotos_json: true } });
+      const refResuelto = await refExistente(db, codigo);
+      if (!refResuelto) return { fotos: [], ...codigoInexistente(codigo) };
+      const auto = await db.autos.findFirst({ where: { ...whereDisponible(), ref: refResuelto }, select: { fotos_json: true } });
       if (!auto) return { fotos: [], motivo: "El auto no está disponible." };
       const fotos = fotosPublicas(auto, urlPublica);
       // La ficha web va en el botón "Ver todas las fotos" del mismo mensaje.
-      return fotos.length ? { fotos, ficha: linkDelCatalogo(urlPublica, codigo) } : { fotos: [], motivo: "Este auto todavía no tiene fotos cargadas." };
+      return fotos.length ? { fotos, ficha: linkDelCatalogo(urlPublica, refResuelto) } : { fotos: [], motivo: "Este auto todavía no tiene fotos cargadas." };
     },
   },
   {
@@ -290,7 +323,7 @@ const HERRAMIENTAS = [
     // Puede pasar a la consulta de otro auto: devuelve en qué consulta quedó.
     cambiaConsulta: true,
     esquema: z.strictObject({
-      auto_ref: textoLibre(20).nullish().describe("Código (ref) del auto que le interesa, tal como lo devuelven las herramientas."),
+      auto_ref: textoLibre(20).nullish().describe("Código del auto que le interesa, sin # ni la palabra REF (para 'REF #13' es 13)."),
       pago_tipo: z.enum(["contado", "financiado"]).nullish(),
       anticipo: textoLibre(40).nullish().describe("Lo que dijo del anticipo, por ejemplo '3 millones'."),
       tiene_recibo_o_garante: z.boolean().nullish(),
@@ -311,7 +344,7 @@ const HERRAMIENTAS = [
       requiereSesion(ctx);
       const { db, ahora } = ctx;
       const momento = ahora ?? new Date();
-      const autoId = await autoDeInteres(db, input.auto_ref);
+      const { autoId, aviso } = await autoDeInteres(db, input.auto_ref);
       const sesionId = await consultaDelAuto(ctx, autoId);
       const actual = await db.chat_estado.findUnique({
         where: { id: sesionId },
@@ -324,7 +357,7 @@ const HERRAMIENTAS = [
         data: { ...cambios, score: puntaje(vigente), clasificacion: clasificar(vigente), updated_at: momento },
       });
       const usado = await guardarUsado(db, sesionId, input, momento);
-      return { resultado: { registrado: true, faltan: pendientes(vigente, usado) }, sesionId };
+      return { resultado: { registrado: true, faltan: pendientes(vigente, usado), ...(aviso && { aviso }) }, sesionId };
     },
   },
   {
@@ -423,20 +456,66 @@ export function definicionesParaClaude() {
   }));
 }
 
+// Del pedido de la IA, el log muestra el valor solo de estos casilleros (códigos y
+// filtros de búsqueda); del resto, solo los nombres. Nunca DNI, CUIL ni lo que dicta el cliente.
+const CASILLEROS_A_LA_VISTA = ["ref", "auto_ref", "tipo", "presupuesto_max", "anio_desde", "marca"];
+// Del resultado, solo estas claves: nada de montos ni datos personales.
+const CLAVES_DEL_RESUMEN = ["encontrado", "codigo_inexistente", "cantidad", "registrado", "aviso", "derivado", "avisado", "verificado", "bloqueado"];
+
+function pedidoParaLog(datos) {
+  const completos = Object.entries(datos).filter(([, valor]) => valor != null);
+  const aLaVista = completos.filter(([nombre]) => CASILLEROS_A_LA_VISTA.includes(nombre));
+  const otros = completos.map(([nombre]) => nombre).filter((nombre) => !CASILLEROS_A_LA_VISTA.includes(nombre));
+  return { ...Object.fromEntries(aLaVista), ...(otros.length > 0 && { otros }) };
+}
+
+function resumenParaLog({ esError, resultado }) {
+  const r = resultado ?? {};
+  const refs = (r.autos ?? r.parecidos)?.map((a) => a.ref);
+  const disponibilidad = (r.auto ?? r.referencia)?.disponibilidad;
+  return {
+    ...Object.fromEntries(CLAVES_DEL_RESUMEN.filter((clave) => r[clave] !== undefined).map((clave) => [clave, r[clave]])),
+    ...(refs && { refs }),
+    ...(disponibilidad && { disponibilidad }),
+    ...(Array.isArray(r.fotos) && { fotos: r.fotos.length }),
+    ...(esError && { error: true }),
+  };
+}
+
+const sinControl = (texto) => String(texto).replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, 60);
+
+function registrarLlamada(ctx, nombre, pedido, respuesta) {
+  // El log nunca rompe la respuesta: si falla, solo el mensaje del error (sin el pedido).
+  try {
+    const linea = `[agente] herramienta ${sinControl(nombre)} (sesión ${ctx.sesionId}) ${JSON.stringify(pedido)} → ${JSON.stringify(resumenParaLog(respuesta))}`;
+    (ctx.log ?? console.info)(linea);
+  } catch (err) {
+    console.error("[agente] no se pudo registrar la llamada a la herramienta:", err?.message);
+  }
+}
+
 // Ejecuta una herramienta pedida por la IA. Nunca lanza: devuelve
 // { esError, resultado } o { esError, error } para mandarle a Claude.
+// Cada llamada, válida o no, deja una línea en el log.
 export async function ejecutarHerramienta(nombre, entrada, ctx) {
   const herramienta = POR_NOMBRE.get(nombre);
+  const validado = herramienta?.esquema.safeParse(entrada ?? {});
+  const valido = validado?.success === true;
+  const respuesta = valido ? await ejecutarValidada(herramienta, nombre, validado.data, ctx) : respuestaInvalida(nombre, herramienta, validado);
+  const pedido = valido ? pedidoParaLog(validado.data) : { campos: Object.keys(entrada ?? {}) };
+  registrarLlamada(ctx, nombre, pedido, respuesta);
+  return respuesta;
+}
+
+function respuestaInvalida(nombre, herramienta, validado) {
   if (!herramienta) return { esError: true, error: `No existe la herramienta ${nombre}.` };
+  const campos = [...new Set(validado.error.issues.map((i) => i.path.join(".") || "formulario"))].join(", ");
+  return { esError: true, error: `Datos inválidos en: ${campos}.` };
+}
 
-  const validado = herramienta.esquema.safeParse(entrada ?? {});
-  if (!validado.success) {
-    const campos = [...new Set(validado.error.issues.map((i) => i.path.join(".") || "formulario"))].join(", ");
-    return { esError: true, error: `Datos inválidos en: ${campos}.` };
-  }
-
+async function ejecutarValidada(herramienta, nombre, datos, ctx) {
   try {
-    const salida = await herramienta.ejecutar(validado.data, ctx);
+    const salida = await herramienta.ejecutar(datos, ctx);
     if (!herramienta.cambiaConsulta) return { esError: false, resultado: salida };
     // El id de la consulta queda para el orquestador: a la IA no le llega.
     const otraConsulta = salida.sesionId !== ctx.sesionId;
