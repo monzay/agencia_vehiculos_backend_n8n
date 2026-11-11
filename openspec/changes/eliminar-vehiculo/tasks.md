@@ -5,6 +5,6 @@
 - [x] Panel: botón Eliminar solo para el admin, con confirmación
 - [x] Tests en verde, `openspec validate --strict`, `npm run build` del panel
 - [x] Revisión de código: sin hallazgos críticos ni altos (componente de ~50 líneas, el permiso lo controla el backend)
-- [ ] Front a producción (pedido del dueño el 2026-11-11)
+- [x] Front a producción (pedido del dueño el 2026-11-11): `d0c5a82` en `main`, Vercel Ready, botón verificado en ortegaautomotores.com
 - [ ] Prueba del dueño en el panel
 - [ ] `openspec archive eliminar-vehiculo`
