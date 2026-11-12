@@ -5,11 +5,12 @@ import { requireAuth, requireRole } from "../middlewares/auth.js";
 const router = Router();
 
 // Datos del panel: requieren sesion (admin o asesor).
-router.get("/", requireAuth, getLeads);
+// Clientes (lista y detalle): solo el admin.
+router.get("/", requireAuth, requireRole("admin"), getLeads);
 router.get("/resumen", requireAuth, getResumen);
 router.get("/metricas", requireAuth, getMetricas); // métricas del día + fluctuación + top autos
 // Ventas por asesor: solo el admin.
 router.get("/conversion", requireAuth, requireRole("admin"), getConversion);
-router.get("/:id", requireAuth, getLead);
+router.get("/:id", requireAuth, requireRole("admin"), getLead);
 
 export default router;

@@ -6,6 +6,7 @@ import {
   responderComoHumano,
   reanudarBot,
 } from "../services/consultas.service.js";
+import { alcanceDeConsultas } from "../lib/alcance-consultas.js";
 
 // Por qué no se pudo responder desde el panel → estado HTTP y mensaje para el asesor.
 const ERROR_INTERVENCION = {
@@ -23,6 +24,7 @@ export async function getConsultas(req, res, next) {
       offset: req.query.offset,
       q: req.query.q,
       clasif: req.query.clasif,
+      alcance: await alcanceDeConsultas(req.usuario),
     });
     res.json({ ok: true, total, data: { items, hayMas, total } });
   } catch (err) {
@@ -38,6 +40,7 @@ export async function getConsultasVenta(req, res, next) {
       offset: req.query.offset,
       q: req.query.q,
       modalidad: req.query.modalidad,
+      alcance: await alcanceDeConsultas(req.usuario),
     });
     res.json({ ok: true, total, data: { items, hayMas, total } });
   } catch (err) {
@@ -49,7 +52,7 @@ export async function getConsultasVenta(req, res, next) {
 export async function patchAtendido(req, res, next) {
   try {
     const atendido = req.body?.atendido !== false;
-    const r = await marcarConsultaAtendida(req.params.id, atendido, req.usuario);
+    const r = await marcarConsultaAtendida(req.params.id, atendido, req.usuario, await alcanceDeConsultas(req.usuario));
     if (!r) return res.status(404).json({ ok: false, error: "Consulta no encontrada" });
     res.json({ ok: true, data: r });
   } catch (err) {
@@ -60,7 +63,7 @@ export async function patchAtendido(req, res, next) {
 // Detalle de una consulta: el chat completo (cliente/bot/humano) de esa sesión.
 export async function getConsulta(req, res, next) {
   try {
-    const consulta = await obtenerConsulta(req.params.id);
+    const consulta = await obtenerConsulta(req.params.id, await alcanceDeConsultas(req.usuario));
     if (!consulta) {
       return res.status(404).json({ ok: false, error: "Consulta no encontrada" });
     }
@@ -74,7 +77,9 @@ export async function getConsulta(req, res, next) {
 // Toma la conversación: pausa el bot y marca la consulta como atendida.
 export async function postMensajeConsulta(req, res, next) {
   try {
-    const r = await responderComoHumano(req.params.id, req.body?.texto, req.usuario);
+    const r = await responderComoHumano(req.params.id, req.body?.texto, req.usuario, {
+      alcance: await alcanceDeConsultas(req.usuario),
+    });
     if (r.ok) return res.json({ ok: true, data: r });
     const { estado, error } = ERROR_INTERVENCION[r.codigo] ?? { estado: 400, error: "No se pudo responder" };
     res.status(estado).json({ ok: false, error, codigo: r.codigo });
@@ -86,7 +91,7 @@ export async function postMensajeConsulta(req, res, next) {
 // Devolver la conversación al bot: vuelve a responder solo.
 export async function postDevolverBot(req, res, next) {
   try {
-    const r = await reanudarBot(req.params.id);
+    const r = await reanudarBot(req.params.id, await alcanceDeConsultas(req.usuario));
     if (!r) return res.status(404).json({ ok: false, error: "Consulta no encontrada" });
     res.json({ ok: true, data: r });
   } catch (err) {

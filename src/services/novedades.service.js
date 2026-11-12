@@ -11,6 +11,11 @@ import { fechaAR } from "./avisos-cuotas.service.js";
 
 // El nombre de la columna NUNCA viene del request: se resuelve por este mapa.
 // `contar` recibe la columna ya validada.
+// Mismo alcance que lib/alcance-consultas, en SQL: usuario vigente que es admin o dueño de la ficha
+// de la consulta. Es texto fijo: nada del request entra acá.
+const SQL_VISIBLE_PARA_USUARIO =
+  "u.activo = 1 AND u.deleted_at IS NULL AND (u.rol = 'admin' OR (s.vendedor_id IS NOT NULL AND s.vendedor_id = u.vendedor_id))";
+
 const SECCIONES = {
   // Una consulta nueva = una sesión útil (las vacías no cuentan; ver consultas-utiles).
   // Las de venta/consignación se excluyen: la lista de Consultas no las muestra
@@ -22,6 +27,7 @@ const SECCIONES = {
          FROM sesiones s
          JOIN usuarios u ON u.id = ?
         WHERE ${sqlSesionUtil("s")}
+          AND ${SQL_VISIBLE_PARA_USUARIO}
           AND (s.tipo_lead IS NULL OR s.tipo_lead <> 'venta')
           AND (u.${col} IS NULL OR s.sesion_inicio > u.${col})`,
   },
@@ -36,6 +42,7 @@ const SECCIONES = {
          JOIN usuarios u ON u.id = ?
         WHERE s.tipo_lead = 'venta'
           AND s.paso_actual = 'handoff'
+          AND ${SQL_VISIBLE_PARA_USUARIO}
           AND (u.${col} IS NULL OR s.sesion_inicio > u.${col})`,
   },
   // Un cliente nuevo = su PRIMERA consulta útil llegó después de la última
@@ -54,6 +61,7 @@ const SECCIONES = {
                   AND ${sqlSesionUtil("s")}
                 GROUP BY s.cliente_id) t
         WHERE u.id = ?
+          AND u.rol = 'admin'
           AND (u.${col} IS NULL OR t.primera > u.${col})`,
   },
   // Descuentos/promos recién vencidos: los que ya pasaron su `fecha_fin` desde la

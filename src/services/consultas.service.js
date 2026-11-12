@@ -1,5 +1,6 @@
 import { prisma } from "../lib/prisma.js";
 import { SESION_UTIL } from "../lib/consultas-utiles.js";
+import { NINGUNA } from "../lib/alcance-consultas.js";
 import { telefonosParaBuscar } from "../lib/busqueda-telefono.js";
 import { mapConsultaResumen, mapConsultaVenta, mapMensaje, construirRespuestas } from "../mappers/consulta.mapper.js";
 import { INCLUDE_AVANCE } from "./consulta-avance.service.js";
@@ -76,13 +77,14 @@ async function construirFiltroBusqueda(termino) {
 // `clasif` = CALIENTE|TIBIO|FRIO. Las de venta/consignación se excluyen (van en
 // su propia sección). Los filtros se combinan con AND, así que el total y la
 // paginación los respetan. Devuelve { items, hayMas, total }.
-export async function listarConsultas({ limite = 20, offset = 0, q = "", clasif = "" } = {}) {
+// `alcance` (ver lib/alcance-consultas) acota lo que el usuario puede ver; sin él no se ve ninguna.
+export async function listarConsultas({ limite = 20, offset = 0, q = "", clasif = "", alcance = NINGUNA } = {}) {
   const take = Math.max(1, Number(limite) || 20);
   const skip = Math.max(0, Number(offset) || 0);
   const termino = String(q || "").trim();
 
   // Las consultas vacías nunca se listan ni suman al total.
-  const filtros = [SESION_UTIL, SIN_VENTA];
+  const filtros = [alcance, SESION_UTIL, SIN_VENTA];
   if (termino) filtros.push(await construirFiltroBusqueda(termino));
   if (CLASIFICACIONES.includes(clasif)) filtros.push({ clasificacion: clasif });
   const where = { AND: filtros };
@@ -159,12 +161,12 @@ function filtroBusquedaVenta(termino) {
 // las abandonadas a mitad del flujo no son una consulta real.
 // `modalidad` = venta | consignacion. Las anteriores a que el bot lo preguntara
 // (NULL) se listan con las de venta directa: si no, no aparecerían en ningún lado.
-export async function listarConsultasVenta({ limite = 10, offset = 0, q = "", modalidad = "" } = {}) {
+export async function listarConsultasVenta({ limite = 10, offset = 0, q = "", modalidad = "", alcance = NINGUNA } = {}) {
   const take = Math.max(1, Number(limite) || 10);
   const skip = Math.max(0, Number(offset) || 0);
   const termino = String(q || "").trim();
 
-  const filtros = [{ tipo_lead: "venta", paso_actual: "handoff" }];
+  const filtros = [alcance, { tipo_lead: "venta", paso_actual: "handoff" }];
   if (modalidad === "consignacion") filtros.push({ modalidad_venta: "consignacion" });
   if (modalidad === "venta") filtros.push({ OR: [{ modalidad_venta: "venta" }, { modalidad_venta: null }] });
   if (termino) filtros.push(filtroBusquedaVenta(termino));
@@ -189,13 +191,13 @@ export async function listarConsultasVenta({ limite = 10, offset = 0, q = "", mo
 // del bot y de una persona). Como `historial_mensajes` guarda por cliente, se
 // acota a la ventana de tiempo de esa sesión: desde su inicio hasta el inicio de
 // la sesión siguiente del mismo cliente (la primera sesión toma también lo anterior a ella).
-export async function obtenerConsulta(sesionId) {
+export async function obtenerConsulta(sesionId, alcance = NINGUNA) {
   // `sesionId` viene de la URL: un id no numérico debe dar 404, no reventar Prisma.
   const id = Number(sesionId);
   if (!Number.isInteger(id) || id <= 0) return null;
 
-  const sesion = await prisma.chat_estado.findUnique({
-    where: { id },
+  const sesion = await prisma.chat_estado.findFirst({
+    where: { id, ...alcance },
     include: { vehiculo_cliente: true, clientes: { select: { cuil: true } } },
   });
   if (!sesion) return null;
@@ -242,10 +244,10 @@ export async function obtenerConsulta(sesionId) {
 }
 
 // Marca/desmarca una consulta como ATENDIDA. Guarda cuándo y quién la marcó.
-// Devuelve null si la sesión no existe.
-export async function marcarConsultaAtendida(sesionId, atendido, usuario) {
+// Devuelve null si la sesión no existe o está fuera del alcance del usuario.
+export async function marcarConsultaAtendida(sesionId, atendido, usuario, alcance = NINGUNA) {
   const id = Number(sesionId);
-  const sesion = await prisma.chat_estado.findUnique({ where: { id } });
+  const sesion = await prisma.chat_estado.findFirst({ where: { id, ...alcance } });
   if (!sesion) return null;
 
   // Se usa NOW() de MySQL (hora local de la agencia) para ser consistente con el
@@ -289,14 +291,14 @@ export async function ventanaAbierta(clienteId, ahora = new Date()) {
 //   4. envía por WhatsApp — si Meta rechaza, corta sin guardar nada;
 //   5. toma la conversación (bot_pausado), la marca atendida y guarda el saliente humano.
 // Devuelve `{ ok, ... }` con un `codigo` cuando no se pudo, para que el controller elija el estado.
-export async function responderComoHumano(sesionId, texto, usuario, { enviar = envioWhatsapp, ahora = new Date() } = {}) {
+export async function responderComoHumano(sesionId, texto, usuario, { enviar = envioWhatsapp, ahora = new Date(), alcance = NINGUNA } = {}) {
   const id = Number(sesionId);
   if (!Number.isInteger(id) || id <= 0) return { ok: false, codigo: "no_encontrada" };
   const limpio = String(texto ?? "").trim();
   if (!limpio || limpio.length > MAX_TEXTO) return { ok: false, codigo: "texto_invalido" };
 
-  const sesion = await prisma.chat_estado.findUnique({
-    where: { id },
+  const sesion = await prisma.chat_estado.findFirst({
+    where: { id, ...alcance },
     include: { clientes: { select: { id: true, telefono: true } } },
   });
   if (!sesion) return { ok: false, codigo: "no_encontrada" };
@@ -329,10 +331,10 @@ export async function responderComoHumano(sesionId, texto, usuario, { enviar = e
 }
 
 // Devuelve la conversación al bot: vuelve a responder en la misma sesión.
-export async function reanudarBot(sesionId) {
+export async function reanudarBot(sesionId, alcance = NINGUNA) {
   const id = Number(sesionId);
   if (!Number.isInteger(id) || id <= 0) return null;
-  const sesion = await prisma.chat_estado.findUnique({ where: { id } });
+  const sesion = await prisma.chat_estado.findFirst({ where: { id, ...alcance } });
   if (!sesion) return null;
   await prisma.chat_estado.update({ where: { id }, data: { bot_pausado: false } });
   return { sesionId: id, botPausado: false };
