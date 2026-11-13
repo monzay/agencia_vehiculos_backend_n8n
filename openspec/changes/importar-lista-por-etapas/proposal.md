@@ -24,7 +24,7 @@ La importación pasa a ser una cadena de etapas. Cada una hace una sola cosa y l
 
 1. **Subir.** Las imágenes de lista se guardan más grandes (2576 px) y, además, cortadas en franjas
    enderezadas y ampliadas. Los PDF van enteros.
-2. **Leer** (Haiku 5.5). Una lectura por franja o por PDF. Copia cada fila tal cual está escrita y después
+2. **Leer** (Opus 5.5). Una lectura por franja o por PDF. Copia cada fila tal cual está escrita y después
    la separa en campos. Lo que la lista no trae queda vacío; lo que no se lee bien queda vacío, marcado
    como dudoso y con el motivo. No deduce nada: tampoco la marca.
 3. **Normalizar** (código). Convierte las listas en miles, empalma las franjas, controla la forma de la
@@ -47,6 +47,10 @@ Cambios de comportamiento:
   Cambia la decisión del 2026-11-10 de descartarla.
 - **Las dudas se explican.** Cada duda muestra el texto original de la fila y el motivo.
 - **La lectura queda en el gasto de IA** del panel (`ia_consumos`, tabla existente).
+- **La imagen de la lista la lee Opus 5.5** (decisión del dueño del 2026-11-13). Solo esa función: el
+  razonamiento del cruce sigue en Haiku 5.5, y Documentos y el bot no cambian. Opus cuesta 40 veces más
+  por token: una hoja por franjas pasa de unos USD 0,014 a unos USD 0,55 (estimado, sin medir). El gasto
+  se registra con el precio del modelo usado; hoy `costoClaude` solo conoce el de Haiku 5.5.
 
 ## Impact
 
