@@ -124,3 +124,25 @@ test("un anticipo o precio al contado inválido no llega a la base", async (t) =
   }
   assert.equal(escritos.length, 0);
 });
+
+const imagenes = (cantidad) => Array.from({ length: cantidad }, (_, i) => `/img/${i}.jpg`);
+
+test("un vehículo con más de 6 imágenes se rechaza", async (t) => {
+  const escritos = conEscrituras(t);
+  await assert.rejects(crearVehiculo({ ...BASICOS, imgs: imagenes(7) }), (e) => e.status === 400);
+  await assert.rejects(actualizarVehiculo("1", { ...BASICOS, imgs: imagenes(7) }), (e) => e.status === 400);
+  assert.equal(escritos.length, 0);
+});
+
+test("un vehículo con 6 imágenes se guarda", async (t) => {
+  const escritos = conEscrituras(t);
+  await crearVehiculo({ ...BASICOS, imgs: imagenes(6) });
+  assert.deepEqual(escritos[0].fotos_json, imagenes(6));
+});
+
+test("editar sin mandar imágenes no valida el tope", async (t) => {
+  const escritos = conEscrituras(t);
+  await actualizarVehiculo("1", BASICOS);
+  assert.equal(escritos.length, 1);
+  assert.equal("fotos_json" in escritos[0], false);
+});

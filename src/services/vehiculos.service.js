@@ -49,6 +49,8 @@ const STOCK_MAX = 65535;
 const PRECIO_MAX = 9999999999.99;
 // Tope de `autos.kms` (INT UNSIGNED).
 const KMS_MAX = 4294967295;
+// Imágenes por vehículo: la principal y 5 más.
+const IMAGENES_MAX = 6;
 
 // Los tres son limites de la COLUMNA, no del negocio: sin validarlos aca, MySQL
 // rechaza el INSERT y Prisma tira P2020 ("Out of range value"), que sale como un
@@ -159,7 +161,11 @@ function construirData(body, parcial = false) {
   }
   if (body.combustible !== undefined) data.combustible = normalizarCombustible(body.combustible);
   if (body.imgs !== undefined || body.fotos !== undefined) {
-    data.fotos_json = normalizarImgs(body.imgs ?? body.fotos);
+    const imgs = normalizarImgs(body.imgs ?? body.fotos);
+    if (imgs.length > IMAGENES_MAX) {
+      throw error("Un vehículo puede tener hasta 6 imágenes: la principal y 5 más.");
+    }
+    data.fotos_json = imgs;
   }
   if (body.condicion !== undefined || body.tipo !== undefined) {
     data.tipo = condicionAEnum(body.condicion ?? body.tipo);
