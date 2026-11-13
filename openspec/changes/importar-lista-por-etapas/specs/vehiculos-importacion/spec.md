@@ -110,10 +110,10 @@ dudoso con las dos lecturas en el motivo.
 <!-- test: src/lib/lista-vehiculos.test.js › "si dos franjas leen distinto la misma fila, el dato queda dudoso" -->
 
 ### Requirement: Cada hoja se lee por separado
-La lectura MUST hacer un pedido a la IA por franja o por PDF, con `claude-opus-5-5` (o el modelo de
-`ANTHROPIC_LISTA_MODEL`), y MUST registrar su consumo en `ia_consumos` con el precio de ese modelo. Cada
-franja MUST ir acompañada de la hoja entera. Si falla un archivo, los demás MUST seguir y la respuesta MUST
-decir cuál falló. Documentos y el bot MUST NOT cambiar de modelo.
+La lectura MUST hacer un pedido a la IA por franja o por PDF, con `claude-haiku-5-5`, y MUST registrar el
+consumo de cada pedido en `ia_consumos`. Cada franja MUST ir acompañada de la hoja entera, para ubicar las
+columnas y la marca de cada grupo de filas. Si falla la lectura de un archivo, los demás MUST seguir y la
+respuesta MUST decir qué archivo falló y por qué. Si fallan todos, MUST responder con el error.
 <!-- id: importacion-vehiculos.leerListaVehiculos -->
 
 #### Scenario: Una hoja falla
@@ -123,13 +123,8 @@ decir cuál falló. Documentos y el bot MUST NOT cambiar de modelo.
 
 #### Scenario: Modelo y gasto
 - **WHEN** se lee una lista
-- **THEN** cada pedido usa `claude-opus-5-5` y su consumo queda registrado
-<!-- test: src/services/importacion-vehiculos.test.js › "la lectura de la lista usa Opus 5.5 y registra su gasto" -->
-
-#### Scenario: Costo según el modelo
-- **WHEN** se registra el consumo de un pedido hecho con Opus 5.5
-- **THEN** el costo se calcula con el precio de Opus 5.5, no con el de Haiku
-<!-- test: src/lib/ia-costos.test.js › "el costo se calcula con el precio del modelo que se usó" -->
+- **THEN** cada pedido usa `claude-haiku-5-5` y su consumo queda registrado
+<!-- test: src/services/importacion-vehiculos.test.js › "la lectura usa Haiku 5.5 y registra su gasto" -->
 
 #### Scenario: Hoja de contexto
 - **WHEN** se lee una franja
