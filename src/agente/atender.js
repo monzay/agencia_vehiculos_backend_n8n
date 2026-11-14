@@ -96,22 +96,38 @@ async function autoDeLaWeb(root, ref) {
 // Desde la web por un auto: si la consulta abierta no tenía auto, ese pasa a ser el
 // de interés y suma sus puntos; si era por otro, la misma consulta cambia de auto y avisa al asesor.
 async function conAutoDeLaWeb(root, { sesion, ahora }, auto) {
-  if (!auto?.disponible || sesion.auto_id === auto.id) return sesion;
+  if (!auto?.disponible || sesion.auto_id === auto.id) return { sesion, cambioDeAuto: false };
   if (sesion.auto_id != null) {
     const id = await cambiarAuto({ db: root, sesionId: sesion.id, ahora }, auto.id);
-    return root.chat_estado.findUnique({ where: { id } });
+    return { sesion: await root.chat_estado.findUnique({ where: { id } }), cambioDeAuto: true };
   }
   const conAuto = { ...sesion, auto_id: auto.id };
   const temperatura = { score: puntaje(conAuto), clasificacion: clasificar(conAuto) };
   await root.chat_estado.update({ where: { id: sesion.id }, data: { auto_id: auto.id, ...temperatura } });
-  return { ...conAuto, ...temperatura };
+  return { sesion: { ...conAuto, ...temperatura }, cambioDeAuto: false };
 }
 
 // El link de un asesor gana siempre: la consulta en la que sigue la charla pasa a ser suya,
 // aunque la tuviera otro.
-async function conAsesorDelLink(root, sesion, link) {
+// Si el link le cambia el asesor, la consulta le llega pendiente y arriba con el aviso
+// "Llegó por tu link" (spec "Consultas que llegan desde la web"); si es el mismo asesor
+// y solo faltaba `atribuido`, no hay aviso ni orden.
+async function conAsesorDelLink(root, sesion, link, ahora, cambioDeAuto) {
   const cambio = cambioDeAsesor(sesion, link);
   if (!Object.keys(cambio).length) return sesion;
+  if (link && link.vendedor_id !== sesion.vendedor_id) {
+    const motivo = cambioDeAuto && sesion.requiere_vendedor_motivo
+      ? `Llegó por tu link. ${sesion.requiere_vendedor_motivo}`.slice(0, 120)
+      : "Llegó por tu link";
+    Object.assign(cambio, {
+      requiere_vendedor: true,
+      requiere_vendedor_motivo: motivo,
+      requiere_vendedor_at: ahora,
+      atendido_at: null,
+      atendido_por: null,
+      orden_at: ahora,
+    });
+  }
   await root.chat_estado.update({ where: { id: sesion.id }, data: cambio });
   return { ...sesion, ...cambio };
 }
@@ -126,8 +142,8 @@ async function sesionDe(root, clienteId, ahora, web) {
   const actividad = ultima?.ultimo_mensaje ?? ultima?.sesion_inicio;
   const vigente = actividad && ahora - new Date(actividad) < SESION_VIGENTE_MS;
   if (vigente) {
-    const sesion = await conAutoDeLaWeb(root, { sesion: ultima, ahora }, web.auto);
-    return conAsesorDelLink(root, sesion, link);
+    const { sesion, cambioDeAuto } = await conAutoDeLaWeb(root, { sesion: ultima, ahora }, web.auto);
+    return conAsesorDelLink(root, sesion, link, ahora, cambioDeAuto);
   }
   // Nace fría, con los puntos de lo que ya se sabe (el auto si viene de la web).
   const inicial = web.auto?.disponible ? { auto_id: web.auto.id } : {};

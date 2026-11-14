@@ -210,7 +210,12 @@ caracteres raros MUST ignorarse.
 #### Scenario: El asesor nuevo la recibe completa
 - **WHEN** la consulta abierta de Juan, atendida y con respuestas, pasa a Pepito por su link
 - **THEN** conserva la charla y las respuestas, queda marcada "Llegó por tu link", pendiente y arriba de la lista
-<!-- test: FALTA -->
+<!-- test: src/agente/atender.test.js › "el link de otro asesor deja la consulta completa para el asesor nuevo: suya, pendiente, arriba, con aviso y con sus respuestas" -->
+
+#### Scenario: Llega por el link de otro asesor y por otro auto
+- **WHEN** en el mismo mensaje la consulta abierta de Juan pasa a Pepito por su link y cambia de auto
+- **THEN** queda de Pepito, pendiente y arriba, con el motivo "Llegó por tu link. Ahora le interesa <nuevo>, antes <anterior>" (recortado a 120)
+<!-- test: src/agente/atender.test.js › "el link de otro asesor y otro auto en el mismo mensaje: misma consulta, de Pepito, pendiente y arriba, con el aviso del link y el del auto" -->
 
 #### Scenario: El link se queda con una consulta sin asignar
 - **WHEN** la consulta abierta no tenía asesor y llega con el link de uno

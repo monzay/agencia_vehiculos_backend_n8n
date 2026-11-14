@@ -159,3 +159,30 @@ Qué se hizo en cada tarea de la fase 2 y por qué. Rama `feat/huecos-del-bot` (
   proceso y serializa por teléfono (`deAUno`), y el peor caso es un aviso de más; queda como observación.
 - **Verificación (local):** tests congelados intactos (salvo el cambio de arriba); `atender.test.js` 103/103; suite
   1290, falla solo el previo de las anclas.
+
+## Tarea 6 — El link de otro asesor deja la consulta completa, pendiente y arriba (2026-11-14)
+
+- **Decisión de Claude (escenario agregado a la spec, a confirmar por el user):** si en el mismo mensaje el link
+  le cambia el asesor Y la consulta cambia de auto, el motivo es "Llegó por tu link. Ahora le interesa <nuevo>,
+  antes <anterior>" (recortado a 120). El aviso sale solo cuando el link CAMBIA el asesor (incluido de ninguno a
+  uno); con el mismo asesor no se escribe nada (si solo faltaba `atribuido`, solo eso).
+- **Qué (`atender.js`):** `conAsesorDelLink(root, sesion, link, ahora, cambioDeAuto)` suma al cambio de asesor
+  `requiere_vendedor` true, el motivo, `requiere_vendedor_at` y `orden_at` = ahora, `atendido_at`/`atendido_por`
+  null, en el mismo update. `conAutoDeLaWeb` devuelve `{ sesion, cambioDeAuto }`. `vuelveAEscribir`, que corre
+  después, ya no actúa porque la consulta quedó pendiente.
+- **Bug encontrado por Claude después de que los tests pasaran:** la primera implementación detectaba "el auto
+  cambió en este turno" comparando `requiere_vendedor_at` con `ahora` al milisegundo. En la base real (DATETIME(0),
+  redondea al segundo, y `conAutoDeLaWeb` relee la consulta) eso casi nunca coincide y el motivo combinado no
+  salía. La base simulada guardaba fechas exactas y no lo mostraba. Se agregó el test "el motivo de link y auto
+  juntos sale aunque la base guarde las fechas al segundo y la hora del turno traiga milisegundos" (helper
+  `conFechasAlSegundo`) y el dato ahora viaja explícito (`cambioDeAuto`).
+- **Tests (`atender.test.js`):** el asesor nuevo la recibe completa (con la charla intacta), link + auto, recorte a
+  120, consulta sin asignar, consulta nueva con link (sin aviso), mismo asesor sin `atribuido`, link inválido a una
+  consulta atendida (queda "Volvió a escribir"), link a una consulta pendiente con otro motivo (lo reemplaza),
+  fechas al segundo; se reforzó sin renombrar "el link del mismo asesor que ya tiene la consulta no escribe nada de
+  más".
+- **Revisión de Codex:** tests en 2 rondas (ronda 1: faltaban link inválido a una atendida, link a una pendiente con
+  otro motivo, y comprobar la charla). Diff (con el arreglo de las fechas): aprobado, sin hallazgos; no encontró
+  otras comparaciones al milisegundo en lo cambiado por las tareas 2 a 6.
+- **Verificación (local):** tests congelados intactos (hash, después del test de las fechas); `atender.test.js`
+  112/112; suite 1299, falla solo el previo de las anclas.

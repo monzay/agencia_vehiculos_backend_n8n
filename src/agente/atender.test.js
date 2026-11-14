@@ -985,6 +985,7 @@ test("el link del mismo asesor que ya tiene la consulta no escribe nada de más"
   const root = baseConConsulta(consultaAbierta({ vendedor_id: JUAN.id, atribuido: true }));
   await atenderMensaje({ telefono: TEL, texto: "Hola [AS:juan]", ahora }, deps(root));
   assert.deepEqual(cambiosDeAsesor(root, 1), []);
+  assert.deepEqual(root.estado.updates.filter((u) => u.where.id === 1 && ("requiere_vendedor_motivo" in u.data || "orden_at" in u.data)), [], "ni aviso ni cambio de orden");
 });
 
 test("un link inválido (inexistente, inactivo) se ignora: la consulta abierta sigue con su asesor", async () => {
@@ -1016,6 +1017,153 @@ test("desde la web por otro auto con el link de Pepito: sigue la misma consulta,
   assert.ok(root.estado.updates.some((u) => u.where.id === 1 && u.data.auto_id === peugeot.id), "con el auto nuevo");
   assert.deepEqual(cambiosDeAsesor(root, 1).at(-1), [PEPITO.id, true], "queda de Pepito");
   assert.equal(root.reparto.configuracion.reparto_ultimo_vendedor, null, "el link no gasta turno");
+});
+
+// ── El link de otro asesor deja la consulta completa, pendiente y arriba ──
+
+const sinAviso = (u) => !("requiere_vendedor_motivo" in u.data) && !("orden_at" in u.data) && !("atendido_at" in u.data);
+const MOTIVO_LINK = "Llegó por tu link";
+
+test("el link de otro asesor deja la consulta completa para el asesor nuevo: suya, pendiente, arriba, con aviso y con sus respuestas", async () => {
+  const consulta = consultaAbierta({ sesion_inicio: hace(5), auto_id: peugeot.id, vendedor_id: JUAN.id, atribuido: true, pago_tipo: "contado", entrega_usado: 0, decisor: "solo", requiere_vendedor: false, atendido_at: haceDias(1), atendido_por: JUAN.id, orden_at: haceDias(1) });
+  const historial = [mensajeDe(1, "entrante", "quiero pagar contado", hace(3)), mensajeDe(2, "saliente", "Perfecto, anotado", hace(3))];
+  const root = conUpdatesQueGuardan(baseConConsulta(consulta, { historial }));
+  const anthropic = claudeFalso();
+  await atenderMensaje({ telefono: TEL, texto: "Hola otra vez [AS:pepito]", ahora }, deps(root, anthropic));
+  assert.equal(root.estado.sesiones.length, 1, "sigue en la misma consulta");
+  assert.deepEqual(root.estado.historial.slice(0, 2), historial, "la charla de antes sigue intacta");
+  assert.match(lasDeClaude(anthropic), /quiero pagar contado/, "Claude recibe la charla de la consulta");
+  assert.match(lasDeClaude(anthropic), /Perfecto, anotado/);
+  const [final] = root.estado.sesiones;
+  assert.equal(final.vendedor_id, PEPITO.id);
+  assert.equal(final.atribuido, true);
+  assert.equal(final.atendido_at, null);
+  assert.equal(final.atendido_por, null);
+  assert.deepEqual(final.orden_at, ahora);
+  assert.equal(final.requiere_vendedor, true);
+  assert.equal(final.requiere_vendedor_motivo, MOTIVO_LINK);
+  assert.deepEqual(final.requiere_vendedor_at, ahora);
+  assert.equal(final.pago_tipo, "contado");
+  assert.equal(final.entrega_usado, 0);
+  assert.equal(final.decisor, "solo");
+});
+
+test("el link de otro asesor y otro auto en el mismo mensaje: misma consulta, de Pepito, pendiente y arriba, con el aviso del link y el del auto", async () => {
+  const gol = { id: 9, ref: "G9", marca: "Volkswagen", modelo: "Gol", anio: 2015, disponible: true };
+  const consulta = consultaAbierta({ auto_id: 9, vendedor_id: JUAN.id, atribuido: true, requiere_vendedor: false, atendido_at: haceDias(1), atendido_por: JUAN.id, orden_at: haceDias(1) });
+  const root = conUpdatesQueGuardan(baseConConsulta(consulta, { autos: [gol, peugeot] }));
+  await atenderMensaje({ telefono: TEL, texto: `${DE_LA_WEB} [AS:pepito]`, ahora }, deps(root));
+  assert.equal(root.estado.sesiones.length, 1, "no abre otra consulta");
+  const [final] = root.estado.sesiones;
+  assert.equal(final.auto_id, peugeot.id);
+  assert.equal(final.vendedor_id, PEPITO.id);
+  assert.equal(final.atribuido, true);
+  assert.equal(final.atendido_at, null);
+  assert.equal(final.atendido_por, null);
+  assert.deepEqual(final.orden_at, ahora);
+  assert.equal(final.requiere_vendedor, true);
+  assert.equal(final.requiere_vendedor_motivo, "Llegó por tu link. Ahora le interesa Peugeot 208 2021, antes Volkswagen Gol 2015");
+});
+
+test("el motivo de link y auto juntos se recorta a 120 caracteres", async () => {
+  const viejo = { id: 9, ref: "G9", marca: "Marca".repeat(12), modelo: "Modelo", anio: 2015, disponible: true };
+  const nuevo = { id: 7, ref: "L7", marca: "Fabricante".repeat(6), modelo: "Versión", anio: 2022, disponible: true };
+  const consulta = consultaAbierta({ auto_id: 9, vendedor_id: JUAN.id, atribuido: true, atendido_at: haceDias(1), atendido_por: JUAN.id });
+  const root = conUpdatesQueGuardan(baseConConsulta(consulta, { autos: [viejo, nuevo] }));
+  await atenderMensaje({ telefono: TEL, texto: "Hola, me interesa (REF #L7) [AS:pepito]", ahora }, deps(root));
+  const desc = (a) => `${a.marca} ${a.modelo} ${a.anio}`;
+  const esperado = `Llegó por tu link. Ahora le interesa ${desc(nuevo)}, antes ${desc(viejo)}`.slice(0, 120);
+  const [final] = root.estado.sesiones;
+  assert.equal(final.auto_id, nuevo.id);
+  assert.equal(final.vendedor_id, PEPITO.id);
+  assert.equal(final.requiere_vendedor_motivo.length, 120);
+  assert.equal(final.requiere_vendedor_motivo, esperado);
+});
+
+test("el link de un asesor a una consulta sin asignar la deja suya, pendiente y arriba con el aviso 'Llegó por tu link'", async () => {
+  const root = conUpdatesQueGuardan(baseConConsulta(consultaAbierta({ requiere_vendedor: false, atendido_at: haceDias(1), atendido_por: JUAN.id, orden_at: haceDias(1) })));
+  await atenderMensaje({ telefono: TEL, texto: "Hola [AS:juan]", ahora }, deps(root));
+  const [final] = root.estado.sesiones;
+  assert.equal(final.vendedor_id, JUAN.id);
+  assert.equal(final.atribuido, true);
+  assert.equal(final.atendido_at, null);
+  assert.equal(final.atendido_por, null);
+  assert.deepEqual(final.orden_at, ahora);
+  assert.equal(final.requiere_vendedor, true);
+  assert.equal(final.requiere_vendedor_motivo, MOTIVO_LINK);
+});
+
+test("una consulta nueva que llega con el link de Pepito es suya y atribuida, sin aviso de link", async () => {
+  const root = conUpdatesQueGuardan(baseFalsa({ cliente: { id: 50 }, vendedores: ASESORES }));
+  await atenderMensaje({ telefono: TEL, texto: "Hola [AS:pepito]", ahora }, deps(root));
+  assert.equal(root.estado.sesiones.length, 1);
+  const [nueva] = root.estado.sesiones;
+  assert.deepEqual(asignacion(nueva), [PEPITO.id, true]);
+  assert.notEqual(nueva.requiere_vendedor_motivo, MOTIVO_LINK);
+  assert.ok(!root.estado.updates.some((u) => u.data.requiere_vendedor_motivo === MOTIVO_LINK), "ningún update lleva el aviso de link");
+});
+
+test("el link del mismo asesor que la tenía por turno, sin atribuir: solo se escribe atribuido, sin aviso ni orden", async () => {
+  const root = conUpdatesQueGuardan(baseConConsulta(consultaAbierta({ vendedor_id: JUAN.id, atribuido: false })));
+  await atenderMensaje({ telefono: TEL, texto: "Hola [AS:juan]", ahora }, deps(root));
+  const deAsesor = root.estado.updates.filter((u) => u.where.id === 1 && "vendedor_id" in u.data);
+  assert.equal(deAsesor.length, 1);
+  assert.equal(deAsesor[0].data.atribuido, true);
+  assert.ok(sinAviso(deAsesor[0]), "ese update no trae aviso, orden ni atención");
+  assert.deepEqual(root.estado.updates.filter(tocaElAviso), []);
+});
+
+test("un link inválido (inexistente o de asesor inactivo) a una consulta atendida de Juan no cambia el asesor y la reabre como 'Volvió a escribir'", async () => {
+  for (const slug of ["nadie", "inactivo"]) {
+    const consulta = consultaAbierta({ vendedor_id: JUAN.id, atribuido: true, requiere_vendedor: false, atendido_at: haceDias(1), atendido_por: JUAN.id, orden_at: haceDias(1) });
+    const root = conUpdatesQueGuardan(baseConConsulta(consulta));
+    await atenderMensaje({ telefono: TEL, texto: `Hola [AS:${slug}]`, ahora }, deps(root));
+    assert.deepEqual(cambiosDeAsesor(root, 1), [], slug);
+    const [final] = root.estado.sesiones;
+    assert.deepEqual(asignacion(final), [JUAN.id, true], slug);
+    assert.equal(final.atendido_at, null, slug);
+    assert.equal(final.atendido_por, null, slug);
+    assert.equal(final.requiere_vendedor, true, slug);
+    assert.equal(final.requiere_vendedor_motivo, "Volvió a escribir", slug);
+    assert.deepEqual(final.requiere_vendedor_at, ahora, slug);
+    assert.deepEqual(final.orden_at, ahora, slug);
+  }
+});
+
+test("el link de Pepito a una consulta de Juan ya pendiente con otro motivo: pasa a Pepito y el motivo pasa a ser 'Llegó por tu link'", async () => {
+  const consulta = consultaAbierta({ vendedor_id: JUAN.id, atribuido: true, requiere_vendedor: true, requiere_vendedor_motivo: "Visita propuesta: sábado", requiere_vendedor_at: hace(5), atendido_at: null, atendido_por: null, orden_at: hace(5) });
+  const root = conUpdatesQueGuardan(baseConConsulta(consulta));
+  await atenderMensaje({ telefono: TEL, texto: "Hola [AS:pepito]", ahora }, deps(root));
+  const [final] = root.estado.sesiones;
+  assert.deepEqual(asignacion(final), [PEPITO.id, true]);
+  assert.equal(final.requiere_vendedor, true);
+  assert.equal(final.requiere_vendedor_motivo, MOTIVO_LINK);
+  assert.deepEqual(final.requiere_vendedor_at, ahora);
+  assert.deepEqual(final.orden_at, ahora);
+  assert.equal(final.atendido_at, null);
+  assert.equal(final.atendido_por, null);
+});
+
+// Como MySQL con DATETIME(0): cada fecha que se guarda queda redondeada al segundo más cercano.
+function conFechasAlSegundo(root) {
+  const guardar = root.chat_estado.update;
+  const alSegundo = (v) => (v instanceof Date ? new Date(Math.round(v.getTime() / 1000) * 1000) : v);
+  root.chat_estado.update = (args) => guardar({ ...args, data: Object.fromEntries(Object.entries(args.data).map(([k, v]) => [k, alSegundo(v)])) });
+  return root;
+}
+
+test("el motivo de link y auto juntos sale aunque la base guarde las fechas al segundo y la hora del turno traiga milisegundos", async () => {
+  const ahoraConMs = new Date("2026-11-14T15:30:20.750Z");
+  const gol = { id: 9, ref: "G9", marca: "Volkswagen", modelo: "Gol", anio: 2015, disponible: true };
+  const antes = (horas) => new Date(ahoraConMs.getTime() - horas * 3_600_000);
+  const consulta = consultaAbierta({ ultimo_mensaje: antes(1), auto_id: 9, vendedor_id: JUAN.id, atribuido: true, requiere_vendedor: false, atendido_at: antes(24), atendido_por: JUAN.id, orden_at: antes(24) });
+  const root = conFechasAlSegundo(conUpdatesQueGuardan(baseConConsulta(consulta, { autos: [gol, peugeot] })));
+  await atenderMensaje({ telefono: TEL, texto: `${DE_LA_WEB} [AS:pepito]`, ahora: ahoraConMs }, deps(root));
+  assert.equal(root.estado.sesiones.length, 1, "no abre otra consulta");
+  const [final] = root.estado.sesiones;
+  assert.equal(final.vendedor_id, PEPITO.id);
+  assert.equal(final.auto_id, peugeot.id);
+  assert.equal(final.requiere_vendedor_motivo, "Llegó por tu link. Ahora le interesa Peugeot 208 2021, antes Volkswagen Gol 2015");
 });
 
 test("si el turno falla, la consulta se crea igual sin asesor y el mensaje se guarda y se responde", async (t) => {

@@ -56,7 +56,7 @@ producción.
   - Criterio: `agente-conversacion` › El cliente vuelve a escribir en una consulta atendida (10 días, responde
     enseguida con el bot en pausa, consulta pendiente, vuelve por otro auto, vuelve pasado el plazo).
 
-- [ ] 6. El link de otro asesor deja la consulta completa, pendiente y arriba
+- [x] 6. El link de otro asesor deja la consulta completa, pendiente y arriba
   - Qué: en `atender.js` (`conAsesorDelLink`), cuando `cambioDeAsesor` le cambia el asesor a una consulta
     abierta, además de `vendedor_id` y `atribuido` se escriben `requiere_vendedor = true`, el motivo "Llegó
     por tu link", `requiere_vendedor_at = ahora`, `atendido_at = NULL`, `atendido_por = NULL` y
