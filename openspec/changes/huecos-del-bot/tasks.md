@@ -31,7 +31,7 @@ producción.
   - Criterio: `agente-conversacion` › Una consulta dura 30 días desde el último mensaje (29/31 días,
     30 días justos, vuelve a los 10 días, consulta nueva).
 
-- [ ] 3. Pasado el plazo se pregunta todo de nuevo, y la IA ve solo la charla de la consulta
+- [x] 3. Pasado el plazo se pregunta todo de nuevo, y la IA ve solo la charla de la consulta
   - Qué:
     - en `responderConAgente`, la búsqueda del historial filtra `created_at >= sesion_inicio` dentro de la
       misma consulta a la base, antes del `take` de 20, para que los mensajes viejos no ocupen el lugar de

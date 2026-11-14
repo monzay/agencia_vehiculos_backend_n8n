@@ -69,3 +69,27 @@ Qué se hizo en cada tarea de la fase 2 y por qué. Rama `feat/huecos-del-bot` (
 - **Verificación (local):** tests congelados intactos (hash); `atender.test.js` 84/84; suite 1269 tests, falla
   solo el previo de las anclas. Claude corrigió una concordancia en el comentario ("en los últimos 30 días").
   Revisión del diff por Codex: aprobado, sin hallazgos.
+
+## Tarea 3 — Pasado el plazo se pregunta todo de nuevo; la IA ve solo la charla de la consulta (2026-11-14)
+
+- **Qué (`atender.js`):**
+  - `responderConAgente`: el historial filtra `created_at >= sesion_inicio` en la misma consulta a la base que
+    el `take` de 20 (no se trae y se filtra después);
+  - si la consulta no tiene `sesion_inicio` (consultas de antes del campo), no se manda historial previo:
+    Claude recibe solo el mensaje del turno;
+  - `sesionDe`: la consulta nueva se crea con `sesion_inicio: ahora`, la misma hora que sus mensajes (las dos
+    columnas son DATETIME(0) y redondean igual, así que el primer mensaje entra con el `>=`).
+- **Por qué no hubo que tocar "pasado el plazo":** desde la tarea 2, `sesionDe` ya abre la consulta vencida
+  vacía y por turno (o con el asesor del link). Lo que faltaba era que la IA no viera la charla vieja.
+- **Tests (`atender.test.js`, 9 nuevos):** 31 días sin link, 4 meses con link, "pago contado" vencido, 10 días
+  dentro del plazo, retomar después de una pausa, 50 mensajes viejos y 3 nuevos (con 25 desfasados de id mayor,
+  para que falle si se filtra después del take, y comprobando los argumentos de `findMany`), consultas
+  superpuestas de antes, `sesion_inicio = ahora`, y consulta sin `sesion_inicio`. El doble `baseFalsa` ahora
+  filtra como Prisma (cliente, paso, `created_at.gte`, orden por id, después el take) y numera los mensajes que
+  guarda; el test existente de ráfagas recibió `id` y `created_at` en su fila sin cambiar lo que comprueba.
+- **Revisión de Codex:** tests en 2 rondas (ronda 1: el de 50 mensajes pasaba con take-y-filtrar-después; el
+  doble ordenaba filas sin id). Diff en 2 rondas: ronda 1 marcó el caso `sesion_inicio` NULL (alta, resuelto con
+  el test nuevo y sin historial previo) y mensajes de una consulta vencida en el mismo segundo del inicio (no
+  aplica: la consulta nueva solo se abre con 30 días o más sin mensajes). Ronda 2: aprobado, sin hallazgos.
+- **Verificación (local):** tests congelados intactos (hash); `atender.test.js` 93/93; suite 1278, falla solo el
+  previo de las anclas.

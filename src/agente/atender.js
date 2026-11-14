@@ -137,6 +137,7 @@ async function sesionDe(root, clienteId, ahora, web) {
     data: {
       cliente_id: clienteId,
       origen: web.ref ? "web" : "whatsapp",
+      sesion_inicio: ahora,
       ultimo_mensaje: ahora,
       ...inicial,
       score: puntaje(inicial),
@@ -316,9 +317,12 @@ async function contextoDelTurno({ root, cliente, sesion, ahora, autoWeb, cobranz
 
 async function responderConAgente(turno, imagenes, deps) {
   const { root, cliente, sesion, ahora, entrante, texto, wamid } = turno;
-  const historial = await root.historial_mensajes.findMany({
+  // La charla de la consulta en curso: nada anterior a su inicio (el filtro va en la consulta, antes del take).
+  // Sin sesion_inicio (consultas de antes del campo) no se sabe dónde empieza: no se manda historial previo,
+  // Claude recibe solo el mensaje de ahora, antes que charla de otra consulta (y sin `gte: null` para Prisma).
+  const historial = !sesion.sesion_inicio ? [] : await root.historial_mensajes.findMany({
     // Incluye lo que respondió un asesor desde el panel: al retomar, el bot sabe qué se le dijo.
-    where: { cliente_id: cliente.id, paso_nodo: { in: [turno.paso, PASO_HUMANO] } },
+    where: { cliente_id: cliente.id, paso_nodo: { in: [turno.paso, PASO_HUMANO] }, created_at: { gte: sesion.sesion_inicio } },
     orderBy: { id: "desc" },
     take: LIMITES.historialMensajes,
     select: { direccion: true, mensaje: true },

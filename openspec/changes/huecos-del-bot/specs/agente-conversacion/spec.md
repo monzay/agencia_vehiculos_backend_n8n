@@ -10,12 +10,12 @@ visita. El asesor MUST definirse como en toda consulta nueva: el del link si lo 
 #### Scenario: Vuelve a los 31 días
 - **WHEN** un cliente que había respondido todo vuelve 31 días después de su último mensaje, sin link
 - **THEN** se abre una consulta nueva sin respuestas, va por turno y a la IA le llega que falta todo
-<!-- test: FALTA -->
+<!-- test: src/agente/atender.test.js › "vuelve a los 31 días con todo respondido y sin link: consulta nueva sin esas respuestas, por turno, y a la IA le falta todo" -->
 
 #### Scenario: Vuelve a los 4 meses por un link
 - **WHEN** el cliente vuelve 4 meses después con el link de un asesor
 - **THEN** se abre una consulta nueva, sin respuestas ni la charla anterior, asignada y atribuida a ese asesor
-<!-- test: FALTA -->
+<!-- test: src/agente/atender.test.js › "vuelve a los 4 meses con el link de un asesor: consulta nueva sin respuestas ni charla anterior, asignada y atribuida a ese asesor" -->
 
 ### Requirement: La IA ve solo la charla de la consulta en curso
 El historial que se manda a Claude MUST incluir solo los mensajes del cliente creados desde el inicio de
@@ -27,27 +27,27 @@ de antes (una por auto), los mensajes posteriores a ese inicio MUST entrar igual
 #### Scenario: Charla de una consulta vencida
 - **WHEN** el cliente vuelve a los 31 días y en la consulta anterior había dicho "pago contado"
 - **THEN** ese mensaje no llega a Claude
-<!-- test: FALTA -->
+<!-- test: src/agente/atender.test.js › "el 'pago contado' dicho en una consulta vencida no le llega a Claude cuando el cliente vuelve a los 31 días" -->
 
 #### Scenario: Charla dentro del plazo
 - **WHEN** el cliente vuelve a los 10 días a la misma consulta
 - **THEN** a Claude le llegan los mensajes de esa consulta, incluidos los de hace 10 días
-<!-- test: FALTA -->
+<!-- test: src/agente/atender.test.js › "quien vuelve a los 10 días a la misma consulta: Claude recibe los mensajes de esa consulta, incluidos los de hace 10 días" -->
 
 #### Scenario: Retoma después de una pausa
 - **WHEN** el asesor tomó la charla, el cliente y el asesor se escribieron, y después se reanuda el bot dentro del plazo
 - **THEN** a Claude le llegan esos mensajes del cliente y las respuestas del asesor
-<!-- test: FALTA -->
+<!-- test: src/agente/atender.test.js › "al retomar después de una pausa dentro del plazo, Claude recibe lo que escribió el cliente mientras el asesor atendía y las respuestas del asesor" -->
 
 #### Scenario: Muchos mensajes de antes
 - **WHEN** la consulta vencida tiene 50 mensajes y la nueva tiene 3, el primero en el mismo segundo en que se abrió
 - **THEN** a Claude le llegan los 3 de la consulta nueva y ninguno de la vencida
-<!-- test: FALTA -->
+<!-- test: src/agente/atender.test.js › "la consulta vencida tiene 50 mensajes y la nueva 3 (el primero en el mismo instante en que se abrió): Claude recibe solo los 3 de la nueva" -->
 
 #### Scenario: Consultas superpuestas de antes
 - **WHEN** el cliente tiene dos consultas vigentes de antes del cambio (una por auto) y el mensaje cae en la del último mensaje
 - **THEN** a Claude le llegan los mensajes desde el inicio de esa consulta, sean de una o de otra, y ninguno anterior
-<!-- test: FALTA -->
+<!-- test: src/agente/atender.test.js › "con dos consultas vigentes de antes del cambio, Claude recibe la charla desde el inicio de la del último mensaje, sea de una o de otra, y nada anterior" -->
 
 ### Requirement: Una consulta dura 30 días desde el último mensaje
 El sistema MUST seguir en la misma consulta (`chat_estado`) mientras su último mensaje sea de hace menos

@@ -37,11 +37,11 @@ function enOrden(filas, orderBy = []) {
 // Base simulada con estado en memoria para lo que toca el orquestador.
 // `cliente` es la ficha del número de las pruebas (TEL), ya vinculada a su canal de WhatsApp;
 // `clientes` son fichas sueltas, sin ese vínculo.
-function baseFalsa({ cliente = null, clientes = [], sesion = null, sesiones = [], mensajesHoy = 0, consumosHoy = 0, gastoMes = 0, gastoClienteHoy = 0, usado = null, ubicacion = null, autos = [], vendedores = [], usuarios = [], configuracion = {}, aviso = null } = {}) {
+function baseFalsa({ cliente = null, clientes = [], sesion = null, sesiones = [], mensajesHoy = 0, historial = [], consumosHoy = 0, gastoMes = 0, gastoClienteHoy = 0, usado = null, ubicacion = null, autos = [], vendedores = [], usuarios = [], configuracion = {}, aviso = null } = {}) {
   const reparto = repartoFalso({ vendedores, usuarios, configuracion });
   const fichas = [...(cliente ? [{ canal: "whatsapp", ...cliente }] : []), ...clientes].map((ficha) => ({ ...FICHA_VACIA, ...ficha }));
   const canales = cliente ? [{ id: 1, cliente_id: cliente.id, canal: "whatsapp", identificador: TEL }] : [];
-  const e = { clientes: fichas, canales, transacciones: 0, sesiones: [...(sesion ? [sesion] : []), ...sesiones], historial: [], consumos: [], updates: [], consultas: [], bajas: [], alertas: [] };
+  const e = { clientes: fichas, canales, transacciones: 0, sesiones: [...(sesion ? [sesion] : []), ...sesiones], historial: [...historial], consumos: [], updates: [], consultas: [], bajas: [], alertas: [] };
   let proximaFicha = 77;
   const fichasQue = (where = {}) => e.clientes.filter((ficha) => Object.entries(soloColumnas(where, COLUMNAS_CLIENTE)).every((par) => cumple(ficha, par)));
   const primeraFicha = async ({ where }) => fichasQue(where)[0] ?? null;
@@ -100,9 +100,16 @@ function baseFalsa({ cliente = null, clientes = [], sesion = null, sesiones = []
       findMany: async (args) => {
         e.consultas.push({ findMany: args });
         const ids = args.where?.wamid?.in;
-        return ids ? e.historial.filter((h) => ids.includes(h.wamid)).map((h) => ({ wamid: h.wamid })) : [];
+        if (ids) return e.historial.filter((h) => ids.includes(h.wamid)).map((h) => ({ wamid: h.wamid }));
+        // El historial como lo devuelve Prisma: filtra por cliente, paso y fecha, ordena por id desc y DESPUÉS corta (take).
+        const { cliente_id, paso_nodo, created_at } = args.where ?? {};
+        const filas = e.historial
+          .filter((h) => (cliente_id === undefined || h.cliente_id === cliente_id) && (!paso_nodo?.in || paso_nodo.in.includes(h.paso_nodo)) && (!created_at?.gte || (h.created_at != null && h.created_at >= created_at.gte)))
+          .sort((a, b) => b.id - a.id);
+        return (args.take ? filas.slice(0, args.take) : filas).map(({ direccion, mensaje }) => ({ direccion, mensaje }));
       },
-      create: async ({ data }) => (e.historial.push(data), data),
+      // Como la base: el id es autoincremental (el máximo actual + 1).
+      create: async ({ data }) => (e.historial.push({ ...data, id: Math.max(0, ...e.historial.map((h) => h.id ?? 0)) + 1 }), data),
     },
     vehiculo_cliente: { findFirst: async () => usado, create: async ({ data }) => data },
     ubicacion: { findUnique: async () => ubicacion },
@@ -671,7 +678,11 @@ test("mensajes seguidos: se responde una sola vez, a todos juntos, y se guarda c
 
 test("un mensaje ya respondido que vuelve a llegar dentro de una ráfaga no se responde de nuevo", async () => {
   const root = baseFalsa();
-  root.estado.historial.push({ cliente_id: 77, direccion: "entrante", mensaje: "hola", wamid: "w1", paso_nodo: "agente_ia" });
+  // Ya guardado y ya respondido (con su fecha y su id, como en la base).
+  root.estado.historial.push(
+    { id: 1, cliente_id: 77, direccion: "entrante", mensaje: "hola", wamid: "w1", paso_nodo: "agente_ia", created_at: haceDias(1) },
+    { id: 2, cliente_id: 77, direccion: "saliente", mensaje: "¡Hola!", wamid: null, paso_nodo: "agente_ia", created_at: haceDias(1) }
+  );
   const anthropic = claudeFalso();
   const d = { ...deps(root, anthropic), esperaRafagaMs: 30 };
   await Promise.all([
@@ -1018,4 +1029,149 @@ test("si no se puede leer el auto de la consulta, el agente responde igual", asy
   assert.equal(anthropic.pedidos.length, 1);
   assert.doesNotMatch(anthropic.pedidos[0].system.at(-1).text, /Auto de esta consulta/);
   assert.match(errores.mock.calls.map((c) => c.arguments.join(" ")).join(" | "), /no se pudo leer el auto de la consulta: base caída/);
+});
+
+// ── Pasado el plazo se pregunta todo de nuevo, y la IA ve solo la charla de la consulta en curso ──
+
+// Un mensaje de la charla del cliente 50, como lo guarda el orquestador (con id, como en la base).
+const mensajeDe = (id, direccion, mensaje, created_at, paso_nodo = "agente_ia") => ({ id, cliente_id: 50, direccion, mensaje, paso_nodo, created_at, wamid: null });
+const lasDeClaude = (anthropic) => JSON.stringify(anthropic.pedidos[0].messages);
+// Una consulta con todo respondido, con su asesor.
+const consultaRespondida = (datos = {}) => ({ id: 1, cliente_id: 50, sesion_inicio: haceDias(60), ultimo_mensaje: haceDias(31), auto_id: null, pago_tipo: "contado", entrega_usado: 0, decisor: "solo", vendedor_id: JUAN.id, atribuido: true, ...datos });
+const charlaVieja = [mensajeDe(1, "entrante", "quiero pagar contado", haceDias(40)), mensajeDe(2, "saliente", "Perfecto, anotado el pago contado", haceDias(40))];
+
+test("vuelve a los 31 días con todo respondido y sin link: consulta nueva sin esas respuestas, por turno, y a la IA le falta todo", async () => {
+  const root = baseConConsulta(consultaRespondida(), { historial: charlaVieja });
+  const anthropic = claudeFalso();
+  await atenderMensaje({ telefono: TEL, texto: "Hola de nuevo", ahora }, deps(root, anthropic));
+  assert.equal(root.estado.sesiones.length, 2, "se abre otra consulta");
+  const nueva = root.estado.sesiones[1];
+  assert.deepEqual([nueva.pago_tipo, nueva.entrega_usado, nueva.decisor], [undefined, undefined, undefined], "sin las respuestas de antes");
+  assert.deepEqual(asignacion(nueva), [PEPITO.id, false], "va por turno, no sigue con Juan");
+  assert.deepEqual(nueva.sesion_inicio, ahora, "arranca hoy: de ahí en adelante cuenta la charla");
+  const contexto = anthropic.pedidos[0].system.at(-1).text;
+  assert.doesNotMatch(contexto, /Ya respondió/, "no hay nada respondido");
+  const faltan = contexto.match(/Falta averiguar[^\n]*/)?.[0] ?? "";
+  assert.match(faltan, /forma de pago/);
+  assert.match(faltan, /si entrega un usado/);
+  assert.doesNotMatch(lasDeClaude(anthropic), /contado/, "la charla de la consulta vencida no le llega");
+});
+
+test("vuelve a los 4 meses con el link de un asesor: consulta nueva sin respuestas ni charla anterior, asignada y atribuida a ese asesor", async () => {
+  const root = baseConConsulta(consultaRespondida({ sesion_inicio: haceDias(200), ultimo_mensaje: haceDias(120), vendedor_id: PEPITO.id }), { historial: charlaVieja.map((m) => ({ ...m, created_at: haceDias(130) })) });
+  const anthropic = claudeFalso();
+  await atenderMensaje({ telefono: TEL, texto: "Hola, vuelvo [AS:juan]", ahora }, deps(root, anthropic));
+  assert.equal(root.estado.sesiones.length, 2);
+  const nueva = root.estado.sesiones[1];
+  assert.deepEqual([nueva.pago_tipo, nueva.entrega_usado, nueva.decisor], [undefined, undefined, undefined]);
+  assert.deepEqual(asignacion(nueva), [JUAN.id, true]);
+  assert.deepEqual(nueva.sesion_inicio, ahora);
+  assert.doesNotMatch(lasDeClaude(anthropic), /contado/, "ningún mensaje de la consulta vieja le llega a Claude");
+  assert.equal(anthropic.pedidos[0].messages.length, 1, "solo el mensaje nuevo");
+  assert.doesNotMatch(lasDeClaude(anthropic), /\[AS:/);
+});
+
+test("el 'pago contado' dicho en una consulta vencida no le llega a Claude cuando el cliente vuelve a los 31 días", async () => {
+  const root = baseConConsulta(consultaRespondida({ sesion_inicio: haceDias(45) }), { historial: [...charlaVieja, mensajeDe(3, "entrante", "pago contado", haceDias(32))] });
+  const anthropic = claudeFalso();
+  await atenderMensaje({ telefono: TEL, texto: "¿Siguen teniendo autos?", ahora }, deps(root, anthropic));
+  assert.doesNotMatch(lasDeClaude(anthropic), /pago contado/);
+  assert.deepEqual(anthropic.pedidos[0].messages.map((m) => m.role), ["user"], "solo lo de ahora");
+  assert.match(lasDeClaude(anthropic), /Siguen teniendo autos/);
+});
+
+test("quien vuelve a los 10 días a la misma consulta: Claude recibe los mensajes de esa consulta, incluidos los de hace 10 días", async () => {
+  const consulta = consultaRespondida({ sesion_inicio: haceDias(20), ultimo_mensaje: haceDias(10) });
+  const historial = [
+    mensajeDe(1, "entrante", "busco un 208", haceDias(20)),
+    mensajeDe(2, "saliente", "Tenemos uno 2021", haceDias(20)),
+    mensajeDe(3, "entrante", "me gusta el rojo", haceDias(10)),
+    mensajeDe(4, "saliente", "Es el de la foto", haceDias(10)),
+  ];
+  const root = baseConConsulta(consulta, { historial });
+  const anthropic = claudeFalso();
+  await atenderMensaje({ telefono: TEL, texto: "Sigo interesado", ahora }, deps(root, anthropic));
+  assert.equal(root.estado.sesiones.length, 1);
+  const recibido = lasDeClaude(anthropic);
+  for (const texto of ["busco un 208", "Tenemos uno 2021", "me gusta el rojo", "Es el de la foto", "Sigo interesado"]) assert.match(recibido, new RegExp(texto));
+});
+
+test("al retomar después de una pausa dentro del plazo, Claude recibe lo que escribió el cliente mientras el asesor atendía y las respuestas del asesor", async () => {
+  const consulta = consultaRespondida({ sesion_inicio: haceDias(5), ultimo_mensaje: hace(2), bot_pausado: false });
+  const historial = [
+    mensajeDe(1, "entrante", "¿tienen financiación?", haceDias(5)),
+    mensajeDe(2, "saliente", "Soy Juan, sí tenemos", haceDias(4), "humano"),
+    mensajeDe(3, "entrante", "perfecto, ¿cuánto sería la cuota?", haceDias(4)),
+    mensajeDe(4, "saliente", "Son 12 cuotas de 300 mil", haceDias(3), "humano"),
+  ];
+  const root = baseConConsulta(consulta, { historial });
+  const anthropic = claudeFalso();
+  await atenderMensaje({ telefono: TEL, texto: "Genial, ¿me guardan el auto?", ahora }, deps(root, anthropic));
+  const recibido = lasDeClaude(anthropic);
+  for (const texto of ["tienen financiación", "Soy Juan, sí tenemos", "cuánto sería la cuota", "Son 12 cuotas de 300 mil", "me guardan el auto"]) assert.match(recibido, new RegExp(texto));
+});
+
+test("la consulta vencida tiene 50 mensajes y la nueva 3 (el primero en el mismo instante en que se abrió): Claude recibe solo los 3 de la nueva", async () => {
+  const apertura = haceDias(2);
+  const viejos = Array.from({ length: 50 }, (_, n) => mensajeDe(n + 1, n % 2 ? "saliente" : "entrante", `mensaje viejo ${n + 1}`, new Date(haceDias(40).getTime() + n * 60_000)));
+  // Anteriores al inicio de la consulta actual pero con ids MAYORES (reloj desfasado, consultas superpuestas de antes):
+  // con el filtro antes del take no entran; si se trae el take y se filtra después, ocuparían los lugares.
+  const desfasados = Array.from({ length: 25 }, (_, n) => mensajeDe(100 + n, n % 2 ? "saliente" : "entrante", `mensaje desfasado ${n}`, new Date(apertura.getTime() - 3_600_000 - n * 60_000)));
+  const nuevos = [
+    mensajeDe(51, "entrante", "hola, busco algo nuevo", apertura),
+    mensajeDe(52, "saliente", "¿Qué estás buscando?", new Date(apertura.getTime() + 1)),
+    mensajeDe(53, "entrante", "una camioneta", hace(30)),
+  ];
+  const vencida = consultaRespondida({ id: 1, sesion_inicio: haceDias(60), ultimo_mensaje: haceDias(35) });
+  const actual = { id: 2, cliente_id: 50, sesion_inicio: apertura, ultimo_mensaje: hace(30), auto_id: null, vendedor_id: PEPITO.id, atribuido: false };
+  const root = baseFalsa({ cliente: { id: 50 }, sesiones: [vencida, actual], vendedores: ASESORES, autos: [peugeot], historial: [...viejos, ...desfasados, ...nuevos] });
+  const anthropic = claudeFalso();
+  await atenderMensaje({ telefono: TEL, texto: "de unos 5 millones", ahora }, deps(root, anthropic));
+  assert.equal(root.estado.sesiones.length, 2, "sigue en la consulta actual");
+  const { where, take } = root.estado.consultas.find((c) => c.findMany).findMany;
+  assert.deepEqual(where.created_at?.gte, apertura, "el filtro es desde el inicio de la consulta en curso, en la misma consulta a la base");
+  assert.equal(take, 20, "y el corte de 20 va en esa misma consulta");
+  const recibido = lasDeClaude(anthropic);
+  assert.doesNotMatch(recibido, /mensaje viejo|mensaje desfasado/, "ninguno anterior al inicio ocupa lugar");
+  for (const texto of ["busco algo nuevo", "Qué estás buscando", "una camioneta", "5 millones"]) assert.match(recibido, new RegExp(texto));
+});
+
+test("con dos consultas vigentes de antes del cambio, Claude recibe la charla desde el inicio de la del último mensaje, sea de una o de otra, y nada anterior", async () => {
+  const otroAuto = { id: 6, ref: "C34D", marca: "Fiat", modelo: "Cronos", anio: 2022, disponible: true };
+  const A = { id: 1, cliente_id: 50, sesion_inicio: haceDias(20), ultimo_mensaje: haceDias(5), auto_id: 5, vendedor_id: JUAN.id, atribuido: false };
+  const B = { id: 2, cliente_id: 50, sesion_inicio: haceDias(10), ultimo_mensaje: haceDias(1), auto_id: 6, vendedor_id: JUAN.id, atribuido: false };
+  const historial = [
+    mensajeDe(1, "entrante", "charla anterior del Peugeot", haceDias(15)),
+    mensajeDe(2, "saliente", "respuesta anterior del Peugeot", haceDias(15)),
+    mensajeDe(3, "entrante", "sigo con el Peugeot", haceDias(8)),
+    mensajeDe(4, "entrante", "ahora miro el Cronos", haceDias(3)),
+  ];
+  const root = baseFalsa({ cliente: { id: 50 }, sesiones: [A, B], vendedores: ASESORES, autos: [peugeot, otroAuto], historial });
+  const anthropic = claudeFalso();
+  await atenderMensaje({ telefono: TEL, texto: "¿Cuánto es el Cronos?", ahora }, deps(root, anthropic));
+  assert.equal(root.estado.updates.at(-1).where.id, 2, "cae en la del último mensaje");
+  const recibido = lasDeClaude(anthropic);
+  assert.doesNotMatch(recibido, /anterior del Peugeot/, "nada anterior al inicio de esa consulta");
+  for (const texto of ["sigo con el Peugeot", "ahora miro el Cronos", "Cuánto es el Cronos"]) assert.match(recibido, new RegExp(texto));
+});
+
+test("la consulta nueva nace con sesion_inicio igual a la hora del turno (la de sus mensajes) y con ultimo_mensaje", async () => {
+  const root = baseFalsa({ cliente: { id: 50 } });
+  await atenderMensaje({ telefono: TEL, texto: "Hola", ahora }, deps(root));
+  const [nueva] = root.estado.sesiones;
+  assert.deepEqual(nueva.sesion_inicio, ahora);
+  assert.deepEqual(nueva.ultimo_mensaje, ahora);
+  assert.deepEqual(root.estado.historial[0].created_at, nueva.sesion_inicio, "el primer mensaje no queda antes del inicio de su consulta");
+});
+
+test("una consulta vigente sin sesion_inicio (de antes del campo) no manda historial previo a Claude: solo recibe el mensaje actual", async () => {
+  const consulta = consultaRespondida({ sesion_inicio: null, ultimo_mensaje: hace(2) });
+  const historial = [mensajeDe(1, "entrante", "pago contado", haceDias(60)), mensajeDe(2, "saliente", "Anotado, contado", haceDias(60)), mensajeDe(3, "entrante", "sigo mirando", haceDias(1)), mensajeDe(4, "saliente", "Cualquier cosa avisame", haceDias(1))];
+  const root = baseConConsulta(consulta, { historial });
+  const anthropic = claudeFalso();
+  await atenderMensaje({ telefono: TEL, texto: "¿Sigue disponible?", ahora }, deps(root, anthropic));
+  assert.equal(root.estado.sesiones.length, 1, "se reutiliza la consulta");
+  assert.deepEqual(anthropic.pedidos[0].messages.map((m) => m.role), ["user"], "ninguna charla previa");
+  assert.doesNotMatch(lasDeClaude(anthropic), /pago contado|sigo mirando|Cualquier cosa/);
+  assert.match(lasDeClaude(anthropic), /Sigue disponible/);
 });
