@@ -7,7 +7,7 @@
 // Uso (desde web/backend):
 //   node scripts/simular-masivo.js [--cantidad 1200] [--semilla 1]
 //
-// Escribe en openspec/changes/huecos-del-bot/simulacion/: reporte.json, resumen.md y casos-masivos.json.
+// Escribe en openspec/changes/archive/2026-11-14-huecos-del-bot/simulacion/: reporte.json, resumen.md y casos-masivos.json.
 // Sale con 0 si se cumple el criterio de cierre y con 1 si no.
 
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -27,7 +27,7 @@ const argumento = (nombre, porDefecto) => {
 };
 const cantidad = Number(argumento("cantidad", 1200));
 const semilla = Number(argumento("semilla", 1));
-const SALIDA = path.join("openspec", "changes", "huecos-del-bot", "simulacion");
+const SALIDA = path.join("openspec", "changes", "archive", "2026-11-14-huecos-del-bot", "simulacion");
 
 // Las bases del .env (hoy `agencia`) son las prohibidas; se toman antes de pisar las URLs del proceso.
 const prohibidas = basesProhibidas(process.env);
