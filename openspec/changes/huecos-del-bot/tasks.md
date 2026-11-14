@@ -16,8 +16,10 @@ producción.
     texto; `openspec validate huecos-del-bot --strict` pasa. Va en su propio commit, sin código. 
     
 
-- [ ] 1. Migración 084
-  - Qué: `sesiones.orden_at` (NOT NULL, con índice, relleno = `sesion_inicio`).
+- [x] 1. Migración 084
+  - Qué: `sesiones.orden_at` (NOT NULL, con índice, relleno = `sesion_inicio`). Las filas con `sesion_inicio`
+    NULL quedan con `'1000-01-01 00:00:00'`, el mínimo de DATETIME: hoy la lista ordena por `sesion_inicio DESC`
+    y MySQL deja los NULL al final, así que con el mínimo siguen al final y el orden de antes no cambia.
   - Criterio: se aplica dos veces en local sin error (idempotente); `schema.prisma` coincide;
     `npx prisma validate` pasa; los tests que ya existían siguen en verde.
 

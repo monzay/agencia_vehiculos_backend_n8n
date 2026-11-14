@@ -134,6 +134,8 @@ model chat_estado {
   abandono_paso    String?                      @db.VarChar(60)
   ultimo_mensaje   DateTime?                    @db.DateTime(0)
   sesion_inicio    DateTime?                    @default(now()) @db.DateTime(0)
+  /// Fecha por la que se ordena la lista de Consultas (sube al abrirse, cambiar de auto, volver a escribir, pasar de asesor)
+  orden_at         DateTime                     @default(now()) @db.DateTime(0)
   updated_at       DateTime?                    @default(now()) @db.DateTime(0)
   recordatorio_en  DateTime?                    @db.DateTime(0)
   tipo_lead        String?                      @db.VarChar(20)
@@ -150,6 +152,7 @@ model chat_estado {
   senas            senas[]
 
   @@index([cliente_id], map: "idx_cliente")
+  @@index([orden_at], map: "idx_orden_at")
   @@index([opt_out], map: "idx_opt_out")
   @@index([paso_actual], map: "idx_paso")
   @@index([requiere_vendedor], map: "idx_requiere_vendedor")
