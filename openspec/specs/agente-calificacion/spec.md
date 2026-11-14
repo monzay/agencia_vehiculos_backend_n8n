@@ -195,9 +195,11 @@ Cuando el agente llama a `registrar_calificacion`, el sistema MUST:
 - devolver lo que falta.
 
 Además:
-- El auto de interés MUST guardarse solo si existe y está a la venta. Si es otro que el de la
-  consulta, las respuestas MUST guardarse en la consulta de ese auto (ver `agente-conversacion` ›
-  Una consulta por auto).
+- El auto de interés MUST guardarse solo si existe y está a la venta. El código se resuelve como dice
+  `agente-herramientas` › El código del auto que escribe la IA: `#13` guarda el `13`. Si el auto no se
+  guarda, el resultado MUST traer un `aviso` con el motivo (el código no existe o el auto no está a la venta),
+  y lo demás que respondió el cliente MUST guardarse igual. Si es otro auto que el de la consulta, las
+  respuestas MUST guardarse en la consulta de ese auto (ver `agente-conversacion` › Una consulta por auto).
 - El usado MUST ser una sola fila por consulta: corregir un dato no borra los otros y una fila archivada se reactiva. Si no sabe cuánto pedir, queda "No sabe".
 - Una visita acordada MUST avisar al vendedor, salvo que la consulta ya estuviera derivada (no se pisa el motivo).
 <!-- id: herramientas.registrar_calificacion -->
@@ -217,6 +219,16 @@ Además:
 - **WHEN** el agente manda el código de un auto
 - **THEN** se guarda solo si está a la venta
 <!-- test: src/agente/herramientas.test.js › "registrar_calificacion guarda el auto de interés por su código, solo si está a la venta" -->
+
+#### Scenario: Auto de interés con # en el código
+- **WHEN** el agente manda `#12` y el auto `12` está a la venta
+- **THEN** se guarda ese auto
+<!-- test: src/agente/herramientas.test.js › "registrar_calificacion guarda el auto de interés aunque la IA mande el código con #" -->
+
+#### Scenario: Auto de interés que no se guarda
+- **WHEN** el código no existe o el auto no está a la venta
+- **THEN** el resultado trae un aviso con el motivo y lo demás se guarda igual
+<!-- test: src/agente/herramientas.test.js › "registrar_calificacion avisa si no guardó el auto de interés y guarda el resto" -->
 
 #### Scenario: Usado que entrega
 - **WHEN** el cliente da datos del usado
