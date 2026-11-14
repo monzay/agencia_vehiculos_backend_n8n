@@ -274,3 +274,13 @@ Qué se hizo en cada tarea de la fase 2 y por qué. Rama `feat/huecos-del-bot` (
 - **Revisión del código por Codex:** aprobado, sin hallazgos.
 - **Verificación (local):** tests congelados intactos (hash); la base `agencia` quedó igual (sesiones 28, clientes
   73, historial 118, autos 2, vendedores 7); suite 1466, falla solo el previo de las anclas.
+
+## Tarea 11 — Cierre (2026-11-14)
+
+- `openspec validate huecos-del-bot --strict` pasa; ningún `<!-- test: FALTA -->` en las specs del cambio; ninguna
+  ancla del cambio rota.
+- Bóveda: sección nueva "Memoria de un mes y el mismo asesor" en "BOT CON RAZONAMIENTO" (sección 13; la fila "Una
+  consulta por auto" quedó marcada como reemplazada), fila en el registro de "Plan de mejora del bot" y resultados en
+  "Simulación de ventas del agente".
+- Documento final: `DOCUMENTO-FINAL.md`.
+- Pendiente (aparte, con la orden del user): PR, deploy (084 antes del backend) y `openspec archive huecos-del-bot`.

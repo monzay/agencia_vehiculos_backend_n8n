@@ -14,7 +14,7 @@ producción.
   - Criterio: cada uno figura en `git log` de `main` antes de archivarlo; `openspec archive <cambio> --yes`
     termina sin errores; en el diff de `openspec/specs/` ningún requisito tocado por dos cambios pierde
     texto; `openspec validate huecos-del-bot --strict` pasa. Va en su propio commit, sin código. 
-     
+      
 
 - [x] 1. Migración 084
   - Qué: `sesiones.orden_at` (NOT NULL, con índice, relleno = `sesion_inicio`). Las filas con `sesion_inicio`
@@ -73,7 +73,7 @@ producción.
   - Criterio: `consultas-lista` › Orden de la lista de Consultas (sube por otro auto, sube porque el cliente
     volvió a escribir, consultas que ya existían).
 
-- [x] 8. Audios: confirmar que cumple
+- [ ] 8. Audios: confirmar que cumple
   - Criterio: los tests de `agente-cupos` › Audios con límite de duración y de costo, en verde (con Groq
     simulado), y los casos de audio de la simulación (tarea 10) OK.
   - Opcional y manual, no hace falta para aprobar: una nota de voz real con Groq de verdad, en local y con
@@ -101,7 +101,7 @@ producción.
       de esos transportes y comprueba que queda bloqueado y contado. El reporte muestra 0 intentos de red;
     - corre sin claves de Anthropic ni de Groq en el entorno.
 
-- [x] 10. Correr más de 1000 consultas simuladas
+- [ ] 10. Correr más de 1000 consultas simuladas
   - Qué: un generador arma `casos-masivos.json` (chats de clientes) combinando:
     - tiempo: mismo día, 1 día, 10 días, 29 días, 30 días justos, 31 días, 4 meses, 1 año;
     - asesor: sin link, link del mismo, link de otro, link inválido, asesor dado de baja;
@@ -125,7 +125,7 @@ producción.
   - Criterio: más de 1000 casos; el reporte cuenta cuántos casos cubre cada valor de cada eje (ninguno en
     cero); 100 % de los chequeos OK; el reporte queda en la carpeta del cambio.
 
-- [ ] 11. Cierre
+- [x] 11. Cierre
   - Criterio: `openspec validate huecos-del-bot --strict` pasa; ningún `<!-- test: FALTA -->` en las specs de
     este cambio; resumen en la bóveda ("BOT CON RAZONAMIENTO", sección 13) y registro en "Plan de mejora del
     bot"; documento final desde la spec y la BITACORA. El deploy va aparte y solo con la orden del user.
