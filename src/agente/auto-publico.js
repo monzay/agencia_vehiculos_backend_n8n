@@ -105,3 +105,6 @@ export function fotosPublicas(auto, urlPublica) {
     .slice(0, MAX_FOTOS)
     .map((f) => (/^https?:\/\//i.test(f) ? f : `${base}/${f.replace(/^\.?\/+/, "")}`));
 }
+
+// "Marca Modelo Año": cómo se nombra un auto en los avisos y en el contexto del agente.
+export const descripcionDelAuto = (auto) => [auto.marca, auto.modelo, auto.anio].filter(Boolean).join(" ");

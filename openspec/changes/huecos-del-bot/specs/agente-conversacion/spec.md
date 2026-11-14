@@ -91,22 +91,28 @@ asesor, y MUST recalcular la temperatura, marcarla para el asesor ("Ahora le int
 #### Scenario: La IA registra otro auto
 - **WHEN** dentro del plazo la IA registra un auto de interés distinto al de la consulta
 - **THEN** la consulta es la misma, con el auto nuevo, las mismas respuestas y el mismo asesor
-<!-- test: FALTA -->
+<!-- test: src/agente/herramientas.test.js › "registrar_calificacion con otro auto cambia el auto de la misma consulta y registra las respuestas en ella" -->
+<!-- test: src/agente/consultas-por-auto.test.js › "otro auto: sigue en la misma consulta y un solo update trae el auto nuevo, la temperatura, el aviso y el orden" -->
+<!-- test: src/agente/atender.test.js › "el turno se cierra en la misma consulta cuando la IA registra otro auto" -->
 
 #### Scenario: Llega desde la web por otro auto
 - **WHEN** dentro del plazo el cliente llega desde la web con la ref de otro auto disponible
 - **THEN** la consulta es la misma, con el auto nuevo
-<!-- test: FALTA -->
+<!-- test: src/agente/atender.test.js › "desde la web por otro auto dentro del plazo: sigue en la misma consulta, con el auto nuevo y el aviso" -->
+<!-- test: src/agente/atender.test.js › "desde la web por otro auto con el link de Pepito: sigue la misma consulta, con el auto nuevo, y queda de Pepito" -->
 
 #### Scenario: Aviso al asesor
 - **WHEN** la consulta cambia de auto
 - **THEN** queda marcada para el asesor con "Ahora le interesa <nuevo>, antes <anterior>", aunque ya estuviera marcada por otro motivo
-<!-- test: FALTA -->
+<!-- test: src/agente/consultas-por-auto.test.js › "el motivo del aviso se recorta a 120 caracteres" -->
+<!-- test: src/agente/consultas-por-auto.test.js › "el aviso se pone aunque la consulta ya estuviera marcada por otro motivo, y lo pisa" -->
 
 #### Scenario: Estaba atendida
 - **WHEN** la consulta estaba marcada como atendida y cambia de auto
 - **THEN** vuelve a pendiente y sube al principio de la lista
-<!-- test: FALTA -->
+<!-- test: src/agente/consultas-por-auto.test.js › "si estaba atendida, vuelve a pendiente: atendido_at y atendido_por quedan en null" -->
+<!-- test: src/agente/consultas-por-auto.test.js › "sube en la lista: orden_at es el momento del cambio" -->
+<!-- test: src/agente/atender.test.js › "la IA registra otro auto en una consulta atendida: vuelve a pendiente y sube" -->
 
 #### Scenario: Pedir fotos de otro auto
 - **WHEN** el cliente pide fotos o compara con otro auto sin registrarlo como interés
@@ -116,17 +122,18 @@ asesor, y MUST recalcular la temperatura, marcarla para el asesor ("Ahora le int
 #### Scenario: Mismo auto
 - **WHEN** la IA registra el mismo auto que ya tiene la consulta
 - **THEN** no se marca ni cambia el orden
-<!-- test: FALTA -->
+<!-- test: src/agente/consultas-por-auto.test.js › "el mismo auto no escribe nada" -->
+<!-- test: src/agente/herramientas.test.js › "registrar_calificacion con el mismo auto, o si la consulta no tenía auto, sigue en la misma consulta" -->
 
 #### Scenario: Consulta con trámite o seña vigente
 - **WHEN** la consulta tiene un trámite o una seña vigente y el cliente se interesa en otro auto
 - **THEN** sigue en la misma consulta con el auto nuevo, el trámite o la seña no se tocan, y el asesor recibe el aviso
-<!-- test: FALTA -->
+<!-- test: src/agente/consultas-por-auto.test.js › "con un trámite o una seña vigente sigue en la misma consulta y no los toca" -->
 
 #### Scenario: Una sola consulta vigente
 - **WHEN** el cliente cambia de auto dos veces dentro del plazo
 - **THEN** sigue teniendo una sola consulta vigente
-<!-- test: FALTA -->
+<!-- test: src/agente/consultas-por-auto.test.js › "dos cambios seguidos siguen siendo una sola consulta" -->
 
 ### Requirement: El cliente vuelve a escribir en una consulta atendida
 Si llega un mensaje del cliente a una consulta marcada como atendida, el sistema MUST volverla a pendiente,
@@ -234,7 +241,7 @@ caracteres raros MUST ignorarse.
 #### Scenario: Consulta ya abierta, por otro auto
 - **WHEN** la consulta abierta es por otro auto y llega un mensaje de la web por un auto disponible
 - **THEN** sigue en la misma consulta con el auto nuevo (ver Otro auto dentro del plazo sigue en la misma consulta)
-<!-- test: FALTA -->
+<!-- test: src/agente/atender.test.js › "desde la web por otro auto dentro del plazo: sigue en la misma consulta, con el auto nuevo y el aviso" -->
 
 #### Scenario: Auto que ya no está
 - **WHEN** la ref es de un auto que ya no está disponible

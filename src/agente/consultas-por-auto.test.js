@@ -1,170 +1,175 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { consultaPorAuto } from "./consultas-por-auto.js";
-import { repartoFalso } from "./reparto-de-prueba.js";
+import { cambiarAuto } from "./consultas-por-auto.js";
 
-const asesor = (id, datos = {}) => ({ id, slug: `asesor-${id}`, activo: true, deleted_at: null, recibe_consultas: true, ...datos });
-const ASESORES = [asesor(1), asesor(2), asesor(3), asesor(8, { activo: false }), asesor(9, { deleted_at: new Date("2026-10-01T00:00:00Z") })];
-
-// Base simulada con las consultas (`chat_estado`) y los usados del cliente en memoria.
-function baseFalsa({ sesiones = [], usados = [], vendedores = ASESORES } = {}) {
-  const reparto = repartoFalso({ vendedores });
-  const e = { sesiones: sesiones.map((s) => ({ ...s })), usados: [...usados], creadas: [], updates: [], usadosCreados: [] };
+// Base simulada con las consultas (`chat_estado`) y los autos en memoria. Las tablas que
+// no están (usado, trámites, señas) revientan si se tocan, salvo las que se piden en `espiadas`,
+// que registran el acceso.
+function baseFalsa({ sesiones = [], autos = [], espiadas = [], ingresos = [], senas = [] } = {}) {
+  const e = { sesiones: sesiones.map((s) => ({ ...s })), creadas: [], updates: [], otras: [], ingresos, senas, escriturasAjenas: [] };
   const db = {
     estado: e,
-    reparto: reparto.estado,
-    ...reparto.tablas,
-    $transaction: (fn) => reparto.transaccion(db, fn),
     chat_estado: {
       findUnique: async ({ where }) => e.sesiones.find((s) => s.id === where.id) ?? null,
-      findFirst: async ({ where }) =>
-        e.sesiones
-          .filter((s) => s.cliente_id === where.cliente_id && s.auto_id === where.auto_id && s.ultimo_mensaje >= where.ultimo_mensaje.gte)
-          .sort((a, b) => b.id - a.id)[0] ?? null,
-      create: async ({ data }) => {
-        const nueva = { id: 900 + e.sesiones.length + 1, ...data };
-        e.sesiones.push(nueva);
-        e.creadas.push(nueva);
-        return nueva;
-      },
+      create: async ({ data }) => (e.creadas.push(data), { id: 999, ...data }),
       update: async ({ where, data }) => (e.updates.push({ where, data }), { id: where.id, ...data }),
     },
-    vehiculo_cliente: {
-      findFirst: async ({ where }) => e.usados.find((u) => u.sesion_id === where.sesion_id && u.contexto === where.contexto && !u.deleted_at) ?? null,
-      create: async ({ data }) => (e.usadosCreados.push(data), data),
-    },
+    autos: { findFirst: async ({ where }) => autos.find((a) => a.id === where.id) ?? null },
   };
+  // Trámites (consignacion_ingresos) y señas: se pueden leer, pero cualquier escritura se registra.
+  const tabla = (filas) =>
+    new Proxy({}, {
+      get: (_, metodo) => async (args) => {
+        if (/^(create|update|delete|upsert)/.test(metodo)) e.escriturasAjenas.push({ metodo, args });
+        return /^find/.test(metodo) ? filas : null;
+      },
+    });
+  db.consignacion_ingresos = tabla(ingresos);
+  db.senas = tabla(senas);
+  for (const tabla of espiadas) {
+    db[tabla] = new Proxy({}, { get: (_, metodo) => async (args) => (e.otras.push({ tabla, metodo, args }), null) });
+  }
   return db;
 }
 
-const ahora = new Date("2026-10-31T15:00:00Z");
-const hace = (horas) => new Date(ahora.getTime() - horas * 3_600_000);
+const ahora = new Date("2026-11-14T15:00:00Z");
+const antes = new Date("2026-11-10T12:00:00Z");
 
-const consultaDelGol = {
-  id: 900, cliente_id: 50, auto_id: 5, origen: "web", vendedor_id: 3, atribuido: true, ultimo_mensaje: ahora,
-  pago_tipo: "financiado", anticipo: "3 millones", cuotas: null, credito_ok: 1, entrega_usado: 1,
-  decisor: "solo", decisor_con: null, disponibilidad: "esta_semana",
-  visita_propuesta: "sábado a la mañana", requiere_vendedor: true, score: 10, clasificacion: "CALIENTE",
-};
-const usadoDelGol = { id: 1, sesion_id: 900, contexto: "trade_in", marca: "Volkswagen", modelo: "Gol", anio: 2015, kms: "90000", detalles: null, precio_pedido: "No sabe", deleted_at: null };
+const gol = { id: 5, ref: "G5", marca: "Volkswagen", modelo: "Gol", anio: 2015 };
+const peugeot = { id: 7, ref: "A12B", marca: "Peugeot", modelo: "208", anio: 2021 };
+const AUTOS = [gol, peugeot];
 
-test("otro auto sin consulta: abre una nueva con las respuestas de la persona, el usado y el mismo asesor", async () => {
-  const db = baseFalsa({ sesiones: [consultaDelGol], usados: [usadoDelGol] });
-
-  const id = await consultaPorAuto({ db, clienteId: 50, sesionId: 900, ahora }, 7);
-
-  const [nueva] = db.estado.creadas;
-  assert.equal(id, nueva.id);
-  assert.notEqual(id, 900);
-  assert.equal(nueva.cliente_id, 50);
-  assert.equal(nueva.auto_id, 7);
-  assert.deepEqual(
-    { origen: nueva.origen, vendedor_id: nueva.vendedor_id, atribuido: nueva.atribuido },
-    { origen: "web", vendedor_id: 3, atribuido: true },
-    "mismo asesor y mismo origen"
-  );
-  assert.deepEqual(
-    [nueva.pago_tipo, nueva.anticipo, nueva.credito_ok, nueva.entrega_usado, nueva.decisor, nueva.disponibilidad],
-    ["financiado", "3 millones", 1, 1, "solo", "esta_semana"],
-    "copia las respuestas de la persona"
-  );
-  assert.equal(nueva.visita_propuesta, undefined, "la visita era por el otro auto");
-  assert.equal(nueva.requiere_vendedor, undefined, "el aviso al vendedor era por el otro auto");
-  assert.deepEqual(nueva.ultimo_mensaje, ahora);
-  assert.equal(nueva.score, 10);
-  assert.equal(nueva.clasificacion, "CALIENTE");
-
-  const [usado] = db.estado.usadosCreados;
-  assert.deepEqual(
-    { ...usado },
-    { sesion_id: id, contexto: "trade_in", marca: "Volkswagen", modelo: "Gol", anio: 2015, kms: "90000", detalles: null, precio_pedido: "No sabe" }
-  );
-  assert.deepEqual(db.estado.updates, [], "la consulta del Gol no se toca");
+const consultaDelGol = (datos = {}) => ({
+  id: 900, cliente_id: 50, auto_id: 5, origen: "web", vendedor_id: 3, atribuido: true, ultimo_mensaje: antes,
+  pago_tipo: "contado", anticipo: null, credito_ok: null, entrega_usado: 1, decisor: "solo", decisor_con: null, disponibilidad: "esta_semana",
+  visita_propuesta: "sábado a la mañana", requiere_vendedor: false, requiere_vendedor_motivo: null,
+  score: 2, clasificacion: "FRIO", atendido_at: null, atendido_por: null, orden_at: antes,
+  ...datos,
 });
 
-test("otro auto con consulta abierta: la retoma y le completa lo que faltaba de la persona", async () => {
-  const delGol = { id: 900, cliente_id: 50, auto_id: 5, ultimo_mensaje: hace(2), pago_tipo: null, credito_ok: null, decisor: "consulta", disponibilidad: null };
-  const delCronos = { id: 901, cliente_id: 50, auto_id: 7, ultimo_mensaje: ahora, pago_tipo: "contado", decisor: "solo", disponibilidad: "proximas" };
-  const db = baseFalsa({ sesiones: [delGol, delCronos] });
+const cambio = async (consulta, autoId = 7, extra = {}) => {
+  const db = baseFalsa({ sesiones: [consulta], autos: AUTOS, ...extra });
+  const id = await cambiarAuto({ db, sesionId: consulta.id, ahora }, autoId);
+  return { db, id };
+};
 
-  const id = await consultaPorAuto({ db, clienteId: 50, sesionId: 901, ahora }, 5);
+test("otro auto: sigue en la misma consulta y un solo update trae el auto nuevo, la temperatura, el aviso y el orden", async () => {
+  const { db, id } = await cambio(consultaDelGol({ atendido_at: antes, atendido_por: 3 }));
 
-  assert.equal(id, 900);
-  assert.deepEqual(db.estado.creadas, [], "no abre otra");
+  assert.equal(id, 900, "devuelve el mismo sesionId");
+  assert.deepEqual(db.estado.creadas, [], "no abre otra consulta");
+  assert.equal(db.estado.updates.length, 1, "todo en un solo update");
   const [{ where, data }] = db.estado.updates;
   assert.equal(where.id, 900);
-  assert.equal(data.pago_tipo, "contado");
-  assert.equal(data.disponibilidad, "proximas");
-  assert.equal("decisor" in data, false, "no pisa lo que ya había respondido en esa consulta");
-  assert.equal(data.score, 5);
-  assert.equal(data.clasificacion, "TIBIO");
+  assert.deepEqual(data, {
+    auto_id: 7,
+    score: 11,
+    clasificacion: "CALIENTE",
+    requiere_vendedor: true,
+    requiere_vendedor_motivo: "Ahora le interesa Peugeot 208 2021, antes Volkswagen Gol 2015",
+    requiere_vendedor_at: ahora,
+    atendido_at: null,
+    atendido_por: null,
+    orden_at: ahora,
+  });
 });
 
-test("una consulta de ese auto de hace más de 24 h no se retoma", async () => {
-  const vieja = { id: 900, cliente_id: 50, auto_id: 7, ultimo_mensaje: hace(30) };
-  const actual = { id: 901, cliente_id: 50, auto_id: 5, ultimo_mensaje: ahora };
-  const db = baseFalsa({ sesiones: [vieja, actual] });
+test("el motivo del aviso se recorta a 120 caracteres", async () => {
+  const largo = { id: 7, ref: "L7", marca: "Marca", modelo: "M".repeat(200), anio: 2020 };
+  const db = baseFalsa({ sesiones: [consultaDelGol()], autos: [gol, largo] });
 
-  const id = await consultaPorAuto({ db, clienteId: 50, sesionId: 901, ahora }, 7);
+  await cambiarAuto({ db, sesionId: 900, ahora }, 7);
 
-  assert.notEqual(id, 900);
-  assert.equal(db.estado.creadas.length, 1);
+  const { requiere_vendedor_motivo } = db.estado.updates[0].data;
+  assert.equal(requiere_vendedor_motivo.length, 120);
+  assert.ok(requiere_vendedor_motivo.startsWith("Ahora le interesa Marca MMM"));
 });
 
-// ── Asesor de la consulta que se abre o se retoma (reparto por turnos) ──
+test("el aviso se pone aunque la consulta ya estuviera marcada por otro motivo, y lo pisa", async () => {
+  const marcada = consultaDelGol({ requiere_vendedor: true, requiere_vendedor_motivo: "Quiere reservar", requiere_vendedor_at: antes });
+  const { db } = await cambio(marcada);
+  const { data } = db.estado.updates[0];
+  assert.equal(data.requiere_vendedor, true);
+  assert.equal(data.requiere_vendedor_motivo, "Ahora le interesa Peugeot 208 2021, antes Volkswagen Gol 2015");
+  assert.deepEqual(data.requiere_vendedor_at, ahora);
+});
 
-const CON_ASESOR = (vendedor_id, atribuido) => ({ ...consultaDelGol, vendedor_id, atribuido });
-const asesorDe = (db) => ({ vendedor_id: db.estado.creadas[0].vendedor_id, atribuido: db.estado.creadas[0].atribuido });
+test("si estaba atendida, vuelve a pendiente: atendido_at y atendido_por quedan en null", async () => {
+  const { db } = await cambio(consultaDelGol({ atendido_at: antes, atendido_por: 3 }));
+  const { data } = db.estado.updates[0];
+  assert.equal(data.atendido_at, null);
+  assert.equal(data.atendido_por, null);
+});
 
-test("otro auto sin consulta: si el asesor ya no está activo o fue borrado, la nueva va por turno", async () => {
-  for (const inactivo of [8, 9]) {
-    const db = baseFalsa({ sesiones: [CON_ASESOR(inactivo, true)] });
-    await consultaPorAuto({ db, clienteId: 50, sesionId: 900, ahora }, 7);
-    assert.deepEqual(asesorDe(db), { vendedor_id: 1, atribuido: false }, `asesor ${inactivo}`);
-    assert.equal(db.reparto.configuracion.reparto_ultimo_vendedor, "1");
+test("sube en la lista: orden_at es el momento del cambio", async () => {
+  const { db } = await cambio(consultaDelGol());
+  assert.deepEqual(db.estado.updates[0].data.orden_at, ahora);
+});
+
+test("recalcula la temperatura con el auto nuevo y las respuestas de siempre", async () => {
+  // Guardada como FRIO con 2 puntos; con auto (2) + contado (3) + entrega usado (1) + decide solo (2) + esta semana (3) son 11.
+  const { db } = await cambio(consultaDelGol({ score: 2, clasificacion: "FRIO" }));
+  const { data } = db.estado.updates[0];
+  assert.equal(data.score, 11);
+  assert.equal(data.clasificacion, "CALIENTE");
+});
+
+test("el mismo auto no escribe nada", async () => {
+  const { db, id } = await cambio(consultaDelGol(), 5);
+  assert.equal(id, 900);
+  assert.deepEqual(db.estado.updates, []);
+  assert.deepEqual(db.estado.creadas, []);
+});
+
+test("una consulta sin auto recibe el auto y la temperatura, sin aviso", async () => {
+  const sinAuto = consultaDelGol({ auto_id: null, pago_tipo: null, entrega_usado: null, decisor: null, disponibilidad: null, score: 0 });
+  const { db, id } = await cambio(sinAuto);
+
+  assert.equal(id, 900);
+  assert.equal(db.estado.updates.length, 1);
+  const { where, data } = db.estado.updates[0];
+  assert.equal(where.id, 900);
+  assert.deepEqual(data, { auto_id: 7, score: 2, clasificacion: "FRIO" });
+  for (const campo of ["requiere_vendedor", "requiere_vendedor_motivo", "requiere_vendedor_at", "atendido_at", "atendido_por", "orden_at"]) {
+    assert.equal(campo in data, false, `no toca ${campo}`);
   }
 });
 
-test("otro auto sin consulta: si la consulta actual no tiene asesor, la nueva va por turno", async () => {
-  const db = baseFalsa({ sesiones: [CON_ASESOR(null, false)] });
-  await consultaPorAuto({ db, clienteId: 50, sesionId: 900, ahora }, 7);
-  assert.deepEqual(asesorDe(db), { vendedor_id: 1, atribuido: false });
+test("no toca las respuestas, el usado, la visita ni el asesor", async () => {
+  const { db } = await cambio(consultaDelGol(), 7, { espiadas: ["vehiculo_cliente"] });
+  const { data } = db.estado.updates[0];
+  for (const campo of ["pago_tipo", "anticipo", "credito_ok", "entrega_usado", "decisor", "decisor_con", "disponibilidad", "visita_propuesta", "visita_propuesta_at", "vendedor_id", "atribuido", "origen"]) {
+    assert.equal(campo in data, false, `no toca ${campo}`);
+  }
+  assert.deepEqual(db.estado.otras, [], "el usado no se mira ni se copia");
 });
 
-test("otro auto sin consulta: heredar al asesor activo no gasta turno", async () => {
-  const db = baseFalsa({ sesiones: [CON_ASESOR(2, false)] });
-  await consultaPorAuto({ db, clienteId: 50, sesionId: 900, ahora }, 7);
-  assert.deepEqual(asesorDe(db), { vendedor_id: 2, atribuido: false });
-  assert.equal(db.reparto.configuracion.reparto_ultimo_vendedor, null, "el puntero no se movió");
+test("dos cambios seguidos siguen siendo una sola consulta", async () => {
+  const db = baseFalsa({ sesiones: [consultaDelGol()], autos: AUTOS });
+
+  const primero = await cambiarAuto({ db, sesionId: 900, ahora }, 7);
+  db.estado.sesiones[0].auto_id = 7; // como queda en la base tras el primer update
+  const segundo = await cambiarAuto({ db, sesionId: 900, ahora }, 5);
+
+  assert.deepEqual([primero, segundo], [900, 900]);
+  assert.deepEqual(db.estado.creadas, [], "no hay ningún create");
+  assert.deepEqual(db.estado.updates.map((u) => [u.where.id, u.data.auto_id]), [[900, 7], [900, 5]]);
+  assert.equal(db.estado.updates[1].data.requiere_vendedor_motivo, "Ahora le interesa Volkswagen Gol 2015, antes Peugeot 208 2021");
 });
 
-test("otro auto sin consulta: el link de otro asesor gana al heredado", async () => {
-  const db = baseFalsa({ sesiones: [CON_ASESOR(2, true)] });
-  await consultaPorAuto({ db, clienteId: 50, sesionId: 900, ahora, asesorLink: { vendedor_id: 1, atribuido: true } }, 7);
-  assert.deepEqual(asesorDe(db), { vendedor_id: 1, atribuido: true });
-  assert.equal(db.reparto.configuracion.reparto_ultimo_vendedor, null, "el link no gasta turno");
-});
-
-test("otro auto con consulta abierta: el link de un asesor se la queda aunque fuera de otro", async () => {
-  const delGol = { id: 900, cliente_id: 50, auto_id: 5, vendedor_id: 2, atribuido: true, ultimo_mensaje: hace(2) };
-  const delCronos = { id: 901, cliente_id: 50, auto_id: 7, vendedor_id: 2, atribuido: true, ultimo_mensaje: ahora };
-  const db = baseFalsa({ sesiones: [delGol, delCronos] });
-
-  const id = await consultaPorAuto({ db, clienteId: 50, sesionId: 901, ahora, asesorLink: { vendedor_id: 1, atribuido: true } }, 5);
+test("con un trámite o una seña vigente sigue en la misma consulta y no los toca", async () => {
+  const tramite = { id: 31, cliente_id: 50, sesion_id: 900, auto_interes_id: 5, estado: "recepcion", estado_at: antes, deleted_at: null };
+  const sena = { id: 41, cliente_id: 50, auto_id: 5, sesion_id: 900, estado: "vigente", vence: new Date("2026-11-20"), ingreso_id: null, deleted_at: null };
+  const antesTramite = structuredClone(tramite);
+  const antesSena = structuredClone(sena);
+  const { db, id } = await cambio(consultaDelGol(), 7, { ingresos: [tramite], senas: [sena] });
 
   assert.equal(id, 900);
-  const cambio = db.estado.updates.find((u) => u.where.id === 900);
-  assert.deepEqual({ vendedor_id: cambio.data.vendedor_id, atribuido: cambio.data.atribuido }, { vendedor_id: 1, atribuido: true });
-});
-
-test("otro auto con consulta abierta: sin link no se toca el asesor de la que se retoma", async () => {
-  const delGol = { id: 900, cliente_id: 50, auto_id: 5, vendedor_id: 2, atribuido: true, ultimo_mensaje: hace(2), pago_tipo: null };
-  const delCronos = { id: 901, cliente_id: 50, auto_id: 7, vendedor_id: 3, atribuido: false, ultimo_mensaje: ahora, pago_tipo: "contado" };
-  const db = baseFalsa({ sesiones: [delGol, delCronos] });
-
-  await consultaPorAuto({ db, clienteId: 50, sesionId: 901, ahora }, 5);
-
-  const [{ data }] = db.estado.updates;
-  assert.equal("vendedor_id" in data, false);
-  assert.equal("atribuido" in data, false);
+  assert.deepEqual(db.estado.creadas, []);
+  assert.deepEqual(db.estado.escriturasAjenas, [], "ningún create/update/delete sobre trámites ni señas");
+  assert.deepEqual(db.estado.ingresos, [antesTramite], "el trámite sigue idéntico");
+  assert.deepEqual(db.estado.senas, [antesSena], "la seña sigue idéntica");
+  assert.equal(db.estado.updates.length, 1);
+  assert.equal(db.estado.updates[0].where.id, 900);
+  assert.equal(db.estado.updates[0].data.requiere_vendedor, true, "el asesor recibe el aviso");
 });

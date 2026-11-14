@@ -14,7 +14,7 @@ import { SIN_VERIFICACION } from "../credito/verificacion.js";
 // (identificados por el número de WhatsApp). Así ninguna herramienta puede
 // consultar ni tocar datos de otra persona.
 //
-// ctx = { db, clienteId, sesionId, urlPublica, ahora, cobranza, consultaPorAuto, credito }
+// ctx = { db, clienteId, sesionId, urlPublica, ahora, cobranza, cambiarAuto, credito }
 // `cobranza` = { financiacionId, avisoId } si el número recibió un recordatorio de cuota.
 // `credito` = { registrarConsentimiento(acepta), verificar(cuil) }: la verificación con el
 // BCRA, atada a este cliente por el backend (src/credito/verificacion.js).
@@ -145,13 +145,13 @@ async function autoDeInteres(db, codigo) {
   return { autoId: auto.id };
 }
 
-// Una consulta por auto: si el cliente se interesa en otro auto, sus respuestas van
-// a la consulta de ese auto, que abre o retoma el backend (`ctx.consultaPorAuto`).
+// Si el cliente se interesa en otro auto, la misma consulta cambia de auto y avisa al
+// asesor (`ctx.cambiarAuto`, lo hace el backend); sus respuestas van a esa consulta.
 async function consultaDelAuto(ctx, autoId) {
-  if (!autoId || !ctx.consultaPorAuto) return ctx.sesionId;
+  if (!autoId || !ctx.cambiarAuto) return ctx.sesionId;
   const actual = await ctx.db.chat_estado.findUnique({ where: { id: ctx.sesionId }, select: { auto_id: true } });
   if (actual?.auto_id == null || actual.auto_id === autoId) return ctx.sesionId;
-  return ctx.consultaPorAuto(ctx.sesionId, autoId);
+  return ctx.cambiarAuto(ctx.sesionId, autoId);
 }
 
 // Con la visita acordada, el vendedor queda avisado para esperarlo con el auto listo.

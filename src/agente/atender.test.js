@@ -588,17 +588,19 @@ test("desde la web con la consulta abierta sin auto: el auto de la web pasa a se
   assert.ok(root.estado.updates.some((u) => u.where.id === 1 && u.data.auto_id === 5 && u.data.score === 2 && u.data.clasificacion === "FRIO"));
 });
 
-test("desde la web por otro auto con la consulta abierta: abre otra consulta para ese auto", async () => {
-  const root = baseFalsa({ sesion: { id: 1, ultimo_mensaje: ahora, auto_id: 9, pago_tipo: "contado" }, autos: [peugeot] });
+test("desde la web por otro auto dentro del plazo: sigue en la misma consulta, con el auto nuevo y el aviso", async () => {
+  const gol = { id: 9, ref: "G9", marca: "Volkswagen", modelo: "Gol", anio: 2015, disponible: true };
+  const root = baseFalsa({ sesion: { id: 1, ultimo_mensaje: ahora, auto_id: 9, pago_tipo: "contado" }, autos: [gol, peugeot] });
   await atenderMensaje({ telefono: TEL, texto: DE_LA_WEB, ahora }, deps(root));
-  const nueva = root.estado.sesiones.find((s) => s.auto_id === 5);
-  assert.ok(nueva, "abre la consulta del Peugeot");
-  assert.equal(nueva.pago_tipo, "contado", "con las respuestas de la persona");
-  assert.equal(root.estado.updates.some((u) => u.where.id === 1 && "auto_id" in u.data), false, "no pisa el auto de la otra consulta");
-  assert.equal(root.estado.updates.at(-1).where.id, nueva.id, "el turno se cierra en la consulta nueva");
+  assert.equal(root.estado.sesiones.length, 1, "no abre otra consulta");
+  const cambio = root.estado.updates.find((u) => u.where.id === 1 && u.data.auto_id === 5);
+  assert.ok(cambio, "la misma consulta pasa al Peugeot");
+  assert.equal(cambio.data.requiere_vendedor, true);
+  assert.equal(cambio.data.requiere_vendedor_motivo, "Ahora le interesa Peugeot 208 2021, antes Volkswagen Gol 2015");
+  assert.equal(root.estado.updates.at(-1).where.id, 1, "el turno se cierra en la misma consulta");
 });
 
-test("el turno se cierra en la consulta del auto que quedó activo", async () => {
+test("el turno se cierra en la misma consulta cuando la IA registra otro auto", async () => {
   const root = baseFalsa({ sesion: { id: 1, ultimo_mensaje: ahora, auto_id: 9 }, autos: [peugeot] });
   const respuestas = [
     { stop_reason: "tool_use", usage: {}, content: [{ type: "tool_use", id: "t1", name: "registrar_calificacion", input: { auto_ref: "A12B" } }] },
@@ -608,11 +610,31 @@ test("el turno se cierra en la consulta del auto que quedó activo", async () =>
 
   await atenderMensaje({ telefono: TEL, texto: "Mejor el Peugeot 208", ahora }, { ...deps(root, anthropic), dbAgente: root });
 
-  const nueva = root.estado.sesiones.find((s) => s.auto_id === 5);
-  assert.ok(nueva, "la IA registró otro auto: hay consulta por el Peugeot");
+  assert.equal(root.estado.sesiones.length, 1, "la IA registró otro auto: sigue la misma consulta");
   const cierre = root.estado.updates.at(-1);
-  assert.equal(cierre.where.id, nueva.id);
+  assert.equal(cierre.where.id, 1);
   assert.deepEqual(cierre.data.ultimo_mensaje, ahora);
+});
+
+test("la IA registra otro auto en una consulta atendida: vuelve a pendiente y sube", async () => {
+  const gol = { id: 9, ref: "G9", marca: "Volkswagen", modelo: "Gol", anio: 2015, disponible: true };
+  const atendida = { id: 1, ultimo_mensaje: hace(3), auto_id: 9, atendido_at: hace(48), atendido_por: 2, orden_at: hace(48) };
+  const root = baseFalsa({ sesion: atendida, autos: [gol, peugeot] });
+  const respuestas = [
+    { stop_reason: "tool_use", usage: {}, content: [{ type: "tool_use", id: "t1", name: "registrar_calificacion", input: { auto_ref: "A12B" } }] },
+    { stop_reason: "end_turn", usage: {}, content: [{ type: "text", text: "¡Buenísimo el 208!" }] },
+  ];
+  const anthropic = { messages: { create: async () => respuestas.shift() } };
+
+  await atenderMensaje({ telefono: TEL, texto: "Mejor el Peugeot 208", ahora }, { ...deps(root, anthropic), dbAgente: root });
+
+  assert.equal(root.estado.sesiones.length, 1, "sigue la misma consulta");
+  const cambio = root.estado.updates.find((u) => u.where.id === 1 && "requiere_vendedor_motivo" in u.data);
+  assert.ok(cambio, "se marca el cambio de auto");
+  assert.equal(cambio.data.atendido_at, null);
+  assert.equal(cambio.data.atendido_por, null);
+  assert.deepEqual(cambio.data.orden_at, ahora);
+  assert.equal(cambio.data.requiere_vendedor_motivo, "Ahora le interesa Peugeot 208 2021, antes Volkswagen Gol 2015");
 });
 
 test("la conversación sigue en la consulta del último mensaje", async () => {
@@ -986,20 +1008,14 @@ test("desde la web por el mismo auto con otro asesor: la consulta abierta pasa a
   assert.deepEqual(cambiosDeAsesor(root, 1), [[PEPITO.id, true]]);
 });
 
-test("desde la web por otro auto con el link de Pepito: la consulta nueva es de Pepito y la anterior no se toca", async () => {
-  const root = baseConConsulta(consultaAbierta({ auto_id: 9, vendedor_id: JUAN.id, atribuido: true }));
+test("desde la web por otro auto con el link de Pepito: sigue la misma consulta, con el auto nuevo, y queda de Pepito", async () => {
+  const gol = { id: 9, ref: "G9", marca: "Volkswagen", modelo: "Gol", anio: 2015, disponible: true };
+  const root = baseConConsulta(consultaAbierta({ auto_id: 9, vendedor_id: JUAN.id, atribuido: true }), { autos: [gol, peugeot] });
   await atenderMensaje({ telefono: TEL, texto: `${DE_LA_WEB} [AS:pepito]`, ahora }, deps(root));
-  const nueva = root.estado.sesiones.find((s) => s.auto_id === peugeot.id);
-  assert.deepEqual(asignacion(nueva), [PEPITO.id, true]);
-  assert.deepEqual(cambiosDeAsesor(root, 1), []);
-  assert.equal(root.reparto.configuracion.reparto_ultimo_vendedor, null);
-});
-
-test("desde la web por otro auto sin link: la consulta nueva sigue con el asesor de la anterior", async () => {
-  const root = baseConConsulta(consultaAbierta({ auto_id: 9, vendedor_id: JUAN.id, atribuido: true }));
-  await atenderMensaje({ telefono: TEL, texto: DE_LA_WEB, ahora }, deps(root));
-  const nueva = root.estado.sesiones.find((s) => s.auto_id === peugeot.id);
-  assert.deepEqual(asignacion(nueva), [JUAN.id, true]);
+  assert.equal(root.estado.sesiones.length, 1, "no abre otra consulta");
+  assert.ok(root.estado.updates.some((u) => u.where.id === 1 && u.data.auto_id === peugeot.id), "con el auto nuevo");
+  assert.deepEqual(cambiosDeAsesor(root, 1).at(-1), [PEPITO.id, true], "queda de Pepito");
+  assert.equal(root.reparto.configuracion.reparto_ultimo_vendedor, null, "el link no gasta turno");
 });
 
 test("si el turno falla, la consulta se crea igual sin asesor y el mensaje se guarda y se responde", async (t) => {

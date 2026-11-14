@@ -93,3 +93,46 @@ Qué se hizo en cada tarea de la fase 2 y por qué. Rama `feat/huecos-del-bot` (
   aplica: la consulta nueva solo se abre con 30 días o más sin mensajes). Ronda 2: aprobado, sin hallazgos.
 - **Verificación (local):** tests congelados intactos (hash); `atender.test.js` 93/93; suite 1278, falla solo el
   previo de las anclas.
+
+## Tarea 4 — Otro auto dentro del plazo sigue en la misma consulta (2026-11-14)
+
+- **Qué:**
+  - `consultas-por-auto.js`: `consultaPorAuto` (abría o retomaba OTRA consulta por cada auto) se reemplaza por
+    `cambiarAuto({ db, sesionId, ahora }, autoId)`, que corre con el usuario del backend y devuelve siempre la
+    misma consulta. Mismo auto: nada. Sin auto previo: auto y temperatura. Otro auto: un solo update con el auto,
+    la temperatura, el aviso "Ahora le interesa <nuevo>, antes <anterior>" (recortado a 120), pendiente
+    (`atendido_at`/`atendido_por` en null) y `orden_at = ahora`. No toca respuestas, usado, visita, asesor,
+    trámites ni señas.
+  - `herramientas.js` (`registrar_calificacion`) y `atender.js` (`conAutoDeLaWeb`, el `ctx` del turno) usan
+    `cambiarAuto`.
+  - `descripcionDelAuto` pasó de `atender.js` a `auto-publico.js` (exportada) para evitar un import circular.
+- **Tests:** `consultas-por-auto.test.js` reescrito (11 tests de `cambiarAuto`); en `herramientas`, `atender` y
+  `agente` se reemplazaron los de la regla vieja.
+- **Tests viejos borrados y su reemplazo:**
+  - `consultas-por-auto.test.js`: "otro auto sin consulta: abre una nueva..." → "otro auto: sigue en la misma
+    consulta y un solo update trae el auto nuevo, la temperatura, el aviso y el orden" + "no toca las respuestas,
+    el usado, la visita ni el asesor"; "otro auto con consulta abierta: la retoma y le completa..." → "dos
+    cambios seguidos siguen siendo una sola consulta"; "una consulta de ese auto de hace más de 24 h no se
+    retoma" → sin reemplazo (el plazo ya no se decide en ese módulo: tarea 2); los 3 de "la nueva va por
+    turno" / "heredar no gasta turno" → sin reemplazo (no se abre consulta nueva y el asesor no se toca); los 2 de
+    link → "desde la web por otro auto con el link de Pepito: sigue la misma consulta, con el auto nuevo, y queda
+    de Pepito" (atender); "sin link no se toca el asesor de la que se retoma" → "no toca las respuestas, el usado,
+    la visita ni el asesor".
+  - `herramientas.test.js`: "registrar_calificacion con otro auto registra en la consulta de ese auto y no toca
+    la anterior" → "registrar_calificacion con otro auto cambia el auto de la misma consulta y registra las
+    respuestas en ella".
+  - `atender.test.js`: "desde la web por otro auto con la consulta abierta: abre otra consulta para ese auto" →
+    "desde la web por otro auto dentro del plazo: sigue en la misma consulta, con el auto nuevo y el aviso"; "el
+    turno se cierra en la consulta del auto que quedó activo" → "el turno se cierra en la misma consulta cuando la
+    IA registra otro auto"; "...con el link de Pepito: la consulta nueva es de Pepito y la anterior no se toca" →
+    "...sigue la misma consulta, con el auto nuevo, y queda de Pepito"; "desde la web por otro auto sin link: la
+    consulta nueva sigue con el asesor de la anterior" → sin reemplazo propio (misma consulta, el asesor no
+    cambia). Nuevo: "la IA registra otro auto en una consulta atendida: vuelve a pendiente y sube".
+  - `agente.test.js`: adaptado a `cambiarAuto` (las escrituras siguientes del turno siguen en la misma consulta).
+- **Revisión de Codex:** tests en 2 rondas (ronda 1: un puntaje esperado mal sumado, 10 en vez de 11, que habría
+  rechazado un código correcto; el doble de trámite/seña sin registros vigentes). Diff: aprobado con 1 media
+  que no se aplicó: si en un turno la IA registra otro auto, el contexto inicial de ese turno nombra el auto
+  anterior. Ya pasaba con la regla vieja (no es regresión) y el auto nuevo lo eligió la propia IA; queda como
+  observación.
+- **Verificación (local):** tests congelados intactos (hash); los 4 archivos 198/198; suite 1280, falla solo el
+  previo de las anclas.

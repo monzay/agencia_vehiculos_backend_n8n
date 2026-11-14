@@ -271,7 +271,7 @@ test("enviar_fotos_auto devuelve las fotos con dirección completa", async () =>
 test("pedir fotos de otro auto no abre una consulta", async () => {
   const db = baseFalsa({ "autos.findFirst": auto() });
   const pedidos = [];
-  const r = await ejecutarHerramienta("enviar_fotos_auto", { ref: "12" }, ctx(db, { consultaPorAuto: async (...args) => pedidos.push(args) }));
+  const r = await ejecutarHerramienta("enviar_fotos_auto", { ref: "12" }, ctx(db, { cambiarAuto: async (...args) => pedidos.push(args) }));
   assert.equal(r.esError, false);
   assert.deepEqual(pedidos, []);
   assert.equal(r.sesionId, undefined);
@@ -511,37 +511,36 @@ test("registrar_calificacion actualiza solo la sesión del cliente y calcula la 
   assert.equal("clasificacion" in r.resultado, false, "la IA no recibe la temperatura");
 });
 
-// Una consulta por auto: el backend abre o retoma la consulta del otro auto
-// (`consultaPorAuto`, con su usuario de base) y la herramienta sigue en esa.
-const espiaDeConsultas = (idDelOtroAuto) => {
+// Otro auto dentro del plazo sigue en la misma consulta: el backend cambia el auto de la consulta
+// (`cambiarAuto`, con su usuario de base: recalcula, avisa al asesor y la sube) y devuelve el
+// mismo id; la herramienta registra las respuestas en esa misma consulta.
+const espiaDeConsultas = () => {
   const pedidos = [];
-  return { pedidos, consultaPorAuto: async (sesionId, autoId) => (pedidos.push({ sesionId, autoId }), idDelOtroAuto) };
+  return { pedidos, cambiarAuto: async (sesionId, autoId) => (pedidos.push({ sesionId, autoId }), sesionId) };
 };
 
-test("registrar_calificacion con otro auto registra en la consulta de ese auto y no toca la anterior", async () => {
-  const consultas = { 900: { id: 900, auto_id: 5 }, 901: { id: 901, auto_id: 7, pago_tipo: null } };
+test("registrar_calificacion con otro auto cambia el auto de la misma consulta y registra las respuestas en ella", async () => {
   const db = baseFalsa({
     "autos.findFirst": { id: 7 },
-    "chat_estado.findUnique": ({ where }) => consultas[where.id],
+    "chat_estado.findUnique": { id: 900, auto_id: 5, pago_tipo: null },
     "chat_estado.update": (a) => a,
     "vehiculo_cliente.findFirst": null,
   });
-  const espia = espiaDeConsultas(901);
+  const espia = espiaDeConsultas();
 
   const r = await ejecutarHerramienta("registrar_calificacion", { ...calificacionVacia, auto_ref: "7", pago_tipo: "contado" }, ctx(db, espia));
 
   assert.deepEqual(espia.pedidos, [{ sesionId: 900, autoId: 7 }]);
   const updates = db.llamadas.filter((l) => l.modelo === "chat_estado" && l.metodo === "update");
-  assert.deepEqual(updates.map((u) => u.args.where.id), [901], "solo se escribe en la consulta del otro auto");
+  assert.deepEqual(updates.map((u) => u.args.where.id), [900], "se escribe en la misma consulta, no en otra");
   assert.equal(updates[0].args.data.pago_tipo, "contado");
-  assert.equal(r.sesionId, 901, "el resto del turno sigue en la consulta nueva");
   assert.equal("sesionId" in r.resultado, false, "la IA no recibe ids de consultas");
 });
 
 test("registrar_calificacion con el mismo auto, o si la consulta no tenía auto, sigue en la misma consulta", async () => {
   for (const consulta of [{ id: 900, auto_id: 7 }, { id: 900, auto_id: null }]) {
     const db = baseFalsa({ "autos.findFirst": { id: 7 }, "chat_estado.findUnique": consulta, "chat_estado.update": (a) => a, "vehiculo_cliente.findFirst": null });
-    const espia = espiaDeConsultas(901);
+    const espia = espiaDeConsultas();
 
     const r = await ejecutarHerramienta("registrar_calificacion", { ...calificacionVacia, auto_ref: "7" }, ctx(db, espia));
 

@@ -41,8 +41,9 @@ const entrada = (consumos = []) => ({
   registrarConsumo: async (c) => consumos.push(c),
 });
 
-test("si una herramienta cambia de consulta, las siguientes del turno usan la nueva y la respuesta la informa", async () => {
+test("si una herramienta cambia el auto de la consulta, las siguientes del turno siguen en la misma consulta", async () => {
   const updates = [];
+  const cambios = [];
   const dbConsultas = {
     autos: { findFirst: async () => ({ id: 7 }) },
     chat_estado: {
@@ -56,12 +57,12 @@ test("si una herramienta cambia de consulta, las siguientes del turno usan la nu
     pideHerramienta(["t2", "derivar_a_vendedor", { motivo: "quiere reservar" }]),
     texto("Listo, te paso con un asesor."),
   ]);
-  const r = await responderConIA(
-    { ...entrada(), ctx: { ...ctx, db: dbConsultas, consultaPorAuto: async () => 901 } },
+  await responderConIA(
+    { ...entrada(), ctx: { ...ctx, db: dbConsultas, cambiarAuto: async (sesionId, autoId) => (cambios.push([sesionId, autoId]), sesionId) } },
     { anthropic }
   );
-  assert.deepEqual(updates.map((u) => u.where.id), [901, 901], "registrar y derivar escriben en la consulta del auto nuevo");
-  assert.equal(r.sesionId, 901);
+  assert.deepEqual(cambios, [[900, 7]]);
+  assert.deepEqual(updates.map((u) => u.where.id), [900, 900], "registrar y derivar escriben en la misma consulta");
 });
 
 test("responde con el texto de Claude y registra el costo de la llamada", async () => {

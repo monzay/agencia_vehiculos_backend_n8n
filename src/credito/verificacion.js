@@ -9,7 +9,7 @@ import { versionVigente } from "../services/terminos.service.js";
 // - Siempre activa (decisión del dueño del 03/11/2026: no se puede apagar). Solo hace falta
 //   que la agencia haya publicado sus términos, porque sin ellos no hay qué aceptar, y un
 //   "sí" vigente del cliente (Ley 25.326, art. 5 y 6).
-// - Corre con el usuario de base del backend, como `consultaPorAuto`: el del agente no
+// - Corre con el usuario de base del backend, como `cambiarAuto`: el del agente no
 //   tiene permisos sobre estas tablas.
 
 const FINALIDAD = "consulta_crediticia";

@@ -3,10 +3,10 @@ import { responderConIA } from "./agente.js";
 import { duracionOgg, transcribirConGroq, MODELO_GROQ } from "./audio.js";
 import { LIMITES, MENSAJES_FIJOS, decidirAtencion, audioPermitido, historialParaClaude, recortar } from "./limites.js";
 import { puntaje, clasificar, pendientes, respondido } from "./calificacion.js";
-import { consultaPorAuto } from "./consultas-por-auto.js";
+import { cambiarAuto } from "./consultas-por-auto.js";
 import { asesorDelLink, asesorParaConsultaNueva, cambioDeAsesor } from "./reparto.js";
 import { datosDeLaWeb, linkDelCatalogo } from "./origen-web.js";
-import { whereDisponible } from "./auto-publico.js";
+import { whereDisponible, descripcionDelAuto } from "./auto-publico.js";
 import { enviosDeRespuesta, REACCION_CIERRE } from "./envios.js";
 import { debeReaccionar } from "./cierre.js";
 import { juntarRafaga, ESPERA_RAFAGA_MS } from "./rafagas.js";
@@ -81,8 +81,6 @@ function deAUno(clave, tarea) {
   return actual;
 }
 
-const descripcionDelAuto = (auto) => [auto.marca, auto.modelo, auto.anio].filter(Boolean).join(" ");
-
 // El auto del mensaje predefinido de la web: si está disponible pasa a ser el de
 // interés; si no, el agente lo sabe y ofrece parecidos.
 async function autoDeLaWeb(root, ref) {
@@ -96,11 +94,11 @@ async function autoDeLaWeb(root, ref) {
 }
 
 // Desde la web por un auto: si la consulta abierta no tenía auto, ese pasa a ser el
-// de interés y suma sus puntos; si era por otro, va en su propia consulta.
-async function conAutoDeLaWeb(root, { sesion, clienteId, ahora, asesorLink }, auto) {
+// de interés y suma sus puntos; si era por otro, la misma consulta cambia de auto y avisa al asesor.
+async function conAutoDeLaWeb(root, { sesion, ahora }, auto) {
   if (!auto?.disponible || sesion.auto_id === auto.id) return sesion;
   if (sesion.auto_id != null) {
-    const id = await consultaPorAuto({ db: root, clienteId, sesionId: sesion.id, ahora, asesorLink }, auto.id);
+    const id = await cambiarAuto({ db: root, sesionId: sesion.id, ahora }, auto.id);
     return root.chat_estado.findUnique({ where: { id } });
   }
   const conAuto = { ...sesion, auto_id: auto.id };
@@ -119,7 +117,7 @@ async function conAsesorDelLink(root, sesion, link) {
 }
 
 // La conversación sigue en la misma sesión mientras haya actividad en los
-// últimos 30 días; si no, empieza una nueva. Con una consulta por auto, sigue en la
+// últimos 30 días; si no, empieza una nueva. Sigue en la
 // del último mensaje. La consulta nueva sin link de un asesor va por turno (ver reparto.js);
 // una abierta sin asesor no se reparte en mitad de la charla.
 async function sesionDe(root, clienteId, ahora, web) {
@@ -128,7 +126,7 @@ async function sesionDe(root, clienteId, ahora, web) {
   const actividad = ultima?.ultimo_mensaje ?? ultima?.sesion_inicio;
   const vigente = actividad && ahora - new Date(actividad) < SESION_VIGENTE_MS;
   if (vigente) {
-    const sesion = await conAutoDeLaWeb(root, { sesion: ultima, clienteId, ahora, asesorLink: link }, web.auto);
+    const sesion = await conAutoDeLaWeb(root, { sesion: ultima, ahora }, web.auto);
     return conAsesorDelLink(root, sesion, link);
   }
   // Nace fría, con los puntos de lo que ya se sabe (el auto si viene de la web).
@@ -340,8 +338,8 @@ async function responderConAgente(turno, imagenes, deps) {
         sesionId: sesion.id,
         urlPublica: process.env.PUBLIC_WEB_URL,
         ahora,
-        // Abrir o retomar la consulta de otro auto: con el usuario del backend, solo para este cliente.
-        consultaPorAuto: (sesionId, autoId) => consultaPorAuto({ db: root, clienteId: cliente.id, sesionId, ahora }, autoId),
+        // Cambiar el auto de la consulta (y avisar al asesor): con el usuario del backend.
+        cambiarAuto: (sesionId, autoId) => cambiarAuto({ db: root, sesionId, ahora }, autoId),
         cobranza: turno.cobranza && { financiacionId: turno.cobranza.financiacionId, avisoId: turno.cobranza.avisoId },
         // Verificación con el BCRA: con el usuario del backend, solo para este cliente.
         credito: {

@@ -43,7 +43,7 @@ producción.
     › La IA ve solo la charla de la consulta en curso (charla vencida, charla dentro del plazo, consultas
     superpuestas de antes, muchos mensajes de antes).
 
-- [ ] 4. Otro auto dentro del plazo sigue en la misma consulta
+- [x] 4. Otro auto dentro del plazo sigue en la misma consulta
   - Qué: reemplaza `consultaPorAuto` en `atender.js` y `herramientas.js`. El aviso usa `requiere_vendedor`;
     pasa a pendiente con `atendido_at = NULL`; sube con `orden_at`.
   - Criterio: los escenarios de `agente-conversacion` › Otro auto dentro del plazo sigue en la misma
