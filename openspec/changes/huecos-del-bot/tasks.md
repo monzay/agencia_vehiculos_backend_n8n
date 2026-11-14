@@ -14,7 +14,7 @@ producción.
   - Criterio: cada uno figura en `git log` de `main` antes de archivarlo; `openspec archive <cambio> --yes`
     termina sin errores; en el diff de `openspec/specs/` ningún requisito tocado por dos cambios pierde
     texto; `openspec validate huecos-del-bot --strict` pasa. Va en su propio commit, sin código. 
-    
+     
 
 - [x] 1. Migración 084
   - Qué: `sesiones.orden_at` (NOT NULL, con índice, relleno = `sesion_inicio`). Las filas con `sesion_inicio`
@@ -65,7 +65,7 @@ producción.
   - Criterio: `agente-conversacion` › Consultas que llegan desde la web (el asesor nuevo la recibe completa,
     el link del mismo asesor, consulta ya abierta por otro auto) y los tests de link que ya existían, en verde.
 
-- [ ] 7. Orden de la lista de Consultas
+- [x] 7. Orden de la lista de Consultas
   - Qué: en `consultas.service.js`, los listados que hoy ordenan por `sesion_inicio desc` pasan a
     `orden_at desc`, con desempate por `id desc`. La consulta nueva nace con `orden_at = ahora` (en `sesionDe`);
     las tareas 4, 5 y 6 lo actualizan; las consultas que ya existían lo traen de la migración 084

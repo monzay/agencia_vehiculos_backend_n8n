@@ -498,3 +498,126 @@ test("el detalle muestra el CUIL de la ficha entre los datos de la consulta", as
   assert.deepEqual(pedido.include.clientes, { select: { cuil: true } }, "de la ficha pide solo el CUIL");
   assert.deepEqual(detalle.respuestas.filter((r) => r.pregunta.includes("CUIL")), [{ pregunta: "CUIL en la ficha", respuesta: "20-12345678-6" }]);
 });
+
+// ── Orden de la lista de Consultas ──
+
+const ORDEN_DE_LA_LISTA = [{ orden_at: "desc" }, { id: "desc" }];
+
+// Ordena por los campos escalares de estos tests (fechas como Date y números), según el
+// `orderBy` recibido. Las fechas se comparan como número. `orden_at` es NOT NULL en la base
+// (migración 084, DEFAULT CURRENT_TIMESTAMP): una fila de prueba sin él es un error del test.
+function ordenarComoLaBase(filas, orderBy) {
+  const criterios = (Array.isArray(orderBy) ? orderBy : [orderBy]).filter(Boolean).flatMap((o) => Object.entries(o));
+  const valor = (fila, campo) => {
+    const v = fila[campo];
+    if (campo === "orden_at" && (v === null || v === undefined)) {
+      throw new Error(`la fila ${fila.id} no trae orden_at: la columna es NOT NULL en la base (migración 084)`);
+    }
+    return v instanceof Date ? v.getTime() : v;
+  };
+  return [...filas].sort((a, b) => {
+    for (const [campo, sentido] of criterios) {
+      const x = valor(a, campo);
+      const y = valor(b, campo);
+      if (x === y) continue;
+      return (x < y ? -1 : 1) * (sentido === "desc" ? -1 : 1);
+    }
+    return 0;
+  });
+}
+
+function conBaseQueOrdena(t, sesiones) {
+  const original = prisma.chat_estado.findMany;
+  const originalCount = prisma.chat_estado.count;
+  prisma.chat_estado.findMany = async ({ orderBy }) => ordenarComoLaBase(sesiones, orderBy);
+  prisma.chat_estado.count = async () => sesiones.length;
+  const autosOriginal = prisma.autos.findMany;
+  const vendedoresOriginal = prisma.vendedores.findMany;
+  prisma.autos.findMany = async () => [];
+  prisma.vendedores.findMany = async () => [];
+  t.after(() => {
+    prisma.chat_estado.findMany = original;
+    prisma.chat_estado.count = originalCount;
+    prisma.autos.findMany = autosOriginal;
+    prisma.vendedores.findMany = vendedoresOriginal;
+  });
+}
+
+const hoy = new Date("2026-11-14T12:00:00Z");
+const hace = (dias) => new Date(hoy.getTime() - dias * 86_400_000);
+
+test("la lista de Consultas se ordena por orden_at desc y, si empatan, por id desc", async (t) => {
+  const pedidos = conBase(t);
+  await listarConsultas({ alcance: TODAS });
+  assert.deepEqual(pedidos[0].orderBy, ORDEN_DE_LA_LISTA);
+});
+
+test("la lista de ventas y consignaciones se ordena por orden_at desc y, si empatan, por id desc", async (t) => {
+  const pedidos = conBase(t);
+  await listarConsultasVenta({ alcance: TODAS });
+  assert.deepEqual(pedidos[0].orderBy, ORDEN_DE_LA_LISTA);
+});
+
+test("las consultas hermanas del detalle siguen ordenadas por sesion_inicio asc (calculan la ventana de mensajes)", async (t) => {
+  const pedidos = [];
+  const sesiones = sesionesDeUnaPersona;
+  conDetalle(t, { sesiones });
+  const original = prisma.chat_estado.findMany;
+  prisma.chat_estado.findMany = async (args) => (pedidos.push(args), sesiones.map(({ id, sesion_inicio }) => ({ id, sesion_inicio })));
+  t.after(() => { prisma.chat_estado.findMany = original; });
+
+  await obtenerConsulta("2", TODAS);
+
+  assert.deepEqual(pedidos[0].orderBy, { sesion_inicio: "asc" });
+});
+
+test("Sube por otro auto: una consulta de hace 20 días que cambió de auto hoy sale primera, antes de las abiertas en los últimos días", async (t) => {
+  conBaseQueOrdena(t, [
+    sesion(1, { sesion_inicio: hace(2), orden_at: hace(2) }),
+    sesion(2, { sesion_inicio: hace(20), orden_at: hoy, auto_id: 7 }), // cambió de auto hoy
+    sesion(3, { sesion_inicio: hace(1), orden_at: hace(1) }),
+    sesion(4, { sesion_inicio: hace(5), orden_at: hace(5) }),
+  ]);
+
+  const { items } = await listarConsultas({ alcance: TODAS });
+
+  assert.deepEqual(items.map((i) => i.sesionId), [2, 3, 1, 4]);
+});
+
+test("Sube porque el cliente volvió a escribir: una consulta atendida de hace 20 días con un mensaje hoy sale primera", async (t) => {
+  conBaseQueOrdena(t, [
+    sesion(1, { sesion_inicio: hace(2), orden_at: hace(2) }),
+    sesion(2, { sesion_inicio: hace(20), orden_at: hoy, atendido_at: hace(15), atendido_por: 2 }), // volvió a pendiente
+    sesion(3, { sesion_inicio: hace(1), orden_at: hace(1) }),
+  ]);
+
+  const { items } = await listarConsultas({ alcance: TODAS });
+
+  assert.deepEqual(items.map((i) => i.sesionId), [2, 3, 1]);
+});
+
+test("con el mismo orden_at, sale primero la consulta de id mayor (desempate id desc)", async (t) => {
+  conBaseQueOrdena(t, [
+    sesion(5, { orden_at: hace(3) }),
+    sesion(9, { orden_at: hace(3) }),
+    sesion(7, { orden_at: hace(1) }),
+    sesion(2, { orden_at: hace(3) }),
+  ]);
+
+  const { items } = await listarConsultas({ alcance: TODAS });
+
+  assert.deepEqual(items.map((i) => i.sesionId), [7, 9, 5, 2]);
+});
+
+test("la lista de ventas y consignaciones sale por orden_at desc y, con el mismo orden_at, por id desc", async (t) => {
+  conBaseQueOrdena(t, [
+    sesion(1, { tipo_lead: "venta", orden_at: hace(10) }),
+    sesion(4, { tipo_lead: "venta", orden_at: hace(4) }),
+    sesion(3, { tipo_lead: "venta", orden_at: hoy, sesion_inicio: hace(30) }),
+    sesion(6, { tipo_lead: "venta", orden_at: hace(4) }),
+  ]);
+
+  const { items } = await listarConsultasVenta({ alcance: TODAS });
+
+  assert.deepEqual(items.map((i) => i.sesionId), [3, 6, 4, 1]);
+});

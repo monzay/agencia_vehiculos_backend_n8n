@@ -360,6 +360,12 @@ test("la sesión nueva nace con ultimo_mensaje (así vence a los 30 días)", asy
   assert.deepEqual(root.estado.sesiones[0].ultimo_mensaje, ahora);
 });
 
+test("la consulta nueva nace con orden_at igual al ahora del turno (sube al abrirse)", async () => {
+  const root = baseFalsa({ cliente: { id: 50 } });
+  await atenderMensaje({ telefono: "5493885550101", texto: "Hola", ahora }, deps(root));
+  assert.deepEqual(root.estado.sesiones[0].orden_at, ahora);
+});
+
 test("la consulta nueva nace con 0 puntos y fría", async () => {
   const root = baseFalsa({ cliente: { id: 50 } });
   await atenderMensaje({ telefono: "5493885550101", texto: "Hola", ahora }, deps(root));

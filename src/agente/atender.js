@@ -153,6 +153,7 @@ async function sesionDe(root, clienteId, ahora, web) {
       origen: web.ref ? "web" : "whatsapp",
       sesion_inicio: ahora,
       ultimo_mensaje: ahora,
+      orden_at: ahora,
       ...inicial,
       score: puntaje(inicial),
       clasificacion: clasificar(inicial),

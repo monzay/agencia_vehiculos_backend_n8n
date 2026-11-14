@@ -100,7 +100,9 @@ export async function listarConsultas({ limite = 20, offset = 0, q = "", clasif 
         },
         ...INCLUDE_AVANCE,
       },
-      orderBy: { sesion_inicio: "desc" }, // consultas más recientes primero
+      // La lista sube lo que tuvo novedad (se abrió, cambió de auto, el cliente volvió a escribir
+      // en una atendida, pasó a otro asesor por link).
+      orderBy: [{ orden_at: "desc" }, { id: "desc" }],
       skip,
       take: take + 1,
     }),
@@ -176,7 +178,8 @@ export async function listarConsultasVenta({ limite = 10, offset = 0, q = "", mo
     prisma.chat_estado.findMany({
       where,
       include: { clientes: true, vehiculo_cliente: true },
-      orderBy: { sesion_inicio: "desc" },
+      // Misma regla que la lista principal: sube lo que tuvo novedad.
+      orderBy: [{ orden_at: "desc" }, { id: "desc" }],
       skip,
       take: take + 1,
     }),

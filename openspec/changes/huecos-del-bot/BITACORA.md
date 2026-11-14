@@ -186,3 +186,23 @@ Qué se hizo en cada tarea de la fase 2 y por qué. Rama `feat/huecos-del-bot` (
   otras comparaciones al milisegundo en lo cambiado por las tareas 2 a 6.
 - **Verificación (local):** tests congelados intactos (hash, después del test de las fechas); `atender.test.js`
   112/112; suite 1299, falla solo el previo de las anclas.
+
+## Tarea 7 — Orden de la lista de Consultas (2026-11-14)
+
+- **Qué:** en `consultas.service.js`, la lista principal de Consultas y la de ventas/consignaciones pasan de
+  `sesion_inicio desc` a `orden_at desc, id desc`; el `sesion_inicio asc` de las consultas hermanas del detalle
+  (ventana de mensajes) no cambia. En `sesionDe`, la consulta nueva nace con `orden_at = ahora`. `orden_at` lo
+  suben `cambiarAuto` (tarea 4), `vuelveAEscribir` (tarea 5) y `conAsesorDelLink` (tarea 6); las consultas viejas
+  lo traen de la migración 084. El front no reordena: usa el orden del backend.
+- **Tests (`consultas.service.test.js`):** el `orderBy` de las dos listas, la guarda de las hermanas, "sube por
+  otro auto", "sube porque el cliente volvió a escribir", desempate por id y la salida de ventas, con un doble
+  que ordena según el `orderBy` (y falla si una fila trae `orden_at` vacío: la columna es NOT NULL).
+  `atender.test.js`: la consulta nueva nace con `orden_at = ahora`. El escenario "Consultas que ya existían"
+  apunta al test de la migración que la aplica dos veces.
+- **Revisión de Codex:** tests en 2 rondas (ronda 1: el doble no definía qué hacer con `orden_at` vacío, faltaban
+  el desempate y la salida de ventas). Diff: ronda 1 marcó como alta que las novedades no subían `orden_at`,
+  porque solo vio el diff de esta tarea (falsa alarma: lo hacen las tareas 4 a 6; se le mostró el `grep`).
+  Ronda 2: aprobado, sin hallazgos.
+- **Observación para el user:** la consulta que sube sigue mostrando su fecha de inicio (`hora` en el mapper); el
+  aviso sí trae la fecha de la novedad. No está en el plan.
+- **Verificación (local):** tests congelados intactos (hash); suite 1307, falla solo el previo de las anclas.
