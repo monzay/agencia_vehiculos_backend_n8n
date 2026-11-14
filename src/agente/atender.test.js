@@ -347,7 +347,7 @@ test("entradas inválidas se rechazan sin tocar nada: imagen que no es foto, má
   }
 });
 
-test("la sesión nueva nace con ultimo_mensaje (así vence a las 24 h)", async () => {
+test("la sesión nueva nace con ultimo_mensaje (así vence a los 30 días)", async () => {
   const root = baseFalsa({ cliente: { id: 50 } });
   await atenderMensaje({ telefono: "5493885550101", texto: "Hola", ahora }, deps(root));
   assert.deepEqual(root.estado.sesiones[0].ultimo_mensaje, ahora);
@@ -360,14 +360,40 @@ test("la consulta nueva nace con 0 puntos y fría", async () => {
   assert.equal(root.estado.sesiones[0].clasificacion, "FRIO");
 });
 
-test("una sesión de hace 25 h no se reutiliza; una de hace 23 h, sí", async () => {
-  const hace = (h) => new Date(ahora.getTime() - h * 3_600_000);
-  const vieja = baseFalsa({ cliente: { id: 50 }, sesion: { id: 1, ultimo_mensaje: hace(25) } });
+const haceDias = (d) => new Date(ahora.getTime() - d * 86_400_000);
+
+test("una consulta con el último mensaje de hace 31 días no se reutiliza; una de hace 29 días, sí", async () => {
+  const vieja = baseFalsa({ cliente: { id: 50 }, sesion: { id: 1, ultimo_mensaje: haceDias(31) } });
   await atenderMensaje({ telefono: "5493885550101", texto: "Hola", ahora }, deps(vieja));
   assert.equal(vieja.estado.sesiones.length, 2);
-  const reciente = baseFalsa({ cliente: { id: 50 }, sesion: { id: 1, ultimo_mensaje: hace(23) } });
+  const reciente = baseFalsa({ cliente: { id: 50 }, sesion: { id: 1, ultimo_mensaje: haceDias(29) } });
   await atenderMensaje({ telefono: "5493885550101", texto: "Hola", ahora }, deps(reciente));
   assert.equal(reciente.estado.sesiones.length, 1);
+  assert.equal(reciente.estado.sesiones[0].id, 1, "es la misma consulta, sin create");
+  assert.equal(reciente.estado.updates.at(-1).where.id, 1, "el turno se cierra en esa consulta");
+});
+
+test("con el último mensaje de hace exactamente 30 días se abre una consulta nueva", async () => {
+  const root = baseFalsa({ cliente: { id: 50 }, sesion: { id: 1, ultimo_mensaje: haceDias(30) } });
+  await atenderMensaje({ telefono: TEL, texto: "Hola", ahora }, deps(root));
+  assert.equal(root.estado.sesiones.length, 2, "30 días justos ya vence");
+  assert.deepEqual(root.estado.sesiones[1].ultimo_mensaje, ahora);
+});
+
+test("quien vuelve a los 10 días sigue en la misma consulta, con su asesor, y la IA recibe lo ya respondido", async () => {
+  const consulta = { id: 1, cliente_id: 50, ultimo_mensaje: haceDias(10), auto_id: 5, pago_tipo: "contado", entrega_usado: 0, decisor: null, vendedor_id: 2, atribuido: true };
+  const root = baseFalsa({ cliente: { id: 50 }, sesion: consulta, autos: [{ id: 5, ref: "A12B", marca: "Peugeot", modelo: "208", anio: 2021, disponible: true }], vendedores: [{ id: 2, slug: "juan", activo: true, deleted_at: null, recibe_consultas: true }] });
+  const anthropic = claudeFalso();
+  await atenderMensaje({ telefono: TEL, texto: "Hola, sigo interesado", ahora }, deps(root, anthropic));
+  assert.equal(root.estado.sesiones.length, 1, "no se crea otra consulta");
+  assert.equal(root.estado.updates.at(-1).where.id, 1, "el turno se cierra en la misma");
+  assert.equal(root.estado.updates.some((u) => "vendedor_id" in u.data), false, "conserva su asesor");
+  assert.equal(root.estado.sesiones[0].vendedor_id, 2);
+  const contexto = anthropic.pedidos[0].system.at(-1).text;
+  assert.match(contexto, /Ya respondió: paga contado; no entrega usado/);
+  const faltan = contexto.match(/Falta averiguar[^\n]*/)?.[0] ?? "";
+  assert.doesNotMatch(faltan, /forma de pago/, "la forma de pago no figura como faltante");
+  assert.doesNotMatch(faltan, /si entrega un usado/, "si entrega usado no figura como faltante");
 });
 
 test("con mensaje fijo, una sesión ya marcada para vendedor no se vuelve a marcar", async () => {
@@ -895,7 +921,7 @@ test("si ningún asesor participa, la consulta queda sin asignar", async () => {
 });
 
 test("una consulta vencida no sigue con su asesor: la nueva va por turno", async () => {
-  const root = baseConConsulta(consultaAbierta({ ultimo_mensaje: hace(30), vendedor_id: JUAN.id, atribuido: true }));
+  const root = baseConConsulta(consultaAbierta({ ultimo_mensaje: haceDias(31), vendedor_id: JUAN.id, atribuido: true }));
   await atenderMensaje({ telefono: TEL, texto: "Hola de nuevo", ahora }, deps(root));
   const nueva = root.estado.sesiones.find((s) => s.id !== 1);
   assert.deepEqual(asignacion(nueva), [PEPITO.id, false]);

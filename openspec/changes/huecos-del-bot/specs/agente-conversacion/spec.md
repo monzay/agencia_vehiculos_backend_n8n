@@ -64,22 +64,22 @@ consultas vigentes, el mensaje MUST caer en la del último mensaje.
 #### Scenario: Último mensaje de hace 29 o 31 días
 - **WHEN** el último mensaje fue hace 29 días, y en otro caso hace 31 días
 - **THEN** a los 29 días se reutiliza la consulta; a los 31 se abre una nueva
-<!-- test: FALTA -->
+<!-- test: src/agente/atender.test.js › "una consulta con el último mensaje de hace 31 días no se reutiliza; una de hace 29 días, sí" -->
 
 #### Scenario: 30 días justos
 - **WHEN** el último mensaje fue hace exactamente 30 días
 - **THEN** se abre una consulta nueva
-<!-- test: FALTA -->
+<!-- test: src/agente/atender.test.js › "con el último mensaje de hace exactamente 30 días se abre una consulta nueva" -->
 
 #### Scenario: Vuelve a los 10 días
 - **WHEN** un cliente que ya dijo cómo paga y si entrega usado vuelve a los 10 días
 - **THEN** sigue en la misma consulta, con el mismo asesor, y a la IA le llega que eso ya está respondido
-<!-- test: FALTA -->
+<!-- test: src/agente/atender.test.js › "quien vuelve a los 10 días sigue en la misma consulta, con su asesor, y la IA recibe lo ya respondido" -->
 
 #### Scenario: Consulta nueva
 - **WHEN** se abre una consulta
 - **THEN** nace con `ultimo_mensaje`, así vence a los 30 días
-<!-- test: FALTA -->
+<!-- test: src/agente/atender.test.js › "la sesión nueva nace con ultimo_mensaje (así vence a los 30 días)" -->
 
 ### Requirement: Otro auto dentro del plazo sigue en la misma consulta
 Si la IA registra otro auto disponible (`registrar_calificacion`) o el cliente llega desde la web con su

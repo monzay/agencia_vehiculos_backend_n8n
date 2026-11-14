@@ -42,4 +42,30 @@ Qué se hizo en cada tarea de la fase 2 y por qué. Rama `feat/huecos-del-bot` (
   ni build.
 - **Pendiente:** `prisma generate` falló con EPERM porque el backend de desarrollo (puerto 4000) tiene tomado el
   motor. Hay que correrlo con el backend parado antes de la tarea 2 (hasta entonces el cliente no conoce
-  `orden_at`; las altas igual toman el DEFAULT de la base).
+  `orden_at`; las altas igual toman el DEFAULT de la base). **Resuelto antes de la tarea 2:** se paró el backend
+  de desarrollo, `prisma generate` corrió bien (el cliente ya conoce `orden_at`) y se volvió a levantar con el
+  mismo comando (`cmd /c npm run dev > backend_dev.log 2> backend_dev.err` en `web/backend`; `/health` 200).
+
+## Tarea 2 — La consulta dura 30 días (2026-11-14)
+
+- **Qué:** en `atender.js`, `SESION_VIGENTE_MS` pasa de 24 h a 30 días (se mantiene el `<`: con 30 días justos,
+  consulta nueva) y su comentario. No se tocaron la ventana de 24 h de WhatsApp (`VENTANA_ATENCION_MS`, regla de
+  Meta), `VIGENTE_MS` de `consultas-por-auto.js` (tarea 4) ni `VENTANA_INTENTOS_MS`.
+- **Tests (`atender.test.js`), escritos antes con Sonnet:**
+  - nuevo "una consulta con el último mensaje de hace 31 días no se reutiliza; una de hace 29 días, sí"
+    (reemplaza al de 25 y 23 horas; comprueba que la de 29 días es la misma id);
+  - nuevo "con el último mensaje de hace exactamente 30 días se abre una consulta nueva" (frontera: pasaba
+    también con 24 h, detecta un `<=`);
+  - nuevo "quien vuelve a los 10 días sigue en la misma consulta, con su asesor, y la IA recibe lo ya respondido";
+  - renombrado "la sesión nueva nace con ultimo_mensaje (así vence a los 30 días)";
+  - adaptado "una consulta vencida no sigue con su asesor: la nueva va por turno" (de 30 horas a 31 días).
+- **Verificador de anclas (`src/openspec-anclas.test.js`):** ya no revisa `openspec/changes/archive/**`
+  (historial) ni, en `openspec/specs/`, los requisitos que un cambio activo REMUEVE o MODIFICA (las anclas del
+  cambio activo sí). Sin esto, reemplazar los tests de la regla de 24 h lo hacía fallar hasta el archivado final.
+  Cinco tests nuevos con specs de ejemplo.
+- **Revisión de los tests por Codex:** sin altas. Se aplicaron 2 bajas (la de 29 días es la misma id; ancla
+  rota antes del bloque omitido). No se aplicaron: la consulta nueva de 31 días sin respuestas y por turno (es
+  la tarea 3, con sus tests); nombres de requisito duplicados (OpenSpec no los permite).
+- **Verificación (local):** tests congelados intactos (hash); `atender.test.js` 84/84; suite 1269 tests, falla
+  solo el previo de las anclas. Claude corrigió una concordancia en el comentario ("en los últimos 30 días").
+  Revisión del diff por Codex: aprobado, sin hallazgos.

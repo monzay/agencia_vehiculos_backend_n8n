@@ -23,7 +23,7 @@ producción.
   - Criterio: se aplica dos veces en local sin error (idempotente); `schema.prisma` coincide;
     `npx prisma validate` pasa; los tests que ya existían siguen en verde.
 
-- [ ] 2. La consulta dura 30 días
+- [x] 2. La consulta dura 30 días
   - Qué: en `atender.js`, `SESION_VIGENTE_MS` pasa de 24 horas a 30 días; `sesionDe` sigue eligiendo la
     consulta del cliente con el último mensaje más reciente, y la reutiliza si `ahora - ultimo_mensaje` es
     menor que 30 días. Las otras 24 horas del código: `VIGENTE_MS` de `consultas-por-auto.js` desaparece en

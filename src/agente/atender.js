@@ -26,7 +26,7 @@ import { crearClienteBcra } from "../credito/bcra.js";
 // Corre con el usuario de base del backend (`root`); el agente usa el suyo, limitado.
 
 const DESFASE_AR_MS = 3 * 3_600_000;
-const SESION_VIGENTE_MS = 24 * 3_600_000;
+const SESION_VIGENTE_MS = 30 * 24 * 3_600_000;
 const MAX_TEXTO_WHATSAPP = 4096;
 const MAX_ARCHIVO_BASE64 = 7_000_000; // ~5 MB, el máximo que acepta Claude por imagen
 const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
@@ -118,8 +118,8 @@ async function conAsesorDelLink(root, sesion, link) {
   return { ...sesion, ...cambio };
 }
 
-// La conversación sigue en la misma sesión mientras haya actividad en las
-// últimas 24 h; si no, empieza una nueva. Con una consulta por auto, sigue en la
+// La conversación sigue en la misma sesión mientras haya actividad en los
+// últimos 30 días; si no, empieza una nueva. Con una consulta por auto, sigue en la
 // del último mensaje. La consulta nueva sin link de un asesor va por turno (ver reparto.js);
 // una abierta sin asesor no se reparte en mitad de la charla.
 async function sesionDe(root, clienteId, ahora, web) {
