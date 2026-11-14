@@ -619,7 +619,7 @@ test("el turno se cierra en la misma consulta cuando la IA registra otro auto", 
 test("la IA registra otro auto en una consulta atendida: vuelve a pendiente y sube", async () => {
   const gol = { id: 9, ref: "G9", marca: "Volkswagen", modelo: "Gol", anio: 2015, disponible: true };
   const atendida = { id: 1, ultimo_mensaje: hace(3), auto_id: 9, atendido_at: hace(48), atendido_por: 2, orden_at: hace(48) };
-  const root = baseFalsa({ sesion: atendida, autos: [gol, peugeot] });
+  const root = conUpdatesQueGuardan(baseFalsa({ sesion: atendida, autos: [gol, peugeot] }));
   const respuestas = [
     { stop_reason: "tool_use", usage: {}, content: [{ type: "tool_use", id: "t1", name: "registrar_calificacion", input: { auto_ref: "A12B" } }] },
     { stop_reason: "end_turn", usage: {}, content: [{ type: "text", text: "¡Buenísimo el 208!" }] },
@@ -629,12 +629,12 @@ test("la IA registra otro auto en una consulta atendida: vuelve a pendiente y su
   await atenderMensaje({ telefono: TEL, texto: "Mejor el Peugeot 208", ahora }, { ...deps(root, anthropic), dbAgente: root });
 
   assert.equal(root.estado.sesiones.length, 1, "sigue la misma consulta");
-  const cambio = root.estado.updates.find((u) => u.where.id === 1 && "requiere_vendedor_motivo" in u.data);
-  assert.ok(cambio, "se marca el cambio de auto");
-  assert.equal(cambio.data.atendido_at, null);
-  assert.equal(cambio.data.atendido_por, null);
-  assert.deepEqual(cambio.data.orden_at, ahora);
-  assert.equal(cambio.data.requiere_vendedor_motivo, "Ahora le interesa Peugeot 208 2021, antes Volkswagen Gol 2015");
+  const [consulta] = root.estado.sesiones;
+  assert.equal(consulta.auto_id, 5);
+  assert.equal(consulta.atendido_at, null);
+  assert.equal(consulta.atendido_por, null);
+  assert.deepEqual(consulta.orden_at, ahora);
+  assert.equal(consulta.requiere_vendedor_motivo, "Ahora le interesa Peugeot 208 2021, antes Volkswagen Gol 2015");
 });
 
 test("la conversación sigue en la consulta del último mensaje", async () => {
@@ -1190,4 +1190,167 @@ test("una consulta vigente sin sesion_inicio (de antes del campo) no manda histo
   assert.deepEqual(anthropic.pedidos[0].messages.map((m) => m.role), ["user"], "ninguna charla previa");
   assert.doesNotMatch(lasDeClaude(anthropic), /pago contado|sigo mirando|Cualquier cosa/);
   assert.match(lasDeClaude(anthropic), /Sigue disponible/);
+});
+
+// ── El cliente vuelve a escribir en una consulta atendida ──
+
+// Como la base: el update de la consulta queda guardado y lo que se lea después lo ve.
+function conUpdatesQueGuardan(root) {
+  const registrar = root.chat_estado.update;
+  root.chat_estado.update = async (args) => {
+    const fila = root.estado.sesiones.find((s) => s.id === args.where.id);
+    if (!fila) throw new Error(`No existe la consulta ${args.where.id} en la base simulada.`);
+    await registrar(args);
+    Object.assign(fila, args.data);
+    return args;
+  };
+  return root;
+}
+const tocaElAviso = (u) => ["requiere_vendedor", "requiere_vendedor_motivo", "requiere_vendedor_at", "orden_at", "atendido_at", "atendido_por"].some((c) => c in u.data);
+// Un update que trae el aviso completo de "Volvió a escribir" (puede traer más campos).
+const esElAviso = (u) =>
+  u.where.id === 1 &&
+  u.data.atendido_at === null && u.data.atendido_por === null && u.data.requiere_vendedor === true &&
+  u.data.requiere_vendedor_motivo === "Volvió a escribir" &&
+  u.data.requiere_vendedor_at?.getTime() === ahora.getTime() && u.data.orden_at?.getTime() === ahora.getTime();
+// El estado final de la consulta: nada posterior del turno revirtió el aviso.
+function quedoConElAviso(root) {
+  const [consulta] = root.estado.sesiones;
+  assert.equal(consulta.atendido_at, null);
+  assert.equal(consulta.atendido_por, null);
+  assert.equal(consulta.requiere_vendedor, true);
+  assert.equal(consulta.requiere_vendedor_motivo, "Volvió a escribir");
+  assert.deepEqual(consulta.requiere_vendedor_at, ahora);
+  assert.deepEqual(consulta.orden_at, ahora);
+}
+const consultaAtendida = (extra = {}) => ({ id: 1, cliente_id: 50, ultimo_mensaje: haceDias(10), auto_id: 5, requiere_vendedor: false, atendido_at: haceDias(11), atendido_por: 2, orden_at: haceDias(11), ...extra });
+const autoPeugeot = { id: 5, ref: "A12B", marca: "Peugeot", modelo: "208", anio: 2021, disponible: true };
+
+test("el cliente escribe 10 días después a una consulta atendida por el mismo auto: vuelve a pendiente, marcada 'Volvió a escribir' y arriba, y el agente responde", async () => {
+  const root = conUpdatesQueGuardan(baseFalsa({ cliente: { id: 50 }, sesion: consultaAtendida(), autos: [autoPeugeot] }));
+  const anthropic = claudeFalso("¡Hola de nuevo!");
+  const r = await atenderMensaje({ telefono: TEL, texto: "Hola, sigo interesado", ahora }, deps(root, anthropic));
+  assert.ok(root.estado.updates.some(esElAviso), "hay un update con el aviso completo");
+  const [consulta] = root.estado.sesiones;
+  assert.equal(consulta.atendido_at, null);
+  assert.equal(consulta.atendido_por, null);
+  assert.equal(consulta.requiere_vendedor, true);
+  assert.equal(consulta.requiere_vendedor_motivo, "Volvió a escribir");
+  assert.deepEqual(consulta.requiere_vendedor_at, ahora);
+  assert.deepEqual(consulta.orden_at, ahora);
+  assert.equal(r.conIA, true);
+  assert.equal(r.texto, "¡Hola de nuevo!");
+  assert.equal(anthropic.pedidos.length, 1);
+});
+
+test("el cliente contesta minutos después de que el asesor respondió con el bot en pausa: vuelve a pendiente con el aviso y sube, y el bot sigue en pausa sin responder", async () => {
+  const atendida = consultaAtendida({ ultimo_mensaje: hace(0.1), atendido_at: hace(0.2), orden_at: hace(0.2), bot_pausado: true });
+  const root = baseFalsa({ cliente: { id: 50 }, sesion: atendida, autos: [autoPeugeot] });
+  const anthropic = claudeFalso();
+  const r = await atenderMensaje({ telefono: TEL, texto: "Dale, gracias, ¿a qué hora paso?", ahora }, deps(root, anthropic));
+  const aviso = root.estado.updates.find((u) => u.where.id === 1 && u.data.requiere_vendedor_motivo === "Volvió a escribir");
+  assert.ok(aviso, "se marca 'Volvió a escribir'");
+  assert.equal(aviso.data.requiere_vendedor, true);
+  assert.equal(aviso.data.atendido_at, null);
+  assert.equal(aviso.data.atendido_por, null);
+  assert.deepEqual(aviso.data.requiere_vendedor_at, ahora);
+  assert.deepEqual(aviso.data.orden_at, ahora);
+  assert.equal(r.pausado, true, "el bot sigue en pausa");
+  assert.equal(r.texto, null);
+  assert.equal(r.envios.length, 0);
+  assert.equal(anthropic.pedidos.length, 0, "no llama al agente");
+  assert.ok(root.estado.updates.every((u) => u.data.bot_pausado !== false), "no se reanuda el bot");
+});
+
+test("el cliente escribe a una consulta pendiente: no cambia su motivo ni su orden", async () => {
+  const pendiente = consultaAtendida({ atendido_at: null, atendido_por: null, ultimo_mensaje: hace(5), orden_at: hace(5), requiere_vendedor: true, requiere_vendedor_motivo: "Quiere ver el auto el sábado", requiere_vendedor_at: hace(5) });
+  const root = baseFalsa({ cliente: { id: 50 }, sesion: pendiente, autos: [autoPeugeot] });
+  await atenderMensaje({ telefono: TEL, texto: "Hola, ¿sigue en pie?", ahora }, deps(root));
+  assert.ok(root.estado.updates.length > 0, "el turno se cierra en la consulta");
+  assert.deepEqual(root.estado.updates.filter(tocaElAviso), [], "ningún update toca el motivo, el orden ni la atención");
+  assert.equal(root.estado.sesiones[0].requiere_vendedor_motivo, "Quiere ver el auto el sábado");
+});
+
+test("el cliente de una consulta atendida llega desde la web por otro auto: queda pendiente y arriba con 'Ahora le interesa <nuevo>, antes <anterior>', no 'Volvió a escribir'", async () => {
+  const gol = { id: 9, ref: "G9", marca: "Volkswagen", modelo: "Gol", anio: 2015, disponible: true };
+  const root = conUpdatesQueGuardan(baseFalsa({ cliente: { id: 50 }, sesion: consultaAtendida({ auto_id: 9 }), autos: [gol, autoPeugeot] }));
+  await atenderMensaje({ telefono: TEL, texto: DE_LA_WEB, ahora }, deps(root));
+  const [consulta] = root.estado.sesiones;
+  assert.equal(consulta.auto_id, 5);
+  assert.equal(consulta.requiere_vendedor_motivo, "Ahora le interesa Peugeot 208 2021, antes Volkswagen Gol 2015");
+  assert.equal(consulta.atendido_at, null);
+  assert.equal(consulta.atendido_por, null);
+  assert.deepEqual(consulta.orden_at, ahora);
+  assert.ok(!root.estado.updates.some((u) => u.data.requiere_vendedor_motivo === "Volvió a escribir"), "nunca se marcó 'Volvió a escribir'");
+});
+
+test("el cliente de una consulta atendida le pide otro auto a la IA: el motivo que queda es el del auto, no 'Volvió a escribir'", async () => {
+  const gol = { id: 9, ref: "G9", marca: "Volkswagen", modelo: "Gol", anio: 2015, disponible: true };
+  const root = conUpdatesQueGuardan(baseFalsa({ cliente: { id: 50 }, sesion: consultaAtendida({ auto_id: 9 }), autos: [gol, autoPeugeot] }));
+  const respuestas = [
+    { stop_reason: "tool_use", usage: {}, content: [{ type: "tool_use", id: "t1", name: "registrar_calificacion", input: { auto_ref: "A12B" } }] },
+    { stop_reason: "end_turn", usage: {}, content: [{ type: "text", text: "¡Buenísimo el 208!" }] },
+  ];
+  const anthropic = { messages: { create: async () => respuestas.shift() } };
+  await atenderMensaje({ telefono: TEL, texto: "Mejor el Peugeot 208", ahora }, { ...deps(root, anthropic), dbAgente: root });
+  const [consulta] = root.estado.sesiones;
+  assert.equal(consulta.auto_id, 5);
+  assert.equal(consulta.requiere_vendedor_motivo, "Ahora le interesa Peugeot 208 2021, antes Volkswagen Gol 2015");
+  assert.equal(consulta.atendido_at, null);
+  assert.deepEqual(consulta.orden_at, ahora);
+});
+
+test("el cliente vuelve a los 31 días a una consulta atendida: no se le toca el aviso y se abre una consulta nueva", async () => {
+  const vencida = consultaAtendida({ ultimo_mensaje: haceDias(31) });
+  const root = baseFalsa({ cliente: { id: 50 }, sesion: vencida, autos: [autoPeugeot] });
+  await atenderMensaje({ telefono: TEL, texto: "Hola, ¿sigue el auto?", ahora }, deps(root));
+  assert.equal(root.estado.sesiones.length, 2, "se abre una consulta nueva");
+  assert.deepEqual(root.estado.updates.filter((u) => u.where.id === 1), [], "la consulta vencida no se toca");
+  assert.equal(root.estado.sesiones[0].atendido_at.getTime(), vencida.atendido_at.getTime());
+});
+
+// Los caminos que cortan el turno antes del agente también avisan: el aviso va apenas se conoce la consulta.
+
+test("la BAJA a los recordatorios de cuotas de una consulta atendida la vuelve a pendiente con el aviso, y la baja se hace igual sin IA", async () => {
+  const root = conUpdatesQueGuardan(baseFalsa({ cliente: { id: 50 }, sesion: consultaAtendida({ ultimo_mensaje: hace(2) }), aviso: recordatorio }));
+  const anthropic = claudeFalso();
+  const r = await atenderMensaje({ telefono: TEL, texto: "BAJA", ahora }, deps(root, anthropic));
+  assert.ok(root.estado.updates.some(esElAviso), "hay un update con el aviso completo");
+  quedoConElAviso(root);
+  assert.equal(anthropic.pedidos.length, 0);
+  assert.equal(r.conIA, false);
+  assert.match(r.texto, /no vas a recibir más recordatorios de cuotas/);
+  assert.deepEqual(root.estado.bajas[0].where.id, { in: [12] });
+});
+
+test("el mensaje fijo por falta de cupo a una consulta atendida también la vuelve a pendiente con el aviso, sin IA", async () => {
+  const root = conUpdatesQueGuardan(baseFalsa({ cliente: { id: 50 }, sesion: consultaAtendida({ ultimo_mensaje: hace(2) }), gastoMes: 10 }));
+  const anthropic = claudeFalso();
+  const r = await atenderMensaje({ telefono: TEL, texto: "Hola", ahora }, deps(root, anthropic));
+  assert.ok(root.estado.updates.some(esElAviso), "hay un update con el aviso completo");
+  quedoConElAviso(root);
+  assert.equal(r.conIA, false);
+  assert.equal(r.texto, MENSAJES_FIJOS.sinCupo);
+  assert.equal(anthropic.pedidos.length, 0);
+});
+
+test("la despedida 👍 a una consulta atendida también la vuelve a pendiente con el aviso, y se responde con la reacción sin IA", async () => {
+  const root = conUpdatesQueGuardan(baseFalsa({ cliente: { id: 50 }, sesion: consultaAtendida({ ultimo_mensaje: hace(2), visita_propuesta: "sábado a la mañana" }) }));
+  const anthropic = claudeFalso();
+  const r = await atenderMensaje({ telefono: TEL, wamid: "wamid.CHAU", texto: "dale, gracias!", ahora }, deps(root, anthropic));
+  assert.ok(root.estado.updates.some(esElAviso), "hay un update con el aviso completo");
+  quedoConElAviso(root);
+  assert.deepEqual(r.envios, [{ type: "reaction", reaction: { message_id: "wamid.CHAU", emoji: "👍" } }]);
+  assert.equal(anthropic.pedidos.length, 0);
+});
+
+test("la nota de voz a una consulta atendida también la vuelve a pendiente con el aviso, y el agente responde al texto transcripto", async () => {
+  const root = conUpdatesQueGuardan(baseFalsa({ cliente: { id: 50 }, sesion: consultaAtendida({ ultimo_mensaje: hace(2) }) }));
+  const anthropic = claudeFalso("¡Sí! Tenemos varias.");
+  const groq = groqFalso("Hola, ¿tienen camionetas?", 5);
+  const r = await atenderMensaje({ telefono: TEL, audio: audio(5), ahora }, deps(root, anthropic, groq));
+  assert.ok(root.estado.updates.some(esElAviso), "hay un update con el aviso completo");
+  quedoConElAviso(root);
+  assert.equal(r.texto, "¡Sí! Tenemos varias.");
+  assert.equal(groq.llamadas.length, 1);
 });

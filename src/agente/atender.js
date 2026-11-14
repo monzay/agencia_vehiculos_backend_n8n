@@ -405,6 +405,22 @@ async function responderAudio(base, audio, imagenes, deps, textoPrevio) {
   return responderConAgente({ ...base, entrantes: conUltimo(base.entrantes, transcripcion), entrante: unido, texto: unido }, imagenes, deps);
 }
 
+// Regla "El cliente vuelve a escribir en una consulta atendida": si ya la había atendido
+// una persona, se reabre (sin atender, con aviso al vendedor) antes de cualquier otra cosa.
+async function vuelveAEscribir(root, sesion, ahora) {
+  if (!sesion.atendido_at) return sesion;
+  const cambios = {
+    atendido_at: null,
+    atendido_por: null,
+    requiere_vendedor: true,
+    requiere_vendedor_motivo: "Volvió a escribir",
+    requiere_vendedor_at: ahora,
+    orden_at: ahora,
+  };
+  await root.chat_estado.update({ where: { id: sesion.id }, data: cambios });
+  return { ...sesion, ...cambios };
+}
+
 async function atender(datos, deps) {
   const { root } = deps;
   const ahora = datos.ahora ?? new Date();
@@ -416,7 +432,7 @@ async function atender(datos, deps) {
   );
   const web = datosDeLaWeb(datos.texto);
   const autoWeb = await autoDeLaWeb(root, web.ref);
-  const sesion = await sesionDe(root, cliente.id, ahora, { ...web, auto: autoWeb });
+  const sesion = await vuelveAEscribir(root, await sesionDe(root, cliente.id, ahora, { ...web, auto: autoWeb }), ahora);
   const texto = recortar(web.texto);
   const marcaArchivo = datos.imagenes.length ? "[foto]" : datos.audio ? "[audio]" : "[mensaje sin texto]";
   const entrante = texto || marcaArchivo;

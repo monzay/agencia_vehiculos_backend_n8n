@@ -50,7 +50,7 @@ producción.
     consulta (incluidos con trámite o seña y una sola consulta vigente). Cada test de
     `consultas-por-auto.test.js` que se borra tiene un reemplazo nombrado en la BITACORA.
 
-- [ ] 5. El cliente vuelve a escribir en una consulta atendida
+- [x] 5. El cliente vuelve a escribir en una consulta atendida
   - Qué: aplica tanto en el camino normal como en `enPausa` (bot en pausa porque un asesor tomó la charla),
     que hoy solo guarda el mensaje y actualiza `ultimo_mensaje`.
   - Criterio: `agente-conversacion` › El cliente vuelve a escribir en una consulta atendida (10 días, responde

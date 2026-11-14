@@ -136,3 +136,26 @@ Qué se hizo en cada tarea de la fase 2 y por qué. Rama `feat/huecos-del-bot` (
   observación.
 - **Verificación (local):** tests congelados intactos (hash); los 4 archivos 198/198; suite 1280, falla solo el
   previo de las anclas.
+
+## Tarea 5 — El cliente vuelve a escribir en una consulta atendida (2026-11-14)
+
+- **Qué (`atender.js`):** `vuelveAEscribir(root, sesion, ahora)`, aplicada apenas `sesionDe` devuelve la consulta y
+  antes de la baja de recordatorios, la despedida 👍, la pausa, los cupos, los audios y el agente. Si la consulta
+  tiene `atendido_at`: un update con `atendido_at`/`atendido_por` null, `requiere_vendedor` true, motivo "Volvió a
+  escribir", `requiere_vendedor_at` y `orden_at` = ahora. Devuelve la sesión con esos valores, para que
+  `cierreDeSesion` (camino del cupo) no pise el motivo. Con el bot en pausa sigue sin responder. Si en el mismo
+  turno la IA registra otro auto, `cambiarAuto` corre después y deja su motivo.
+- **Tests (`atender.test.js`, 10 nuevos):** los 5 escenarios de la spec (10 días, responde enseguida con el bot en
+  pausa, pendiente no se toca, vuelve por otro auto desde la web y por la IA, 31 días) y uno por cada camino que
+  corta el turno (baja, cupo, despedida 👍, audio), con el estado final de la consulta. Helper
+  `conUpdatesQueGuardan` (aplica los updates a la consulta simulada y falla si el id no existe).
+- **Test de la tarea 4 cambiado después de congelarlo:** "la IA registra otro auto en una consulta atendida: vuelve
+  a pendiente y sube" buscaba el PRIMER update con motivo; con esta tarea el primero es "Volvió a escribir" y el
+  del auto lo pisa después. Ahora comprueba el estado final (pendiente, arriba, motivo del auto). Lo encontró el
+  implementador; Codex lo revisó en el diff.
+- **Revisión de Codex:** tests en 2 rondas (ronda 1: faltaban los caminos que cortan el turno; un test exigía un
+  único update con exactamente 6 claves). Diff: aprobado con 1 media no aplicada: dos entregas simultáneas del
+  mismo mensaje con el panel marcando atendida en el medio podrían reabrirla dos veces. El backend corre en un solo
+  proceso y serializa por teléfono (`deAUno`), y el peor caso es un aviso de más; queda como observación.
+- **Verificación (local):** tests congelados intactos (salvo el cambio de arriba); `atender.test.js` 103/103; suite
+  1290, falla solo el previo de las anclas.

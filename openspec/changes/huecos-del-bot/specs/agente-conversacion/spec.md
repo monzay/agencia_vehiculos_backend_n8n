@@ -145,27 +145,28 @@ a una consulta pendiente MUST NOT cambiar su motivo ni su orden.
 #### Scenario: Vuelve a los 10 días por el mismo auto
 - **WHEN** la consulta está atendida y el cliente escribe 10 días después por el mismo auto
 - **THEN** vuelve a pendiente, queda marcada "Volvió a escribir" y sube al principio de la lista
-<!-- test: FALTA -->
+<!-- test: src/agente/atender.test.js › "el cliente escribe 10 días después a una consulta atendida por el mismo auto: vuelve a pendiente, marcada 'Volvió a escribir' y arriba, y el agente responde" -->
 
 #### Scenario: Responde enseguida, con el bot en pausa
 - **WHEN** el asesor respondió desde el panel (la consulta quedó atendida y el bot en pausa) y el cliente contesta minutos después
 - **THEN** vuelve a pendiente, con el aviso, sube, y el bot sigue en pausa: no responde
-<!-- test: FALTA -->
+<!-- test: src/agente/atender.test.js › "el cliente contesta minutos después de que el asesor respondió con el bot en pausa: vuelve a pendiente con el aviso y sube, y el bot sigue en pausa sin responder" -->
 
 #### Scenario: Consulta pendiente
 - **WHEN** la consulta no está atendida y el cliente escribe
 - **THEN** no cambia su motivo ni su orden
-<!-- test: FALTA -->
+<!-- test: src/agente/atender.test.js › "el cliente escribe a una consulta pendiente: no cambia su motivo ni su orden" -->
 
 #### Scenario: Vuelve por otro auto
 - **WHEN** la consulta está atendida y en el mismo turno el cliente se interesa en otro auto
 - **THEN** queda pendiente y arriba, y el motivo que queda es "Ahora le interesa <nuevo>, antes <anterior>"
-<!-- test: FALTA -->
+<!-- test: src/agente/atender.test.js › "el cliente de una consulta atendida llega desde la web por otro auto: queda pendiente y arriba con 'Ahora le interesa <nuevo>, antes <anterior>', no 'Volvió a escribir'" -->
+<!-- test: src/agente/atender.test.js › "el cliente de una consulta atendida le pide otro auto a la IA: el motivo que queda es el del auto, no 'Volvió a escribir'" -->
 
 #### Scenario: Vuelve pasado el plazo
 - **WHEN** la consulta atendida venció (30 días o más) y el cliente escribe
 - **THEN** no se toca: se abre una consulta nueva (ver Pasado el plazo se pregunta todo de nuevo)
-<!-- test: FALTA -->
+<!-- test: src/agente/atender.test.js › "el cliente vuelve a los 31 días a una consulta atendida: no se le toca el aviso y se abre una consulta nueva" -->
 
 ## MODIFIED Requirements
 
