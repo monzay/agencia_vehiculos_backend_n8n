@@ -207,11 +207,12 @@ Qué se hizo en cada tarea de la fase 2 y por qué. Rama `feat/huecos-del-bot` (
   aviso sí trae la fecha de la novedad. No está en el plan.
 - **Verificación (local):** tests congelados intactos (hash); suite 1307, falla solo el previo de las anclas.
 
-## Tarea 8 — Audios (en curso, 2026-11-14)
+## Tarea 8 — Audios (2026-11-14)
 
 - Sin cambios de código: el bot ya transcribe con Groq y responde. Los tests de `audio.test.js`, `atender.test.js`
-  y `limites.test.js` (Groq simulado): 134/134. Falta la segunda mitad del criterio: los casos de audio de la
-  simulación de la tarea 10.
+  y `limites.test.js` (Groq simulado): 134/134. Los casos de audio de la simulación de la tarea 10 (audio normal
+  406, largo 50, vacío 47, Groq que falla 45, instrucciones y código dichos en un audio) dieron todos OK. La prueba
+  opcional con Groq real no se hizo.
 
 ## Tarea 9 — Simulador de consultas masivas (2026-11-14)
 
@@ -243,3 +244,33 @@ Qué se hizo en cada tarea de la fase 2 y por qué. Rama `feat/huecos-del-bot` (
   significa que se coló una dependencia real). Código: aprobado, 1 media aplicada (claves vacías en el hijo de Prisma).
 - **Verificación (local):** 68/68 sin saltos; la base `agencia` quedó igual antes y después (sesiones 28, clientes
   73, historial 118, autos 2, vendedores 7); suite 1375, falla solo el previo de las anclas.
+
+## Tarea 10 — Más de 1000 consultas simuladas (2026-11-14)
+
+- **Qué:**
+  - `generar.js`: `EJES` (tiempo, asesor, autos, atención, medios, pausa, conducta, manipulación), `generarCasos`
+    con semilla (1200 por defecto) y el oráculo `esperadoDe(ejes)`, que traduce las specs a lo que tiene que
+    quedar en la base y en lo que recibe Claude (14 claves).
+  - `resumen.js`: cobertura por eje y valor, fallidos y `cumpleCriterio` (>1000, ningún valor en 0, 0 fallidos,
+    0 intentos de red).
+  - `correr.js` extendido: `preparar` (marcar atendida, pausar el bot, dar de baja un asesor, crear una seña),
+    foto, ráfaga, `nombreSaneado` (réplica de `nombreSeguro`) y `chequear` con las 14 claves.
+  - `scripts/simular-masivo.js`: verifica las bases, deja las claves de IA vacías, corta la red, prepara
+    `agencia_simulacion`, comprueba `SELECT DATABASE()` en los dos clientes, corre los casos y escribe en
+    `simulacion/` `reporte.json`, `resumen.md` y `casos-masivos.json` (los chats simulados).
+- **Tests:** generar 48, resumen 11, correr-escenarios 32 (más los de la tarea 9): 159. Codex los revisó en 2
+  rondas (ronda 1: varios hallazgos venían de leer el `correr.js` sin implementar como si fuera el contrato; se
+  aplicaron cambio de auto por turno, todas las respuestas en `respuestasConservadas`, búsqueda de datos de otro
+  cliente en `system` y en todas las llamadas del turno, y lo mismo para el nombre de perfil).
+- **Corridas:**
+  - 1: 1200 casos, 435 OK, 765 fallidos, 0 intentos de red. Causa (error del SIMULADOR, no del bot): cada caso
+    con `crear_tramite_o_sena` dejaba una seña vigente sobre SIM-01 y `whereDisponible` lo sacaba de la venta para
+    todos los casos siguientes ("ese auto no está a la venta"). Arreglo autorizado por el user: el script borra las
+    señas de `agencia_simulacion` después de cada caso; `crear_tramite_o_sena` falla con un error claro si la
+    consulta no tiene auto. (La sesión se cortó a mitad de esta corrida; se retomó.)
+  - 2: **1200 casos, 1200 OK, 0 fallidos, 0 intentos de red, criterio cumplido**, 247 s. Todos los valores de todos
+    los ejes con cobertura (el mínimo, 45 casos de "Groq que falla").
+- **Hallazgos del bot:** ninguno. No apareció ninguna diferencia entre el bot y el oráculo.
+- **Revisión del código por Codex:** aprobado, sin hallazgos.
+- **Verificación (local):** tests congelados intactos (hash); la base `agencia` quedó igual (sesiones 28, clientes
+  73, historial 118, autos 2, vendedores 7); suite 1466, falla solo el previo de las anclas.

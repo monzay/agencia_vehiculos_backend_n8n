@@ -73,7 +73,7 @@ producción.
   - Criterio: `consultas-lista` › Orden de la lista de Consultas (sube por otro auto, sube porque el cliente
     volvió a escribir, consultas que ya existían).
 
-- [ ] 8. Audios: confirmar que cumple
+- [x] 8. Audios: confirmar que cumple
   - Criterio: los tests de `agente-cupos` › Audios con límite de duración y de costo, en verde (con Groq
     simulado), y los casos de audio de la simulación (tarea 10) OK.
   - Opcional y manual, no hace falta para aprobar: una nota de voz real con Groq de verdad, en local y con
@@ -101,7 +101,7 @@ producción.
       de esos transportes y comprueba que queda bloqueado y contado. El reporte muestra 0 intentos de red;
     - corre sin claves de Anthropic ni de Groq en el entorno.
 
-- [ ] 10. Correr más de 1000 consultas simuladas
+- [x] 10. Correr más de 1000 consultas simuladas
   - Qué: un generador arma `casos-masivos.json` (chats de clientes) combinando:
     - tiempo: mismo día, 1 día, 10 días, 29 días, 30 días justos, 31 días, 4 meses, 1 año;
     - asesor: sin link, link del mismo, link de otro, link inválido, asesor dado de baja;

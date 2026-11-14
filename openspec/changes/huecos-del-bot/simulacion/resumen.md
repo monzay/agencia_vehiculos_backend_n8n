@@ -1,0 +1,23 @@
+# Simulación masiva (semilla 1)
+
+- Total: 1200
+- OK: 1200
+- Fallidos: 0
+- Intentos de red: 0
+- Cumple el criterio: sí
+- Tiempo: 247 s
+
+## Cobertura por eje y valor
+
+- **tiempo**: mismo_dia 197, 1_dia 167, 10_dias 154, 29_dias 161, 30_dias_justos 122, 31_dias 124, 4_meses 130, 1_anio 145
+- **asesor**: sin_link 257, link_mismo 265, link_otro 197, link_invalido 222, asesor_de_baja 259
+- **autos**: uno_solo 366, cambia_1 176, cambia_2 203, auto_que_ya_no_esta 115, ref_con_numeral 152, con_tramite_o_sena 188
+- **atencion**: pendiente 522, atendida 632, atendida_responde_enseguida 46
+- **medios**: texto 419, audio_normal 406, audio_largo 50, audio_vacio 47, groq_falla 45, foto 233
+- **pausa**: sin_pausa 1078, bot_en_pausa 122
+- **conducta**: normal 241, rafaga 80, ambiguo 233, faltas_de_ortografia 227, cambia_forma_de_pago 228, usado_despues 191
+- **manipulacion**: ninguna 517, instrucciones_en_texto 148, instrucciones_en_audio 110, codigo_en_audio 115, nombre_con_instrucciones 310
+
+## Primeras 50 fallas, por clave
+
+Ninguna.
