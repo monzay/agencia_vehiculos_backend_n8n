@@ -79,7 +79,7 @@ producción.
   - Opcional y manual, no hace falta para aprobar: una nota de voz real con Groq de verdad, en local y con
     el OK del user. Nada de esta tarea mira producción.
 
-- [ ] 9. Simulador de consultas masivas
+- [x] 9. Simulador de consultas masivas
   - Qué: en `src/agente/simulador/masivo/`, un Claude simulado que responde según el guion de cada caso y
     guarda el contexto que recibió, un Groq simulado y un runner que corre los casos contra una base local
     aparte (`agencia_simulacion`, creada desde el esquema). La hora se simula con `ahora`.

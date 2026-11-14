@@ -206,3 +206,40 @@ Qué se hizo en cada tarea de la fase 2 y por qué. Rama `feat/huecos-del-bot` (
 - **Observación para el user:** la consulta que sube sigue mostrando su fecha de inicio (`hora` en el mapper); el
   aviso sí trae la fecha de la novedad. No está en el plan.
 - **Verificación (local):** tests congelados intactos (hash); suite 1307, falla solo el previo de las anclas.
+
+## Tarea 8 — Audios (en curso, 2026-11-14)
+
+- Sin cambios de código: el bot ya transcribe con Groq y responde. Los tests de `audio.test.js`, `atender.test.js`
+  y `limites.test.js` (Groq simulado): 134/134. Falta la segunda mitad del criterio: los casos de audio de la
+  simulación de la tarea 10.
+
+## Tarea 9 — Simulador de consultas masivas (2026-11-14)
+
+- **Qué (`src/agente/simulador/masivo/`):**
+  - `guardas.js`: `verificarBases` (host local con `esBaseLocal`, puerto 3306, base `agencia_simulacion` y distinta
+    de las del `.env`), `urlDeSimulacion`, `basesProhibidas`. Los errores no muestran la clave.
+  - `red.js`: `cortarRed` parchea `net.Socket.prototype.connect` y `tls.connect`; toda conexión que no sea a
+    127.0.0.1, localhost o ::1 falla ("red cortada") y se cuenta.
+  - `claude-falso.js` y `groq-falso.js`: respuestas de guion; Claude guarda los `params` de cada llamada.
+  - `base.js`: `prepararBase({ urlRoot, urlAgente }, { prohibidas, ejecutar })` verifica PRIMERO y, si algo falla,
+    no ejecuta ningún SQL. Borra y crea `agencia_simulacion` con `mysql.exe` (clave por `MYSQL_PWD`), aplica el
+    esquema con `prisma db push` (hijo con `CHECKPOINT_DISABLE`, sin aviso de versiones y las claves de IA VACÍAS),
+    replica los GRANT/REVOKE de `migrations_manual` para `agente_ia` y siembra 3 asesores activos (juan, pepito,
+    ana), 1 inactivo, `ubicacion`, reparto encendido y 6 autos (`SIM-01` a `SIM-06`, el 06 vendido).
+  - `correr.js`: `correrCaso` (turnos por `atenderMensaje` con `ahora` simulado, audio de relleno) y `chequear`
+    (lee la base y lo que recibió el Claude simulado).
+- **Tests (68):** guardas, red (cada transporte: fetch, https, http, net, tls; hosts locales y engañosos), dobles,
+  `prepararBase` sin ejecutar SQL ante URLs malas (11), e integración contra `agencia_simulacion` (las dos
+  conexiones dicen esa base, sin claves de IA, 0 intentos de red, dos casos de punta a punta).
+- **Problemas encontrados y resueltos:**
+  - Prisma recarga el `.env` al crear el cliente y repone las variables que FALTAN: borrar las claves no alcanzaba
+    (el implementador lo había tapado con un `Proxy` sobre `process.env`, que se sacó). Se dejan VACÍAS (dotenv no
+    pisa variables existentes), en el test y en el hijo de `prisma db push`.
+  - El test de integración, al fallar, imprimía el valor real de la clave de Anthropic (`assert.equal(..., undefined)`).
+    Ahora comprueba sin mostrar el valor.
+- **Revisión de Codex:** tests en 2 rondas (ronda 1: `prepararBase` tenía que protegerse sola; faltaban sin-claves,
+  `tls` directo, `SELECT DATABASE()` de los dos clientes, `::1` y hosts engañosos; "exactamente 4" era rígido). Se
+  rechazó un pedido de ronda 2: aceptar intentos de red bloqueados en la integración (el plan exige 0: un intento
+  significa que se coló una dependencia real). Código: aprobado, 1 media aplicada (claves vacías en el hijo de Prisma).
+- **Verificación (local):** 68/68 sin saltos; la base `agencia` quedó igual antes y después (sesiones 28, clientes
+  73, historial 118, autos 2, vendedores 7); suite 1375, falla solo el previo de las anclas.
