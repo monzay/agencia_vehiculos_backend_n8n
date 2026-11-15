@@ -49,6 +49,9 @@ const errorReciente = (db, clienteId, ahora) => consultaDesde(db, clienteId, "er
 export async function registrarConsentimiento({ db, clienteId, ahora, wamid = null }, acepta) {
   const terminos = await versionVigente(db);
   if (!terminos) return { registrado: false, motivo: MOTIVOS.sinTerminos };
+  // La misma respuesta con la misma versión ya está guardada: se conserva la primera (con el wamid del mensaje en que lo dijo).
+  const anterior = await ultimoConsentimiento(db, clienteId);
+  if (anterior && anterior.acepta === acepta && anterior.terminos_version_id === terminos.id) return { registrado: true };
   await db.consentimientos.create({
     data: { cliente_id: clienteId, terminos_version_id: terminos.id, finalidad: FINALIDAD, acepta, wamid, created_at: ahora },
   });

@@ -233,3 +233,37 @@ test("un CUIL inválido o sin permiso no queda en la consulta", async () => {
     assert.equal(estado.cuilInformado, undefined);
   }
 });
+
+// ── El permiso se guarda una sola vez ──
+
+test("si la IA repite el mismo sí con la misma versión de términos, queda un solo registro con el wamid del primero", async () => {
+  const { db, estado } = baseFalsa();
+  await registrarConsentimiento({ ...ctx(db), wamid: "wamid.DEL_SI" }, true);
+  const repetido = await registrarConsentimiento({ ...ctx(db), wamid: "wamid.DOS_MENSAJES_DESPUES" }, true);
+  assert.deepEqual(repetido, { registrado: true });
+  assert.equal(estado.consentimientos.length, 1);
+  assert.equal(estado.consentimientos[0].wamid, "wamid.DEL_SI");
+});
+
+test("el mismo no repetido tampoco crea otro registro", async () => {
+  const { db, estado } = baseFalsa();
+  await registrarConsentimiento(ctx(db), false);
+  assert.deepEqual(await registrarConsentimiento(ctx(db), false), { registrado: true });
+  assert.equal(estado.consentimientos.length, 1);
+});
+
+test("si cambia de respuesta (sí y después no), se guarda un registro nuevo que revoca el anterior", async () => {
+  const { db, estado } = baseFalsa();
+  await registrarConsentimiento(ctx(db), true);
+  await registrarConsentimiento(ctx(db), false);
+  assert.deepEqual(estado.consentimientos.map((c) => c.acepta), [true, false]);
+  const bcra = bcraFalso();
+  assert.equal((await verificarSituacion(ctx(db, bcra), CUIL)).consultado, false);
+});
+
+test("el mismo sí pero con una versión nueva de los términos se guarda otra vez", async () => {
+  const { db, estado } = baseFalsa({ terminos: [{ id: 3 }], consentimientos: [{ id: 1, cliente_id: 1, terminos_version_id: 2, acepta: true }] });
+  await registrarConsentimiento(ctx(db), true);
+  assert.equal(estado.consentimientos.length, 2);
+  assert.equal(estado.consentimientos[1].terminos_version_id, 3);
+});

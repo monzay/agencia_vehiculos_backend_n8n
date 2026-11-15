@@ -404,6 +404,8 @@ model historial_mensajes {
   mensaje    String?                      @db.Text
   paso_nodo  String?                      @db.VarChar(60)
   wamid      String?                      @unique(map: "uq_historial_wamid") @db.VarChar(128)
+  /// Código del auto cuyas fotos salieron con este mensaje del agente (migración 085).
+  fotos_ref  String?                      @db.VarChar(30)
   created_at DateTime?                    @default(now()) @db.DateTime(0)
   clientes   clientes                     @relation(fields: [cliente_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "historial_mensajes_ibfk_1")
 

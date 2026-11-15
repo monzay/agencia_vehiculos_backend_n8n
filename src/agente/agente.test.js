@@ -282,3 +282,25 @@ test("un texto que es solo 👍 sigue igual (sale como reacción) y un 👍 en m
   const r2 = await responderConIA(entrada(), { anthropic: claudeFalso([texto("Dale 👍 te espero")]) });
   assert.equal(r2.texto, "Dale 👍 te espero");
 });
+
+// ── Las fotos enviadas quedan registradas ──
+
+test("cuando la respuesta sale con fotos, devuelve el código del auto de las fotos", async () => {
+  const anthropic = claudeFalso([pideHerramienta(["t1", "enviar_fotos_auto", { ref: "12" }]), texto("Te paso las fotos 👇")]);
+  const r = await responderConIA(entrada(), { anthropic });
+  assert.equal(r.fotos.length, 2);
+  assert.equal(r.fotosRef, "12");
+});
+
+test("sin fotos en la respuesta, fotosRef es null", async () => {
+  const r = await responderConIA(entrada(), { anthropic: claudeFalso([texto("Hola")]) });
+  assert.equal(r.fotosRef, null);
+});
+
+test("si la herramienta no devolvió fotos (el auto no tiene o no está disponible), fotosRef es null", async () => {
+  const sinFotos = { ...db, autos: { findFirst: async () => null } };
+  const anthropic = claudeFalso([pideHerramienta(["t1", "enviar_fotos_auto", { ref: "12" }]), texto("Ese auto ya no está.")]);
+  const r = await responderConIA({ ...entrada(), ctx: { ...ctx, db: sinFotos } }, { anthropic });
+  assert.deepEqual(r.fotos, []);
+  assert.equal(r.fotosRef, null);
+});

@@ -2,6 +2,8 @@
 // respuestas; el puntaje y la temperatura se calculan acá, siempre desde cero
 // con las respuestas vigentes, así un cambio de respuesta no deja el puntaje mal.
 
+import { elDia } from "./fechas.js";
+
 const PUNTOS = {
   autoDeInteres: 2,
   pago: { contado: 3, financiado: 0 },
@@ -63,7 +65,11 @@ function pendientesDelUsado(usado) {
   ];
 }
 
-export function pendientes(sesion = {}, usado = null) {
+// `credito`: en qué va la verificación crediticia (ver credito/verificacion.js › estadoCredito).
+const PEDIR_PERMISO = "permiso para consultar su situación en el BCRA (pedilo como dice Verificación crediticia)";
+const PEDIR_CUIL = "su CUIL (ya autorizó la consulta)";
+
+export function pendientes(sesion = {}, usado = null, credito = null) {
   const s = sesion ?? {};
   const visitaResuelta = s.disponibilidad === "no_sabe" || presente(s.visita_propuesta);
   return [
@@ -71,6 +77,8 @@ export function pendientes(sesion = {}, usado = null) {
     !definido(s.pago_tipo) && "forma de pago",
     s.pago_tipo === "financiado" && !presente(s.anticipo) && "anticipo",
     s.pago_tipo === "financiado" && !definido(s.credito_ok) && "recibo o garante",
+    credito === "pedir_consentimiento" && PEDIR_PERMISO,
+    credito === "pedir_cuil" && PEDIR_CUIL,
     !definido(s.entrega_usado) && "si entrega un usado",
     ...(siEntregaUsado(s) ? pendientesDelUsado(usado) : []),
     !definido(s.decisor) && "quién decide",
@@ -109,6 +117,6 @@ export function respondido(sesion = {}, usado = null) {
     s.decisor === "solo" && "decide solo",
     s.decisor === "consulta" && `lo decide con ${s.decisor_con ? citado(s.decisor_con) : "alguien más"}`,
     DISPONIBILIDAD[s.disponibilidad],
-    presente(s.visita_propuesta) && `visita propuesta: ${citado(s.visita_propuesta)}`,
+    presente(s.visita_propuesta) && `visita propuesta: ${citado(s.visita_propuesta)}${s.visita_propuesta_at ? ` (lo dijo ${elDia(new Date(s.visita_propuesta_at))})` : ""}`,
   ].filter(Boolean);
 }

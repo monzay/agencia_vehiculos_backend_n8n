@@ -106,7 +106,7 @@ function baseFalsa({ cliente = null, clientes = [], sesion = null, sesiones = []
         const filas = e.historial
           .filter((h) => (cliente_id === undefined || h.cliente_id === cliente_id) && (!paso_nodo?.in || paso_nodo.in.includes(h.paso_nodo)) && (!created_at?.gte || (h.created_at != null && h.created_at >= created_at.gte)))
           .sort((a, b) => b.id - a.id);
-        return (args.take ? filas.slice(0, args.take) : filas).map(({ direccion, mensaje }) => ({ direccion, mensaje }));
+        return (args.take ? filas.slice(0, args.take) : filas).map(({ direccion, mensaje, paso_nodo, created_at, fotos_ref }) => ({ direccion, mensaje, paso_nodo, created_at, fotos_ref }));
       },
       // Como la base: el id es autoincremental (el máximo actual + 1).
       create: async ({ data }) => (e.historial.push({ ...data, id: Math.max(0, ...e.historial.map((h) => h.id ?? 0)) + 1 }), data),
@@ -1519,7 +1519,7 @@ const charlaDeRecibo = (...saliente) => [
   mensajeDe(4, "entrante", "tiene gnc?", haceDias(0.2)),
 ];
 
-test("si la asesora preguntó por el recibo en sus dos últimos mensajes y el cliente no lo contestó, el contexto lo dice", async () => {
+test("si el último mensaje de la asesora preguntó por el recibo y sigue pendiente, el contexto lo dice", async () => {
   const root = baseFalsa({
     cliente: { id: 50 },
     sesion: consultaFinanciando,
@@ -1528,7 +1528,7 @@ test("si la asesora preguntó por el recibo en sus dos últimos mensajes y el cl
   const anthropic = claudeFalso();
   await atenderMensaje({ telefono: TEL, texto: "y ese tiene aire?", ahora }, deps(root, anthropic));
   const contexto = anthropic.pedidos[0].system.at(-1).text;
-  assert.match(contexto, /ya preguntaste por recibo o garante y el cliente no lo contestó: no lo vuelvas a preguntar en este mensaje/);
+  assert.match(contexto, /Tu último mensaje ya preguntó por recibo o garante/);
 });
 
 test("si el cliente contestó la última pregunta de la asesora, el contexto no agrega la línea de pregunta sin contestar", async () => {
@@ -1539,10 +1539,10 @@ test("si el cliente contestó la última pregunta de la asesora, el contexto no 
   });
   const anthropic = claudeFalso();
   await atenderMensaje({ telefono: TEL, texto: "si tengo recibo", ahora }, deps(root, anthropic));
-  assert.doesNotMatch(anthropic.pedidos[0].system.at(-1).text, /no lo contestó/);
+  assert.doesNotMatch(anthropic.pedidos[0].system.at(-1).text, /Tu último mensaje ya preguntó/);
 });
 
-test("una pregunta hecha solo en uno de los dos últimos mensajes no cuenta como sin contestar", async () => {
+test("una pregunta hecha en un mensaje anterior al último no cuenta como sin contestar", async () => {
   const root = baseFalsa({
     cliente: { id: 50 },
     sesion: consultaFinanciando,
@@ -1550,5 +1550,118 @@ test("una pregunta hecha solo en uno de los dos últimos mensajes no cuenta como
   });
   const anthropic = claudeFalso();
   await atenderMensaje({ telefono: TEL, texto: "y ese tiene aire?", ahora }, deps(root, anthropic));
-  assert.doesNotMatch(anthropic.pedidos[0].system.at(-1).text, /no lo contestó/);
+  assert.doesNotMatch(anthropic.pedidos[0].system.at(-1).text, /Tu último mensaje ya preguntó/);
+});
+
+// ── El bot se acuerda de lo que hizo ──
+
+// Claude guionado: devuelve en orden lo que se le pasa (cada uno, una respuesta completa).
+function claudeGuionado(...respuestas) {
+  const pedidos = [];
+  let i = 0;
+  return { pedidos, messages: { create: async (p) => (pedidos.push(p), respuestas[Math.min(i++, respuestas.length - 1)]) } };
+}
+const usoFalso = { input_tokens: 100, output_tokens: 20 };
+const pideFotos = (ref) => ({ stop_reason: "tool_use", usage: usoFalso, content: [{ type: "tool_use", id: "t1", name: "enviar_fotos_auto", input: { ref } }] });
+const respondeTexto = (t) => ({ stop_reason: "end_turn", usage: usoFalso, content: [{ type: "text", text: t }] });
+const dbDelAgenteConFotos = (fotos) => ({ autos: { findFirst: async ({ where }) => (where.ref ? { id: 1, fotos_json: fotos } : null) } });
+
+test("una respuesta con fotos se guarda con el código del auto de las fotos (fotos_ref)", async () => {
+  const root = baseFalsa({ cliente: { id: 50 } });
+  const anthropic = claudeGuionado(pideFotos("65"), respondeTexto("Te paso las fotos 👇"));
+  await atenderMensaje({ telefono: TEL, texto: "pasame fotos", ahora }, { ...deps(root, anthropic), dbAgente: dbDelAgenteConFotos(["/a.jpg"]) });
+  const saliente = root.estado.historial.find((h) => h.direccion === "saliente");
+  assert.equal(saliente.fotos_ref, "65");
+});
+
+test("si la herramienta no devolvió fotos, el mensaje se guarda sin fotos_ref", async () => {
+  const root = baseFalsa({ cliente: { id: 50 } });
+  const anthropic = claudeGuionado(pideFotos("65"), respondeTexto("Ese auto no tiene fotos."));
+  await atenderMensaje({ telefono: TEL, texto: "pasame fotos", ahora }, { ...deps(root, anthropic), dbAgente: dbDelAgenteConFotos([]) });
+  const saliente = root.estado.historial.find((h) => h.direccion === "saliente");
+  assert.equal("fotos_ref" in saliente, false);
+});
+
+const haceHoras = (horas) => new Date(ahora.getTime() - horas * 3_600_000);
+const consultaConCharla = { id: 1, cliente_id: 50, sesion_inicio: haceHoras(80), ultimo_mensaje: haceHoras(1), auto_id: 5 };
+const gol = { id: 8, ref: "65", marca: "Volkswagen", modelo: "Gol Trend", anio: 2019, disponible: true };
+
+test("el contexto dice de qué autos ya se mandaron fotos en la consulta, y cuándo", async () => {
+  const root = baseFalsa({
+    cliente: { id: 50 },
+    sesion: consultaConCharla,
+    autos: [peugeot, gol],
+    historial: [
+      { ...mensajeDe(1, "entrante", "pasame fotos del gol", haceHoras(2)) },
+      { ...mensajeDe(2, "saliente", "Te paso las fotos 👇", haceHoras(1.9)), fotos_ref: "65" },
+    ],
+  });
+  const anthropic = claudeFalso();
+  await atenderMensaje({ telefono: TEL, texto: "y de que año es?", ahora }, deps(root, anthropic));
+  const contexto = anthropic.pedidos[0].system.at(-1).text;
+  assert.match(contexto, /Fotos que ya le mandaste en esta charla: Volkswagen Gol Trend 2019 \(hoy 10:06\)\. No digas que no las mandaste ni las vuelvas a mandar si no te las pide\./);
+});
+
+test("sin mensajes con fotos, el contexto no habla de fotos enviadas", async () => {
+  const root = baseFalsa({ cliente: { id: 50 }, sesion: consultaConCharla, historial: [mensajeDe(1, "saliente", "Hola", haceHoras(2))] });
+  const anthropic = claudeFalso();
+  await atenderMensaje({ telefono: TEL, texto: "hola", ahora }, deps(root, anthropic));
+  assert.doesNotMatch(anthropic.pedidos[0].system.at(-1).text, /Fotos que ya le mandaste/);
+});
+
+test("si pasaron cuatro días desde el mensaje anterior, el contexto lo dice y la visita propuesta lleva el día en que se dijo", async () => {
+  const miercoles = new Date("2026-10-07T13:00:00Z"); // miércoles 07/10, 10:00 en Argentina
+  const root = baseFalsa({
+    cliente: { id: 50 },
+    sesion: { ...consultaConCharla, sesion_inicio: miercoles, pago_tipo: "contado", visita_propuesta: "mañana a la mañana", visita_propuesta_at: miercoles },
+    historial: [mensajeDe(1, "entrante", "mañana a la mañana", miercoles), mensajeDe(2, "saliente", "Te esperamos", new Date(miercoles.getTime() + 1))],
+  });
+  const anthropic = claudeFalso();
+  await atenderMensaje({ telefono: TEL, texto: "hola, al final no pude ir", ahora }, deps(root, anthropic));
+  const contexto = anthropic.pedidos[0].system.at(-1).text;
+  assert.match(contexto, /El mensaje anterior de esta charla fue hace 4 días \(el miércoles 07\/10\)\. Lo que se dijo entonces con "hoy" o "mañana" se refiere a ese día\./);
+  assert.match(contexto, /visita propuesta: "mañana a la mañana" \(lo dijo el miércoles 07\/10\)/);
+});
+
+test("si el mensaje anterior es de hace unos minutos, el contexto no agrega la línea del tiempo que pasó", async () => {
+  const root = baseFalsa({
+    cliente: { id: 50 },
+    sesion: consultaConCharla,
+    historial: [mensajeDe(1, "entrante", "hola", new Date(ahora.getTime() - 300_000)), mensajeDe(2, "saliente", "¡Hola!", new Date(ahora.getTime() - 299_000))],
+  });
+  const anthropic = claudeFalso();
+  await atenderMensaje({ telefono: TEL, texto: "y el precio?", ahora }, deps(root, anthropic));
+  assert.doesNotMatch(anthropic.pedidos[0].system.at(-1).text, /El mensaje anterior de esta charla/);
+});
+
+test("el estado de la verificación entra en lo que falta: el permiso va después del recibo y antes del usado", async () => {
+  const root = baseFalsa({
+    cliente: { id: 50 },
+    sesion: { ...consultaConCharla, pago_tipo: "financiado", anticipo: "4 millones", credito_ok: 1 },
+    historial: [mensajeDe(1, "saliente", "Hola", haceHoras(1))],
+  });
+  root.terminos_versiones = { findFirst: async () => ({ id: 3 }) };
+  root.consentimientos = { findFirst: async () => null };
+  root.consultas_crediticias = { findFirst: async () => null };
+  const anthropic = claudeFalso();
+  process.env.PUBLIC_WEB_URL = "https://agencia.com";
+  try {
+    await atenderMensaje({ telefono: TEL, texto: "si tengo recibo", ahora }, deps(root, anthropic));
+  } finally {
+    delete process.env.PUBLIC_WEB_URL;
+  }
+  const faltan = anthropic.pedidos[0].system.at(-1).text.match(/Falta averiguar[^\n]*/)?.[0] ?? "";
+  assert.match(faltan, /1\) permiso para consultar su situación en el BCRA.*2\) si entrega un usado/);
+});
+
+test("en lo que falta, la pregunta del último mensaje de la asesora llega marcada para no repetirla", async () => {
+  const root = baseFalsa({
+    cliente: { id: 50 },
+    sesion: consultaFinanciando,
+    historial: charlaDeRecibo("Es del 2019. ¿Tenés recibo de sueldo o garante?", "Es nafta. ¿Y tenés recibo de sueldo o garante?"),
+  });
+  const anthropic = claudeFalso();
+  await atenderMensaje({ telefono: TEL, texto: "y ese tiene aire?", ahora }, deps(root, anthropic));
+  const faltan = anthropic.pedidos[0].system.at(-1).text.match(/Falta averiguar[^\n]*/)?.[0] ?? "";
+  assert.match(faltan, /1\) recibo o garante \(ya la preguntaste en tu último mensaje: no la repitas ahora\); 2\) si entrega un usado/);
 });

@@ -16,7 +16,7 @@ import { avisoReciente, darDeBaja, esBaja, BAJA_CONFIRMADA } from "../services/a
 import { resolverCliente } from "../services/clientes.service.js";
 import { estadoCredito, registrarConsentimiento, verificarSituacion } from "../credito/verificacion.js";
 import { crearClienteBcra } from "../credito/bcra.js";
-import { temasSinContestar } from "./temas-preguntados.js";
+import { temasSinContestar, marcarPreguntados } from "./temas-preguntados.js";
 
 // Orquestador: lo que pasa cada vez que llega un mensaje de WhatsApp.
 //   1. reconoce al cliente por su número de WhatsApp o por el teléfono de una ficha que ya existe (o lo crea);
@@ -184,9 +184,9 @@ async function verificarCupo({ root, cliente, ahora, paso }, topeUsd) {
   });
 }
 
-const guardarMensaje = ({ root, cliente, paso }, direccion, mensaje, fecha, wamid = null) =>
+const guardarMensaje = ({ root, cliente, paso }, direccion, mensaje, fecha, wamid = null, fotosRef = null) =>
   root.historial_mensajes.create({
-    data: { cliente_id: cliente.id, direccion, mensaje, paso_nodo: paso, created_at: fecha, wamid },
+    data: { cliente_id: cliente.id, direccion, mensaje, paso_nodo: paso, created_at: fecha, wamid, ...(fotosRef && { fotos_ref: fotosRef }) },
   });
 
 const unMsDespues = (fecha) => new Date(fecha.getTime() + 1);
@@ -260,7 +260,7 @@ async function cerrarTurno(turno, r) {
   const sesion = r.sesionId ? { id: r.sesionId } : turno.sesion;
   const motivo = r.derivar ? `El agente no pudo responder (${r.motivo}).` : null;
   const resultados = await Promise.allSettled([
-    guardarMensaje(turno, "saliente", r.texto, unMsDespues(ahora)),
+    guardarMensaje(turno, "saliente", r.texto, unMsDespues(ahora), null, r.fotosRef),
     root.chat_estado.update({ where: { id: sesion.id }, data: cierreDeSesion(sesion, ahora, motivo) }),
   ]);
   for (const fallo of resultados.filter((x) => x.status === "rejected")) {
@@ -304,6 +304,30 @@ async function autoDeLaConsulta(root, autoId) {
   });
 }
 
+const DOCE_HORAS_MS = 12 * 3_600_000;
+
+// Cuánto pasó desde el mensaje anterior de la charla (de quien sea), solo si fueron 12 horas o más.
+function tiempoDesdeElAnterior(historial, ahora) {
+  const anterior = historial?.[0]?.created_at;
+  if (!anterior) return null;
+  const pasado = ahora - new Date(anterior);
+  return pasado >= DOCE_HORAS_MS ? { horas: Math.floor(pasado / 3_600_000), cuando: new Date(anterior) } : null;
+}
+
+// De qué autos ya salieron fotos en esta consulta (el más reciente primero), con su descripción.
+async function fotosYaEnviadas(root, historial) {
+  const vistos = new Map();
+  for (const h of historial ?? []) {
+    if (h.direccion === "saliente" && h.fotos_ref && !vistos.has(h.fotos_ref)) vistos.set(h.fotos_ref, h.created_at);
+  }
+  const enviadas = [];
+  for (const [ref, cuando] of vistos) {
+    const auto = await root.autos.findFirst({ where: { ref }, select: { marca: true, modelo: true, anio: true } }).catch(() => null);
+    enviadas.push({ descripcion: auto ? descripcionDelAuto(auto) : `auto ${ref}`, cuando: new Date(cuando) });
+  }
+  return enviadas;
+}
+
 // Lo que el agente necesita saber en este mensaje: la agencia (nombre, dirección,
 // mapa), el auto de la consulta y en qué punto del recorrido de venta está el cliente.
 async function contextoDelTurno({ root, cliente, sesion, ahora, autoWeb, cobranza, historial }) {
@@ -313,7 +337,9 @@ async function contextoDelTurno({ root, cliente, sesion, ahora, autoWeb, cobranz
     creditoDelTurno({ root, cliente, sesion, ahora }),
     autoDeLaConsulta(root, sesion.auto_id),
   ]);
-  const faltan = pendientes(sesion, usado);
+  const faltan = pendientes(sesion, usado, credito);
+  const sinContestar = temasSinContestar(historial, faltan);
+  const fotosEnviadas = await fotosYaEnviadas(root, historial);
   return {
     asesora: process.env.AGENTE_NOMBRE,
     agencia: ubicacion?.nombre || process.env.AGENCIA_NOMBRE,
@@ -326,8 +352,11 @@ async function contextoDelTurno({ root, cliente, sesion, ahora, autoWeb, cobranz
     autoDeLaConsulta: auto && { ref: auto.ref, descripcion: descripcionDelAuto(auto) },
     cobranza,
     respondido: respondido(sesion, usado),
-    faltan,
-    sinContestar: temasSinContestar(historial, faltan),
+    // Lo ya preguntado en el último mensaje va marcado en la lista: no se repite si el cliente preguntó otra cosa.
+    faltan: marcarPreguntados(faltan, sinContestar),
+    sinContestar,
+    fotosEnviadas,
+    tiempoDesdeElAnterior: tiempoDesdeElAnterior(historial, ahora),
     credito,
     privacidadUrl: credito && new URL("/privacidad", process.env.PUBLIC_WEB_URL).href,
   };
@@ -343,7 +372,7 @@ async function responderConAgente(turno, imagenes, deps) {
     where: { cliente_id: cliente.id, paso_nodo: { in: [turno.paso, PASO_HUMANO] }, created_at: { gte: sesion.sesion_inicio } },
     orderBy: { id: "desc" },
     take: LIMITES.historialMensajes,
-    select: { direccion: true, mensaje: true, paso_nodo: true },
+    select: { direccion: true, mensaje: true, paso_nodo: true, created_at: true, fotos_ref: true },
   });
   // Se guarda antes de llamar a Claude: el mensaje ya cuenta para el límite del día.
   await guardarEntrantes(turno);
@@ -363,6 +392,12 @@ async function responderConAgente(turno, imagenes, deps) {
         cobranza: turno.cobranza && { financiacionId: turno.cobranza.financiacionId, avisoId: turno.cobranza.avisoId },
         // Verificación con el BCRA: con el usuario del backend, solo para este cliente.
         credito: {
+          // En qué va la verificación con lo recién anotado: se relee la consulta ya actualizada.
+          estado: async (sesionId) => {
+            if (!process.env.PUBLIC_WEB_URL) return null;
+            const actual = await root.chat_estado.findUnique({ where: { id: sesionId } });
+            return estadoCredito({ db: root, clienteId: cliente.id, sesion: actual, ahora });
+          },
           // El wamid del mensaje en que respondió queda como prueba del consentimiento.
           registrarConsentimiento: (acepta) => registrarConsentimiento({ db: root, clienteId: cliente.id, ahora, wamid }, acepta),
           verificar: (cuil, sesionId) =>

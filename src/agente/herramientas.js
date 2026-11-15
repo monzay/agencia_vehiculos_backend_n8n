@@ -16,7 +16,7 @@ import { SIN_VERIFICACION } from "../credito/verificacion.js";
 //
 // ctx = { db, clienteId, sesionId, urlPublica, ahora, cobranza, cambiarAuto, credito }
 // `cobranza` = { financiacionId, avisoId } si el número recibió un recordatorio de cuota.
-// `credito` = { registrarConsentimiento(acepta), verificar(cuil) }: la verificación con el
+// `credito` = { registrarConsentimiento(acepta), verificar(cuil), estado(sesionId) }: la verificación con el
 // BCRA, atada a este cliente por el backend (src/credito/verificacion.js).
 
 const MAX_AUTOS = 5;
@@ -206,6 +206,9 @@ async function autoDeLaConsulta(db, sesionId) {
   return (await db.autos.findUnique({ where: { id: sesion.auto_id }, select: { id: true, precio: true } })) ?? null;
 }
 
+const SIGUE_TRAS_AUTORIZAR = "Pedile ahora su CUIL (11 números) y usá verificar_situacion_crediticia.";
+const SIGUE_TRAS_NEGAR = "Seguí con el recorrido, sin pedir el CUIL.";
+
 const HERRAMIENTAS = [
   {
     nombre: "buscar_autos",
@@ -307,7 +310,7 @@ const HERRAMIENTAS = [
       if (!auto) return { fotos: [], motivo: "El auto no está disponible." };
       const fotos = fotosPublicas(auto, urlPublica);
       // La ficha web va en el botón "Ver todas las fotos" del mismo mensaje.
-      return fotos.length ? { fotos, ficha: linkDelCatalogo(urlPublica, refResuelto) } : { fotos: [], motivo: "Este auto todavía no tiene fotos cargadas." };
+      return fotos.length ? { fotos, ref: refResuelto, ficha: linkDelCatalogo(urlPublica, refResuelto) } : { fotos: [], motivo: "Este auto todavía no tiene fotos cargadas." };
     },
   },
   {
@@ -412,7 +415,11 @@ const HERRAMIENTAS = [
         data: { ...cambios, score: puntaje(vigente), clasificacion: clasificar(vigente), updated_at: momento },
       });
       const usado = await guardarUsado(db, sesionId, input, momento);
-      return { resultado: { registrado: true, faltan: pendientes(vigente, usado), ...(aviso && { aviso }) }, sesionId };
+      // En qué va la verificación crediticia con lo recién anotado; si no se puede leer, sigue sin eso.
+      const credito = await ctx.credito?.estado?.(sesionId).catch(() => null);
+      // Para pedir el permiso en este mismo mensaje hace falta el link; el contexto se armó antes de guardar.
+      const privacidad = credito === "pedir_consentimiento" && ctx.urlPublica ? new URL("/privacidad", ctx.urlPublica).href : null;
+      return { resultado: { registrado: true, faltan: pendientes(vigente, usado, credito), ...(privacidad && { privacidad }), ...(aviso && { aviso }) }, sesionId };
     },
   },
   {
@@ -426,7 +433,9 @@ const HERRAMIENTAS = [
     }),
     async ejecutar({ acepta }, { credito }) {
       if (!credito) return { registrado: false, motivo: SIN_VERIFICACION };
-      return credito.registrarConsentimiento(acepta);
+      const r = await credito.registrarConsentimiento(acepta);
+      if (!r.registrado) return r;
+      return { ...r, sigue: acepta ? SIGUE_TRAS_AUTORIZAR : SIGUE_TRAS_NEGAR };
     },
   },
   {

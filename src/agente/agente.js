@@ -26,6 +26,7 @@ async function resolverHerramientas(usos, ctx, disponibles) {
   const resultados = [];
   let fotos = [];
   let ficha = null;
+  let fotosRef = null;
   let ctxActual = ctx;
   for (const [i, uso] of usos.entries()) {
     if (i >= disponibles) {
@@ -37,6 +38,7 @@ async function resolverHerramientas(usos, ctx, disponibles) {
     if (uso.name === "enviar_fotos_auto" && !r.esError) {
       fotos = [...fotos, ...(r.resultado.fotos ?? [])];
       ficha = ficha ?? r.resultado.ficha ?? null;
+      if (r.resultado.fotos?.length) fotosRef = r.resultado.ref ?? fotosRef;
     }
     resultados.push(
       r.esError
@@ -44,7 +46,7 @@ async function resolverHerramientas(usos, ctx, disponibles) {
         : { type: "tool_result", tool_use_id: uso.id, content: JSON.stringify(r.resultado) }
     );
   }
-  return { resultados, fotos, ficha, ctx: ctxActual };
+  return { resultados, fotos, ficha, fotosRef, ctx: ctxActual };
 }
 
 // Nada interno le llega al cliente: ni el nombre de una herramienta ni un 👍 suelto con texto.
@@ -124,6 +126,7 @@ export async function responderConIA({ mensajes, contexto, ctx, registrarConsumo
   let sinHerramientas = false;
   let fotos = [];
   let ficha = null;
+  let fotosRef = null;
   let ctxTurno = ctx;
   // Claude a veces contesta en el mismo turno en que usa una herramienta y después
   // no agrega nada (o repite lo mismo): se manda la respuesta final y, si viene
@@ -156,10 +159,11 @@ export async function responderConIA({ mensajes, contexto, ctx, registrarConsumo
       if (sinHerramientas) return respaldo("demasiadas_herramientas");
       const usos = respuesta.content.filter((b) => b.type === "tool_use");
       const disponibles = LIMITES.herramientasPorMensaje - herramientasUsadas;
-      const { resultados, fotos: nuevas, ficha: fichaNueva, ctx: ctxNuevo } = await resolverHerramientas(usos, ctxTurno, disponibles);
+      const { resultados, fotos: nuevas, ficha: fichaNueva, fotosRef: refNueva, ctx: ctxNuevo } = await resolverHerramientas(usos, ctxTurno, disponibles);
       ctxTurno = ctxNuevo;
       fotos = [...fotos, ...nuevas];
       ficha = ficha ?? fichaNueva;
+      fotosRef = refNueva ?? fotosRef;
       herramientasUsadas += Math.min(usos.length, disponibles);
       sinHerramientas = herramientasUsadas >= LIMITES.herramientasPorMensaje;
       // La respuesta va completa (con sus bloques de razonamiento) y todos los
@@ -173,6 +177,6 @@ export async function responderConIA({ mensajes, contexto, ctx, registrarConsumo
     const texto = crudo ? sinPulgarSuelto(await sinNombresInternos(crudo, { anthropic, system, tools, conversacion, registrarConsumo })) : "";
     // Si el turno pasó a la consulta de otro auto, el orquestador lo cierra en esa.
     const otraConsulta = ctxTurno.sesionId !== ctx.sesionId && { sesionId: ctxTurno.sesionId };
-    return texto ? { ok: true, texto, fotos, ficha, ...otraConsulta } : respaldo("sin_texto");
+    return texto ? { ok: true, texto, fotos, ficha, fotosRef: fotos.length ? fotosRef : null, ...otraConsulta } : respaldo("sin_texto");
   }
 }

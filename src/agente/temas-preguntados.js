@@ -34,16 +34,25 @@ const DEL_RECORRIDO = {
 
 
 /**
- * Los temas por los que la asesora preguntó en sus DOS últimos mensajes y el cliente todavía no
- * contestó (siguen pendientes). `historial` son filas { direccion, mensaje, paso_nodo? } más nuevas primero.
+ * Los temas por los que preguntó el ÚLTIMO mensaje de la asesora y que siguen pendientes: si el cliente
+ * escribe otra cosa, no hay que repetirlos. `historial` son filas { direccion, mensaje, paso_nodo? } más nuevas primero.
  * @returns {string[]} los temas en palabras ("forma de pago", "anticipo", "recibo o garante", …)
  */
 export function temasSinContestar(historial, faltan) {
-  const salientes = (historial ?? []).filter((h) => h.direccion === "saliente" && h.paso_nodo !== PASO_HUMANO).slice(0, 2);
-  if (salientes.length < 2) return [];
-  const [ultimo, anterior] = salientes.map((h) => temasPreguntados(h.mensaje));
+  const ultimo = (historial ?? []).find((h) => h.direccion === "saliente" && h.paso_nodo !== PASO_HUMANO);
+  if (!ultimo) return [];
+  const preguntados = temasPreguntados(ultimo.mensaje);
   return Object.keys(DEL_RECORRIDO)
-    .filter((tema) => ultimo.includes(tema) && anterior.includes(tema))
+    .filter((tema) => preguntados.includes(tema))
     .filter((tema) => (faltan ?? []).some((f) => DEL_RECORRIDO[tema].pendiente.test(f)))
     .map((tema) => DEL_RECORRIDO[tema].palabras);
+}
+
+/**
+ * La lista de lo que falta, con una marca en lo que el último mensaje de la asesora ya preguntó: así
+ * "seguí con lo primero que falta" no la lleva a repetir esa pregunta cuando el cliente preguntó otra cosa.
+ */
+export function marcarPreguntados(faltan, temas) {
+  const regex = Object.values(DEL_RECORRIDO).filter((t) => (temas ?? []).includes(t.palabras)).map((t) => t.pendiente);
+  return (faltan ?? []).map((f) => (regex.some((re) => re.test(f)) ? `${f} (ya la preguntaste en tu último mensaje: no la repitas ahora)` : f));
 }

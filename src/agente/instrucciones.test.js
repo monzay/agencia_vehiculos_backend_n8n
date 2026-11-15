@@ -251,16 +251,16 @@ test("lo anotado va presentado como anotado, con el aviso de corregirlo si el cl
   assert.match(contextoDelMomento({ ahora, respondido: [], faltan: ["forma de pago"] }), /Todavía no respondió ninguna pregunta\./);
 });
 
-test("el contexto lista las preguntas que hizo en sus dos últimos mensajes y el cliente no contestó", () => {
+test("el contexto lista las preguntas que hizo en su último mensaje, para no repetirlas si el cliente pregunta otra cosa", () => {
   const c = contextoDelMomento({ ahora, respondido: [], faltan: ["recibo o garante"], sinContestar: ["recibo o garante"] });
-  assert.match(c, /En tus últimos mensajes ya preguntaste por recibo o garante y el cliente no lo contestó: no lo vuelvas a preguntar en este mensaje\./);
+  assert.match(c, /Tu último mensaje ya preguntó por recibo o garante\. Si lo que el cliente escribió ahora la contesta, seguí con lo que falta\. Si NO la contesta \(preguntó otra cosa\), respondé solo lo que preguntó y no vuelvas a preguntar ese tema/);
   const dos = contextoDelMomento({ ahora, sinContestar: ["forma de pago", "anticipo"] });
-  assert.match(dos, /ya preguntaste por forma de pago y anticipo y el cliente no los contestó: no los vuelvas a preguntar/);
+  assert.match(dos, /Tu último mensaje ya preguntó por forma de pago y anticipo\./);
 });
 
 test("si no hay preguntas sin contestar, el contexto no agrega esa línea", () => {
-  assert.doesNotMatch(contextoDelMomento({ ahora }), /no lo contestó|no los contestó/);
-  assert.doesNotMatch(contextoDelMomento({ ahora, sinContestar: [] }), /no lo contestó|no los contestó/);
+  assert.doesNotMatch(contextoDelMomento({ ahora }), /Tu último mensaje ya preguntó/);
+  assert.doesNotMatch(contextoDelMomento({ ahora, sinContestar: [] }), /Tu último mensaje ya preguntó/);
 });
 
 test("kilómetros sin cargar: lo dice con naturalidad, invita a verlo y no dice 0 km, la ficha ni un número", async () => {
@@ -342,4 +342,51 @@ test("nunca nombra sus herramientas ni cómo trabaja por dentro, y el 👍 va so
   const t = await instrucciones();
   assert.match(t, /Nunca nombres tus herramientas ni cómo trabajás por dentro/);
   assert.match(t, /El 👍 va solo cuando es la respuesta entera: nunca al final de un mensaje con texto/);
+});
+
+// ── No inventa lo que hizo / audios / permiso y CUIL ──
+
+test("el contexto dice las fotos que ya mandó y no pide perdón ni las manda de nuevo", () => {
+  const c = contextoDelMomento({ ahora, fotosEnviadas: [{ descripcion: "Volkswagen Gol Trend 2019", cuando: new Date("2026-10-11T14:12:00Z") }, { descripcion: "Fiat Mobi 2022", cuando: new Date("2026-10-07T13:00:00Z") }] });
+  assert.match(c, /Fotos que ya le mandaste en esta charla: Volkswagen Gol Trend 2019 \(hoy 11:12\); Fiat Mobi 2022 \(el miércoles 07\/10\)\. No digas que no las mandaste ni las vuelvas a mandar si no te las pide\./);
+  assert.doesNotMatch(contextoDelMomento({ ahora, fotosEnviadas: [] }), /Fotos que ya le mandaste/);
+});
+
+test("el contexto dice cuánto pasó desde el mensaje anterior solo si fueron 12 horas o más", () => {
+  const c = contextoDelMomento({ ahora, tiempoDesdeElAnterior: { horas: 49, cuando: new Date("2026-10-09T13:00:00Z") } });
+  assert.match(c, /El mensaje anterior de esta charla fue hace 2 días \(el viernes 09\/10\)\. Lo que se dijo entonces con "hoy" o "mañana" se refiere a ese día\./);
+  assert.match(contextoDelMomento({ ahora, tiempoDesdeElAnterior: { horas: 13, cuando: new Date("2026-10-11T02:00:00Z") } }), /fue hace 13 horas/);
+  assert.doesNotMatch(contextoDelMomento({ ahora }), /El mensaje anterior/);
+});
+
+test("'No inventes lo que hiciste': fotos enviadas, fechas, otro auto y no anunciar que anotó", async () => {
+  const t = await instrucciones();
+  assert.match(t, /No inventes lo que hiciste/);
+  assert.match(t, /No digas que no mandaste unas fotos que el contexto marca como enviadas ni pidas perdón por eso/);
+  assert.match(t, /No corrijas la fecha de un mensaje anterior si el cliente no marcó un error/);
+  assert.match(t, /Si consulta por otro auto, es un interés nuevo: respondé sin disculparte/);
+  assert.match(t, /nunca le digas que anotaste o registraste sus datos/);
+});
+
+test("un mensaje que empieza con [audio] es una nota de voz transcripta: se responde a lo que dice", async () => {
+  const t = await instrucciones();
+  assert.match(t, /Un mensaje del cliente que empieza con \[audio\] es la transcripción de una nota de voz: respondé a lo que dice y nunca digas que no podés escuchar audios/);
+});
+
+test("apenas el cliente autoriza, pide el CUIL en ese mismo mensaje y guarda el permiso una sola vez por respuesta", async () => {
+  const t = await instrucciones();
+  assert.match(t, /Apenas el cliente autoriza, pedile el CUIL en ESE mismo mensaje, sin pasar a otra pregunta/);
+  assert.match(t, /Usá registrar_consentimiento una sola vez por cada respuesta del cliente/);
+});
+
+test("la verificación también se pide cuando registrar_calificacion devuelve el permiso o el CUIL primero en faltan (el contexto se armó antes de guardar)", async () => {
+  const t = await instrucciones();
+  assert.match(t, /Solo cuando el contexto dice "Verificación crediticia" o cuando lo que te devuelve registrar_calificacion en faltan empieza con el permiso o el CUIL/);
+  assert.match(t, /Después de guardar una respuesta, la próxima pregunta es la primera de faltan en lo que devuelve registrar_calificacion: puede haber cambiado respecto del contexto/);
+  assert.match(t, /usá el link de privacidad que trae el resultado/);
+});
+
+test("con los km sin cargar, después de decirlo cierra con la invitación a verlo y no repite la pregunta del recorrido", async () => {
+  const t = await instrucciones();
+  assert.match(t, /Después de decir que no los tenés a mano, no repitas la pregunta del recorrido que ya hiciste: cerrá con la invitación a verlo en la agencia/);
 });

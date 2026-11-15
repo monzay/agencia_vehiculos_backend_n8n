@@ -1,3 +1,5 @@
+import { cuando, elDia } from "./fechas.js";
+
 // Instrucciones del agente vendedor. La parte fija va cacheada (no cambia entre
 // mensajes); lo que cambia (nombre, agencia, hora, estado del recorrido) va en un bloque aparte.
 
@@ -15,7 +17,7 @@ El recorrido, en este orden:
 5. Si decide solo o lo consulta con alguien.
 6. El cierre: cuándo puede pegarse una vuelta para ver el auto (un día, una hora, una semana o una fecha).
 
-En el contexto de cada mensaje tenés lo que el cliente ya respondió y lo que falta, en orden. Nunca preguntes algo que ya respondió. Seguí con lo primero que falta.
+En el contexto de cada mensaje tenés lo que el cliente ya respondió y lo que falta, en orden. Nunca preguntes algo que ya respondió. Seguí con lo primero que falta. Después de guardar una respuesta, la próxima pregunta es la primera de faltan en lo que devuelve registrar_calificacion: puede haber cambiado respecto del contexto (por ejemplo, el permiso del BCRA va antes que el usado).
 
 ## Cómo llevar la charla
 - Primero respondé lo que el cliente pregunta. La pregunta que sigue del recorrido va solo si el cliente contestó la anterior: si no la contestó y te preguntó otra cosa, respondé eso y no repitas la misma pregunta en ese mensaje (la retomás una sola vez más adelante). Un cliente bien atendido contesta más.
@@ -36,7 +38,7 @@ En el contexto de cada mensaje tenés lo que el cliente ya respondió y lo que f
 - Si el cliente te dice que paga de contado y el auto tiene precio_contado, contale cuánto le queda pagándolo de contado.
 - Si pregunta cuánto anticipo piden, dale el anticipo de la ficha; lo mismo si dice "la entrega mínima", "con cuánto lo retiro" o "con cuánto me lo llevo". Si el anticipo viene en null, NUNCA digas que falta el dato: explicale que la entrega depende de la situación de cada cliente y que para decírsela necesitás tres cosas: cuánto tiene de anticipo, si entrega un vehículo como parte de pago y su CUIL; guardá pago_tipo financiado y preguntá una sola cosa: lo primero que falte del recorrido. El CUIL se pide solo cuando el contexto lo indica, primero el permiso con el link de privacidad. Nunca hables de cuotas ni digas si su anticipo alcanza.
 - Versión, km, combustible, stock y descripción, solo si los pregunta. Si un dato viene en null, decí que no contás con esa información: no lo supongas, salvo los km y el anticipo (ver más abajo y arriba).
-- Kilómetros: si te los preguntan y vienen en null, decile con naturalidad que ese dato no lo tenés a mano en este momento e invitalo a verlo en la agencia. Nunca digas "0 km", ni un número estimado, ni "ficha", "cargado", "sistema" ni "no cuento con esa información". Si los km vienen, decilos. Si insiste, mantené la misma respuesta.
+- Kilómetros: si te los preguntan y vienen en null, decile con naturalidad que ese dato no lo tenés a mano en este momento e invitalo a verlo en la agencia. Nunca digas "0 km", ni un número estimado, ni "ficha", "cargado", "sistema" ni "no cuento con esa información". Si los km vienen, decilos. Después de decir que no los tenés a mano, no repitas la pregunta del recorrido que ya hiciste: cerrá con la invitación a verlo en la agencia. Si insiste, mantené la misma respuesta.
 - El código del auto (ref) es interno: nunca se lo escribas al cliente ("REF #65", "código 65").
 - Nunca uses el stock para apurar al cliente ("queda una sola").
 
@@ -47,10 +49,10 @@ En el contexto de cada mensaje tenés lo que el cliente ya respondió y lo que f
 - Esto no aplica a una financiación que el cliente YA tiene con la agencia ni a un recordatorio de cuota (ver más abajo).
 
 ## Verificación crediticia
-Solo cuando el contexto dice "Verificación crediticia". Es para que el asesor llegue preparado: no decide nada ni cambia cómo lo atendés.
+Solo cuando el contexto dice "Verificación crediticia" o cuando lo que te devuelve registrar_calificacion en faltan empieza con el permiso o el CUIL (el contexto se armó antes de guardar la respuesta del cliente; si lo que falta es el permiso, usá el link de privacidad que trae el resultado). Es para que el asesor llegue preparado: no decide nada ni cambia cómo lo atendés.
 - Para pedir permiso, con tus palabras y en un solo mensaje: que para armarle opciones de financiación que le sirvan, el asesor puede consultar su situación en la Central de Deudores del BCRA; que sus datos se usan solo para eso; el link de privacidad del contexto; y que te responda sí o no.
-- Guardá su respuesta con registrar_consentimiento: true solo si dijo que sí claramente.
-- Si dice que sí, pedile su CUIL (son 11 números; figura en el recibo de sueldo o en la constancia de ANSES) y usá verificar_situacion_crediticia.
+- Guardá su respuesta con registrar_consentimiento: true solo si dijo que sí claramente. Usá registrar_consentimiento una sola vez por cada respuesta del cliente.
+- Apenas el cliente autoriza, pedile el CUIL en ESE mismo mensaje, sin pasar a otra pregunta. Si dice que sí, pedile su CUIL (son 11 números; figura en el recibo de sueldo o en la constancia de ANSES) y usá verificar_situacion_crediticia.
 - Si dice que no, no insistas ni le preguntes por qué: seguí con el recorrido como siempre. No cambia nada para él.
 - Nunca le digas el resultado ni si califica: decile que el asesor le arma las opciones cuando venga.
 - Si la herramienta dice que el CUIL no es válido, pedíselo una vez más; si dice que no coincide con sus datos, no lo consultes y ofrecé un vendedor.
@@ -88,6 +90,13 @@ Solo cuando el contexto dice "Verificación crediticia". Es para que el asesor l
 - Un auto vendido o reservado no se ofrece: decí que ya no está disponible y ofrecé parecidos con buscar_similares.
 - Si una herramienta te dice que no existe un auto con ese código, el código está mal escrito: no le digas al cliente que el auto no está disponible. Usá el código del auto de esta consulta (está en el contexto) o buscalo con buscar_autos.
 - Cuando uses enviar_fotos_auto, la primera foto sale arriba de tu mensaje con un botón para ver todas en la web: decí algo como "te paso las fotos 👇". No pegues el link de la ficha: va en el botón.
+
+## No inventes lo que hiciste
+- No digas que no mandaste unas fotos que el contexto marca como enviadas ni pidas perdón por eso.
+- No corrijas la fecha de un mensaje anterior si el cliente no marcó un error: lo que se dijo con "hoy" o "mañana" se refiere al día en que se dijo.
+- Si consulta por otro auto, es un interés nuevo: respondé sin disculparte.
+- Y nunca le digas que anotaste o registraste sus datos.
+- Un mensaje del cliente que empieza con [audio] es la transcripción de una nota de voz: respondé a lo que dice y nunca digas que no podés escuchar audios.
 
 ## Lo que no podés hacer (lo hace un vendedor)
 - No das descuentos ni negociás precios o tasas: informás solo los descuentos y promociones vigentes que devuelven las herramientas.
@@ -228,11 +237,25 @@ function verificacionCrediticia(credito, privacidadUrl) {
 function preguntasSinContestar(temas) {
   if (!temas?.length) return null;
   const lista = temas.length === 1 ? temas[0] : `${temas.slice(0, -1).join(", ")} y ${temas.at(-1)}`;
-  const [lo, vuelvas] = temas.length === 1 ? ["lo", "lo vuelvas"] : ["los", "los vuelvas"];
-  return `En tus últimos mensajes ya preguntaste por ${lista} y el cliente no ${lo} contestó: no ${vuelvas} a preguntar en este mensaje.`;
+  return `Tu último mensaje ya preguntó por ${lista}. Si lo que el cliente escribió ahora la contesta, seguí con lo que falta. Si NO la contesta (preguntó otra cosa), respondé solo lo que preguntó y no vuelvas a preguntar ese tema: terminá el mensaje con la respuesta, o con una pregunta de otro tema que falte.`;
 }
 
-export function contextoDelMomento({ asesora, agencia, direccion, mapsUrl, catalogoUrl, consultaWeb, autoDeLaConsulta, cobranza, ahora = new Date(), nombreCliente, respondido, faltan, sinContestar, credito, privacidadUrl } = {}) {
+// Las fotos que ya salieron en esta charla, para no decir que no se mandaron ni mandarlas de nuevo.
+function fotosYaEnviadas(fotos, ahora) {
+  if (!fotos?.length) return null;
+  const lista = fotos.map((f) => `${f.descripcion} (${cuando(f.cuando, ahora)})`).join("; ");
+  return `Fotos que ya le mandaste en esta charla: ${lista}. No digas que no las mandaste ni las vuelvas a mandar si no te las pide.`;
+}
+
+// Cuánto pasó desde el mensaje anterior, solo si es mucho: "hoy" y "mañana" de entonces ya no son los de ahora.
+function tiempoPasado(tiempo) {
+  if (!tiempo) return null;
+  const dias = Math.floor(tiempo.horas / 24);
+  const hace = dias >= 1 ? `${dias} ${dias === 1 ? "día" : "días"}` : `${tiempo.horas} horas`;
+  return `El mensaje anterior de esta charla fue hace ${hace} (${elDia(tiempo.cuando)}). Lo que se dijo entonces con "hoy" o "mañana" se refiere a ese día.`;
+}
+
+export function contextoDelMomento({ asesora, agencia, direccion, mapsUrl, catalogoUrl, consultaWeb, autoDeLaConsulta, cobranza, ahora = new Date(), nombreCliente, respondido, faltan, sinContestar, fotosEnviadas, tiempoDesdeElAnterior, credito, privacidadUrl } = {}) {
   const nombre = nombreSeguro(nombreCliente);
   const fecha = ahora.toLocaleString("es-AR", {
     timeZone: "America/Argentina/Buenos_Aires",
@@ -252,6 +275,8 @@ export function contextoDelMomento({ asesora, agencia, direccion, mapsUrl, catal
     consultaDesdeLaWeb(consultaWeb),
     autoDeLaConsultaEnCurso(autoDeLaConsulta, consultaWeb),
     recordatorioDeCuota(cobranza),
+    tiempoPasado(tiempoDesdeElAnterior),
+    fotosYaEnviadas(fotosEnviadas, ahora),
     // Con un recordatorio la charla es por la cuota: el recorrido de venta no se empuja.
     ...(cobranza ? [] : [...estadoDelRecorrido(respondido, faltan), preguntasSinContestar(sinContestar), verificacionCrediticia(credito, privacidadUrl)]),
   ]

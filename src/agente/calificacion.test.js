@@ -171,3 +171,37 @@ test("si paga de contado, el recibo y el anticipo no cuentan (ni para la tempera
 test("con la visita acordada alcanza, aunque no haya guardado la disponibilidad", () => {
   assert.deepEqual(pendientes({ ...completa, disponibilidad: null, visita_propuesta: "jueves a la tarde" }, null), []);
 });
+
+// ── El permiso del BCRA y el CUIL entran en lo que falta ──
+
+const FINANCIA_CON_RECIBO = { auto_id: 5, pago_tipo: "financiado", anticipo: "4 millones", credito_ok: 1 };
+
+test("si espera el permiso, figura después del recibo o garante y antes del usado", () => {
+  const faltan = pendientes({ ...FINANCIA_CON_RECIBO }, null, "pedir_consentimiento");
+  assert.deepEqual(faltan.slice(0, 3), ["permiso para consultar su situación en el BCRA (pedilo como dice Verificación crediticia)", "si entrega un usado", "quién decide"]);
+  const sinRecibo = pendientes({ auto_id: 5, pago_tipo: "financiado", anticipo: "4 millones" }, null, "pedir_consentimiento");
+  assert.ok(sinRecibo.indexOf("recibo o garante") < sinRecibo.findIndex((f) => f.startsWith("permiso")));
+});
+
+test("si autorizó y falta el CUIL, el CUIL figura antes del usado", () => {
+  const faltan = pendientes({ ...FINANCIA_CON_RECIBO }, null, "pedir_cuil");
+  assert.deepEqual(faltan.slice(0, 2), ["su CUIL (ya autorizó la consulta)", "si entrega un usado"]);
+});
+
+test("si dijo que no, ya se consultó o paga de contado (credito nulo), ni el permiso ni el CUIL figuran", () => {
+  for (const credito of [null, undefined]) {
+    const faltan = pendientes({ ...FINANCIA_CON_RECIBO }, null, credito);
+    assert.equal(faltan.some((f) => /BCRA|CUIL/.test(f)), false);
+  }
+  assert.equal(pendientes({ auto_id: 5, pago_tipo: "contado" }, null, null).some((f) => /BCRA|CUIL/.test(f)), false);
+});
+
+test("sin el tercer parámetro, pendientes es igual que antes", () => {
+  assert.deepEqual(pendientes({ ...FINANCIA_CON_RECIBO }), pendientes({ ...FINANCIA_CON_RECIBO }, null, null));
+});
+
+test("la visita propuesta lleva el día en que el cliente la dijo", () => {
+  const dijo = new Date("2026-11-11T13:00:00Z"); // miércoles 11/11 en Argentina
+  assert.ok(respondido({ visita_propuesta: "mañana a la mañana", visita_propuesta_at: dijo }).includes('visita propuesta: "mañana a la mañana" (lo dijo el miércoles 11/11)'));
+  assert.ok(respondido({ visita_propuesta: "el sábado" }).includes('visita propuesta: "el sábado"'));
+});
