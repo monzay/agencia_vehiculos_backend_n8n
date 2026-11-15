@@ -1,12 +1,18 @@
 import { definicionesParaClaude, ejecutarHerramienta, NOMBRES_HERRAMIENTAS } from "./herramientas.js";
 import { INSTRUCCIONES, contextoDelMomento } from "./instrucciones.js";
-import { LIMITES, MENSAJES_FIJOS } from "./limites.js";
+import { LIMITES, MENSAJES_FIJOS, maxTokensPara } from "./limites.js";
 
 // El agente vendedor: le habla a Claude, ejecuta las herramientas que pide y
 // arma la respuesta para WhatsApp. Nunca lanza: ante cualquier problema
 // devuelve el mensaje de respaldo y pide derivar a un vendedor.
 
 export const MODELO = "claude-haiku-5-5";
+
+// Nivel de razonamiento del agente. Fuera de producción, AGENTE_ESFUERZO (low|medium|high) lo cambia para medir.
+export const ESFUERZO = "low";
+const NIVELES = ["low", "medium", "high"];
+export const esfuerzoEfectivo = (env = process.env) =>
+  env.NODE_ENV !== "production" && NIVELES.includes(env.AGENTE_ESFUERZO) ? env.AGENTE_ESFUERZO : ESFUERZO;
 
 const respaldo = (motivo) => ({ ok: false, texto: MENSAJES_FIJOS.respaldo, fotos: [], derivar: true, motivo });
 
@@ -53,7 +59,7 @@ async function resolverHerramientas(usos, ctx, disponibles) {
 const nombraHerramienta = (texto) => NOMBRES_HERRAMIENTAS.some((nombre) => texto.includes(nombre));
 
 // Quita las oraciones que nombran una herramienta (línea por línea, para respetar los párrafos).
-function sinOracionesInternas(texto) {
+export function sinOracionesInternas(texto) {
   return texto
     .split(/\r?\n/)
     .map((linea) =>
@@ -70,7 +76,7 @@ function sinOracionesInternas(texto) {
 const PULGAR_SUELTO = /^👍[\u{1F3FB}-\u{1F3FF}]?\uFE0F?$/u;
 
 // Un texto con más de una línea no termina con un 👍 solo: ese va únicamente como respuesta entera (reacción).
-function sinPulgarSuelto(texto) {
+export function sinPulgarSuelto(texto) {
   const lineas = texto.trim().split(/\r?\n/);
   if (lineas.length < 2 || !PULGAR_SUELTO.test(lineas.at(-1).trim())) return texto;
   return lineas.slice(0, -1).join("\n").trim() || texto;
@@ -85,11 +91,11 @@ async function sinNombresInternos(texto, { anthropic, system, tools, conversacio
   try {
     const respuesta = await anthropic.messages.create({
       model: MODELO,
-      max_tokens: LIMITES.maxTokensRespuesta,
+      max_tokens: maxTokensPara(esfuerzoEfectivo()),
       system,
       tools,
       messages: [...conversacion, { role: "assistant", content: texto }, { role: "user", content: PEDIDO_DE_REESCRITURA }],
-      output_config: { effort: "low" },
+      output_config: { effort: esfuerzoEfectivo() },
       tool_choice: { type: "none" },
     }, OPCIONES_PEDIDO);
     await registrarSinCortar(registrarConsumo, respuesta.usage);
@@ -138,11 +144,11 @@ export async function responderConIA({ mensajes, contexto, ctx, registrarConsumo
     try {
       respuesta = await anthropic.messages.create({
         model: MODELO,
-        max_tokens: LIMITES.maxTokensRespuesta,
+        max_tokens: maxTokensPara(esfuerzoEfectivo()),
         system,
         tools,
         messages: conversacion,
-        output_config: { effort: "low" },
+        output_config: { effort: esfuerzoEfectivo() },
         ...(sinHerramientas && { tool_choice: { type: "none" } }),
       }, OPCIONES_PEDIDO);
     } catch (err) {

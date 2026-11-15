@@ -14,6 +14,9 @@ export const LIMITES = {
   maxTokensRespuesta: 2048, // incluye el razonamiento; WhatsApp no necesita más
 };
 
+// Con razonamiento medio o alto, el razonamiento ocupa más: el máximo de la respuesta sube.
+export const maxTokensPara = (esfuerzo) => (esfuerzo === "low" ? LIMITES.maxTokensRespuesta : 2 * LIMITES.maxTokensRespuesta);
+
 export const MENSAJES_FIJOS = {
   sinCupo: "¡Gracias por escribirnos! Un vendedor te va a responder a la brevedad.",
   audioLargo: "¡Gracias por tu audio! Es un poco largo para mí: ¿me lo podés resumir en un mensaje de texto o en un audio de menos de 2 minutos?",

@@ -74,6 +74,9 @@ function telefonoValido(telefono) {
 // Mensajes del mismo número, de a uno: así los conteos del día y el historial
 // ven siempre el mensaje anterior. Alcanza mientras el backend sea un solo proceso.
 const colas = new Map();
+
+// Cualquier tarea de un número (el recordatorio, por ejemplo) pasa por la misma cola que sus mensajes.
+export const enCola = (telefono, tarea) => deAUno(telefonoValido(telefono), tarea);
 function deAUno(clave, tarea) {
   const actual = (colas.get(clave) ?? Promise.resolve()).then(tarea);
   const cola = actual.catch(() => {});
@@ -330,7 +333,7 @@ async function fotosYaEnviadas(root, historial) {
 
 // Lo que el agente necesita saber en este mensaje: la agencia (nombre, dirección,
 // mapa), el auto de la consulta y en qué punto del recorrido de venta está el cliente.
-async function contextoDelTurno({ root, cliente, sesion, ahora, autoWeb, cobranza, historial }) {
+export async function contextoDelTurno({ root, cliente, sesion, ahora, autoWeb, cobranza, historial }) {
   const [usado, ubicacion, credito, auto] = await Promise.all([
     root.vehiculo_cliente.findFirst({ where: { sesion_id: sesion.id, contexto: "trade_in", deleted_at: null } }),
     root.ubicacion.findUnique({ where: { id: 1 }, select: { nombre: true, direccion: true, maps_url: true } }),

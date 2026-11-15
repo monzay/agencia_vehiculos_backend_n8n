@@ -87,7 +87,7 @@ export async function correrChat(chat, { telefono, repeticion = 1 }, deps) {
     for (const m of momentos) {
       reloj = new Date(desde + m * MIN);
       if (!revisarRecordatorios) continue;
-      const nuevos = recordatoriosDe(await revisarRecordatorios({ ahora: reloj }), telefono);
+      const nuevos = recordatoriosDe(await revisarRecordatorios({ ahora: reloj, telefono }), telefono);
       const usadas = await herramientasDelTurno();
       if (nuevos[0]) nuevos[0].herramientas = usadas;
       turnos.push(...nuevos);

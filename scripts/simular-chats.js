@@ -70,6 +70,9 @@ try {
   await prepararBase(urls, { prohibidas: urls.prohibidas, datos: DATOS_CATALOGO });
 
   const { crearClienteAnthropic } = await import("../src/lib/anthropic.js");
+  const { esfuerzoEfectivo } = await import("../src/agente/agente.js");
+  // El nivel que de verdad usa el bot (no lo que se pidió): en producción o con un valor inválido no cambia.
+  const esfuerzoUsado = esfuerzoEfectivo();
   ({ prisma } = await import("../src/lib/prisma.js"));
   const { dbAgente } = await import("../src/agente/db.js");
   const { crearBcraSimulado } = await import("../src/agente/simulador/bcra-simulado.js");
@@ -95,11 +98,12 @@ try {
   const anthropic = crearClienteAnthropic(); // el mismo cliente que el backend (agrega el workspace)
   const modulo = await import("../src/agente/recordatorio.js").catch(() => null);
   const enviados = [];
-  const enviar = async (telefono, cuerpo) => void enviados.push({ telefono, texto: cuerpo?.text?.body ?? cuerpo?.texto ?? String(cuerpo) });
+  // Envío de prueba: solo anota; nunca sale nada a WhatsApp.
+  const enviar = async ({ telefono, texto }) => (enviados.push({ telefono, texto }), { wamid: null });
   const revisarRecordatorios = modulo?.revisarRecordatorios
-    ? async ({ ahora }) => {
+    ? async ({ ahora, telefono }) => {
         enviados.length = 0;
-        const devuelto = await modulo.revisarRecordatorios({ ahora, root: prisma, dbAgente: baseAgente, anthropic, enviar });
+        const devuelto = await modulo.revisarRecordatorios({ ahora, minutos: 10, root: prisma, dbAgente: baseAgente, anthropic, enviar, soloTelefono: telefono });
         return Array.isArray(devuelto) ? devuelto : enviados.splice(0);
       }
     : undefined;
@@ -130,7 +134,7 @@ try {
   const tareas = chats.flatMap((chat, i) =>
     Array.from({ length: repeticiones }, (_, r) => ({ chat, repeticion: r + 1, telefono: `5490001${String(i * 10 + r).padStart(5, "0")}` }))
   );
-  console.log(`Corriendo ${chats.length} chats × ${repeticiones} repeticiones (${paralelo} en paralelo)${esfuerzo ? `, esfuerzo ${esfuerzo}` : ""}…`);
+  console.log(`Corriendo ${chats.length} chats × ${repeticiones} repeticiones (${paralelo} en paralelo), esfuerzo ${esfuerzoUsado}…`);
   const resultados = new Array(tareas.length);
   let siguiente = 0;
   const trabajador = async () => {
@@ -146,7 +150,7 @@ try {
 
   const resumen = resumir(resultados);
   const transcripcion = transcripcionMarkdown(resultados);
-  const resumenMd = resumenMarkdown(resumen, { ronda: ronda ?? "(carpeta propia)", esfuerzo });
+  const resumenMd = resumenMarkdown(resumen, { ronda: ronda ?? "(carpeta propia)", esfuerzo: esfuerzoUsado });
   const leerCarpeta = (carpeta) =>
     readdirSync(carpeta, { withFileTypes: true })
       .filter((d) => d.isDirectory())
@@ -158,7 +162,7 @@ try {
 
   mkdirSync(salida, { recursive: true });
   writeFileSync(path.join(salida, "transcripcion.md"), `${transcripcion}\n---\n\n${resumenMd}`);
-  writeFileSync(path.join(salida, "resultados.json"), JSON.stringify({ ronda: ronda ?? null, esfuerzo: esfuerzo ?? null, resumen, resultados }, null, 2));
+  writeFileSync(path.join(salida, "resultados.json"), JSON.stringify({ ronda: ronda ?? null, esfuerzo: esfuerzoUsado, resumen, resultados }, null, 2));
   writeFileSync(path.join(salida, "pedido-codex.md"), pedidoCodex({ specs, requisitoVigente, transcripcion }));
 
   console.log(`\n${resumenMd}\nSalida en ${salida}`);

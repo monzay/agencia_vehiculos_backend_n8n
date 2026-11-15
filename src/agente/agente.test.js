@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { responderConIA, MODELO } from "./agente.js";
+import { responderConIA, MODELO, ESFUERZO, esfuerzoEfectivo } from "./agente.js";
+import { maxTokensPara } from "./limites.js";
 import { MENSAJES_FIJOS } from "./limites.js";
 
 // Claude simulado: devuelve respuestas guionadas y guarda cada pedido.
@@ -303,4 +304,39 @@ test("si la herramienta no devolvió fotos (el auto no tiene o no está disponib
   const r = await responderConIA({ ...entrada(), ctx: { ...ctx, db: sinFotos } }, { anthropic });
   assert.deepEqual(r.fotos, []);
   assert.equal(r.fotosRef, null);
+});
+
+// ── Nivel de razonamiento ──
+
+test("el nivel de razonamiento es el de la constante, salvo un AGENTE_ESFUERZO válido fuera de producción", () => {
+  assert.equal(ESFUERZO, "low");
+  assert.equal(esfuerzoEfectivo({}), ESFUERZO);
+  for (const nivel of ["low", "medium", "high"]) assert.equal(esfuerzoEfectivo({ AGENTE_ESFUERZO: nivel }), nivel);
+  assert.equal(esfuerzoEfectivo({ AGENTE_ESFUERZO: "extremo" }), ESFUERZO, "un valor inválido se ignora");
+  assert.equal(esfuerzoEfectivo({ AGENTE_ESFUERZO: "" }), ESFUERZO);
+});
+
+test("en producción AGENTE_ESFUERZO se ignora", () => {
+  assert.equal(esfuerzoEfectivo({ AGENTE_ESFUERZO: "high", NODE_ENV: "production" }), ESFUERZO);
+  assert.equal(esfuerzoEfectivo({ AGENTE_ESFUERZO: "high", NODE_ENV: "development" }), "high");
+});
+
+test("el máximo de tokens es 2048 con nivel bajo y 4096 con medio o alto", () => {
+  assert.equal(maxTokensPara("low"), 2048);
+  assert.equal(maxTokensPara("medium"), 4096);
+  assert.equal(maxTokensPara("high"), 4096);
+});
+
+test("la llamada a Claude usa el nivel de AGENTE_ESFUERZO y su máximo de tokens", async () => {
+  const antes = process.env.AGENTE_ESFUERZO;
+  process.env.AGENTE_ESFUERZO = "medium";
+  try {
+    const anthropic = claudeFalso([texto("ok")]);
+    await responderConIA(entrada(), { anthropic });
+    assert.deepEqual(anthropic.pedidos[0].output_config, { effort: "medium" });
+    assert.equal(anthropic.pedidos[0].max_tokens, 4096);
+  } finally {
+    if (antes === undefined) delete process.env.AGENTE_ESFUERZO;
+    else process.env.AGENTE_ESFUERZO = antes;
+  }
 });

@@ -16,7 +16,7 @@ const SOLO_EMOJIS = /^[\p{Extended_Pictographic}‍️]+$/u;
 const PEDIDO = /\b(?:decime|avisame|confirmame|contame|pasame|mandame|eleg[ií]|qu[eé] d[ií]a|qu[eé] horario|cu[aá]ndo pod[eé]s|cu[aá]ndo te queda)\b/i;
 
 const sinTildes = (texto) => texto.normalize("NFD").replace(/\p{M}/gu, "");
-const pregunta = (texto) => /[?¿]/.test(texto ?? "") || PEDIDO.test(texto ?? "");
+export const pregunta = (texto) => /[?¿]/.test(texto ?? "") || PEDIDO.test(texto ?? "");
 
 export function esSoloAgradecimiento(texto) {
   const limpio = String(texto ?? "").trim();
