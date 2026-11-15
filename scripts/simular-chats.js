@@ -129,7 +129,6 @@ try {
     // Nunca el BCRA real: los CUIL de los chats son inventados.
     bcra: crearBcraSimulado("verde"),
     leerGuardado,
-    herramientas,
     revisarRecordatorios,
   };
 

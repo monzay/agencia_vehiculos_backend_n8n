@@ -1727,3 +1727,17 @@ test("antes de que conteste lo del recibo, el permiso del BCRA ya figura en lo q
   assert.match(contexto.match(/Falta averiguar[^\n]*/)?.[0] ?? "", /1\) recibo o garante[^;]*; 2\) permiso para consultar su situación en el BCRA \(apenas responda lo del recibo o garante\); 3\) si entrega un usado/);
   assert.doesNotMatch(contexto, /Verificación crediticia: pedile permiso/, "todavía no se pide");
 });
+
+test("si las deps traen alUsarHerramienta, el orquestador se lo pasa a las herramientas del turno", async () => {
+  const usos = [];
+  const root = baseFalsa({ cliente: { id: 50 } });
+  const anthropic = claudeGuionado(
+    { stop_reason: "tool_use", usage: usoFalso, content: [{ type: "tool_use", id: "t1", name: "horarios_atencion", input: {} }] },
+    respondeTexto("Abrimos de lunes a viernes.")
+  );
+  const dbAgente = { horarios_atencion: { findMany: async () => [{ dia: 1, abierto: true, apertura: "09:00", cierre: "18:00" }] } };
+  await atenderMensaje({ telefono: TEL, texto: "horarios?", ahora }, { ...deps(root, anthropic), dbAgente, alUsarHerramienta: (u) => usos.push(u) });
+  assert.equal(usos.length, 1);
+  assert.equal(usos[0].nombre, "horarios_atencion");
+  assert.match(JSON.stringify(usos[0].resultado), /Lunes/);
+});

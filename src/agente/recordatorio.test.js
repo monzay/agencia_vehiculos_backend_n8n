@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { consultasParaRecordar, textoDelRecordatorio, revisarRecordatorios, iniciarRecordatorios, TEXTO_FIJO } from "./recordatorio.js";
+import { consultasParaRecordar, textoDelRecordatorio, revisarRecordatorios, iniciarRecordatorios, sinSaludoInicial, TEXTO_FIJO } from "./recordatorio.js";
 
 // Ningún test manda a WhatsApp ni arranca la revisión automática: base, Claude, envío y reloj son de mentira.
 
@@ -443,4 +443,32 @@ test("si una revisión no terminó cuando toca la siguiente, la siguiente se sal
   await primera;
   await registro.funciones[0]();
   assert.equal(revisiones, 2, "terminada la primera, la siguiente sí corre");
+});
+
+// ── Más corto y sin vueltas ──
+
+test("la línea de sistema del recordatorio pide: sin hola, sin perdón, sin no hay apuro, sin explicar para qué sirve el dato, una oración", async () => {
+  const anthropic = claudeFalso();
+  await revisar(baseFalsa(), { anthropic });
+  const sistema = anthropic.llamadas[0].system.map((b) => b.text).join("\n");
+  assert.match(sistema, /sin "hola"/);
+  assert.match(sistema, /sin "perdón por escribir de nuevo"/);
+  assert.match(sistema, /sin "no hay apuro"/);
+  assert.match(sistema, /sin explicar para qué sirve el dato/);
+  assert.match(sistema, /una oración/);
+});
+
+test("sinSaludoInicial quita un saludo al empezar el recordatorio y deja el resto", () => {
+  assert.equal(sinSaludoInicial("Hola, ¿con cuánto de anticipo contás?"), "¿Con cuánto de anticipo contás?");
+  assert.equal(sinSaludoInicial("¡Hola de nuevo! ¿Me contás el anticipo?"), "¿Me contás el anticipo?");
+  assert.equal(sinSaludoInicial("Buenas tardes, ¿seguís con lo del Prisma?"), "¿Seguís con lo del Prisma?");
+  assert.equal(sinSaludoInicial("¿Con cuánto de anticipo contás?"), "¿Con cuánto de anticipo contás?");
+  assert.equal(sinSaludoInicial("Hola"), "Hola", "si quedaría vacío, se deja");
+  assert.equal(sinSaludoInicial("Holanda es lindo"), "Holanda es lindo", "solo la palabra entera");
+});
+
+test("el recordatorio que sale no empieza con un saludo aunque la IA lo escriba", async () => {
+  const envio = envioFalso();
+  await revisar(baseFalsa(), { anthropic: claudeFalso("Hola, ¿con cuánto de anticipo contás?"), envio });
+  assert.equal(envio.enviados[0].texto, "¿Con cuánto de anticipo contás?");
 });

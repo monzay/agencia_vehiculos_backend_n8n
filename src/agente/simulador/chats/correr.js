@@ -9,6 +9,7 @@ import { aplicarControles } from "./controles.js";
 const MIN = 60_000;
 const MINUTOS_PARA_RECORDATORIO = 10;
 const SEGUNDOS_DE_AUDIO = 3;
+const MAX_RESULTADO = 600;
 
 // Lunes 16/11/2026 10:00 en Argentina (UTC-3).
 export const INICIO_POR_DEFECTO = new Date("2026-11-16T13:00:00.000Z");
@@ -41,7 +42,13 @@ export async function correrChat(chat, { telefono, repeticion = 1 }, deps) {
   const { atender = atenderMensaje, leerGuardado, revisarRecordatorios, herramientas, pausaRafagaMs = 300, ...depsDeAtender } = deps;
   let textoDelAudio = "";
   // La transcripción de Groq se reemplaza por el texto del guion: nunca hay red.
-  const depsDelChat = { ...depsDeAtender, transcribir: async () => ({ texto: textoDelAudio, segundos: SEGUNDOS_DE_AUDIO }) };
+  // Lo que usó el bot en el turno, con el resultado entero (recortado): lo registra el gancho del orquestador.
+  const usosPendientes = [];
+  const alUsarHerramienta = ({ nombre, pedido, resultado, esError }) => {
+    const texto = typeof resultado === "string" ? resultado : JSON.stringify(resultado ?? null);
+    usosPendientes.push({ nombre, pedido, resultado: texto.length > MAX_RESULTADO ? `${texto.slice(0, MAX_RESULTADO)}…` : texto, esError });
+  };
+  const depsDelChat = { ...depsDeAtender, alUsarHerramienta, transcribir: async () => ({ texto: textoDelAudio, segundos: SEGUNDOS_DE_AUDIO }) };
   const nombre = `SIM ${chat.codigo}`;
   const turnos = [];
   let reloj = new Date((chat.empieza ?? INICIO_POR_DEFECTO).getTime());
@@ -76,6 +83,7 @@ export async function correrChat(chat, { telefono, repeticion = 1 }, deps) {
     const usadas = await herramientasDelTurno();
     const primero = nuevos.find((t) => t.de === "bot") ?? turnos.at(-1);
     primero.herramientas = [...(primero.herramientas ?? []), ...usadas];
+    primero.usos = usosPendientes.splice(0);
     turnos.push(...nuevos);
   }
 

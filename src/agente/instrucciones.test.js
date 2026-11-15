@@ -397,3 +397,36 @@ test("con el CUIL: usa SIEMPRE verificar_situacion_crediticia, no inventa que no
   assert.match(t, /Nunca digas que un CUIL no coincide o que la consulta falló si la herramienta no lo dijo/);
   assert.match(t, /Después de consultar, decile solo que el asesor le arma las opciones: nunca el resultado ni palabras como "cargado" o "sistema"/);
 });
+
+// ── Reglas que salieron de la revisión de la ronda 1 ──
+
+test("no opina sobre el anticipo ni sobre los datos del cliente: acusa recibo en pocas palabras", async () => {
+  const t = await instrucciones();
+  assert.match(t, /No opines sobre el anticipo ni sobre los datos del cliente: nada de "muy buen anticipo", "buena base", "con eso arrancás bien", "sumás puntos"\. Acusá recibo en pocas palabras y seguí/);
+});
+
+test("una sola pregunta de verdad: nada de 'A o B y además C' ni una pregunta del recorrido más ofrecer fotos como pregunta", async () => {
+  const t = await instrucciones();
+  assert.match(t, /Una sola pregunta de verdad: no "¿A o B\? ¿Y además C\?", ni una pregunta del recorrido más "¿querés que te mande fotos\?"/);
+  assert.match(t, /Si ofrecés algo \(fotos, catálogo\), va como afirmación \("si querés te paso las fotos"\), no como segunda pregunta/);
+});
+
+test("quien habla de anticipo, entrega, cuotas o financiación ya dijo que financia: se guarda y no se le pregunta la forma de pago", async () => {
+  const t = await instrucciones();
+  assert.match(t, /Quien habla de anticipo, entrega, cuotas o financiación ya dijo que financia: guardá pago_tipo financiado y no le preguntes la forma de pago/);
+});
+
+test("cuando el cliente nombra el auto que le interesa y existe, lo guarda con auto_ref, también si llegó por audio o sin el mensaje de la web", async () => {
+  const t = await instrucciones();
+  assert.match(t, /Cuando el cliente nombra el auto que le interesa y existe \(lo encontraste con una herramienta\), guardalo con registrar_calificacion \(auto_ref\), también si llegó por audio o sin el mensaje de la web/);
+});
+
+test("mensajes más cortos: acuse breve y lo que sigue, sin repetir 'así el asesor…' ni 🙌 en todos", async () => {
+  const t = await instrucciones();
+  assert.match(t, /Mensajes más cortos: un acuse breve \(o ninguno\) y lo que sigue\. No repitas en cada mensaje "así el asesor…" ni pongas 🙌 en todos/);
+});
+
+test("si deriva o dice que un vendedor lo va a contactar, tiene que haber usado derivar_a_vendedor en ese turno", async () => {
+  const t = await instrucciones();
+  assert.match(t, /Si derivás o decís que un vendedor lo va a contactar, tenés que haber usado derivar_a_vendedor en ese turno/);
+});

@@ -564,6 +564,16 @@ function registrarLlamada(ctx, nombre, pedido, respuesta) {
 // Ejecuta una herramienta pedida por la IA. Nunca lanza: devuelve
 // { esError, resultado } o { esError, error } para mandarle a Claude.
 // Cada llamada, válida o no, deja una línea en el log.
+// Gancho opcional (el simulador lo usa para ver el resultado entero): nunca rompe la respuesta.
+function avisarUso(ctx, nombre, pedido, respuesta) {
+  if (typeof ctx.alUsarHerramienta !== "function") return;
+  try {
+    ctx.alUsarHerramienta({ nombre, pedido, resultado: respuesta.esError ? respuesta.error : respuesta.resultado, esError: Boolean(respuesta.esError) });
+  } catch (err) {
+    console.error("[agente] falló alUsarHerramienta:", err?.message);
+  }
+}
+
 export async function ejecutarHerramienta(nombre, entrada, ctx) {
   const herramienta = POR_NOMBRE.get(nombre);
   const validado = herramienta?.esquema.safeParse(entrada ?? {});
@@ -571,6 +581,7 @@ export async function ejecutarHerramienta(nombre, entrada, ctx) {
   const respuesta = valido ? await ejecutarValidada(herramienta, nombre, validado.data, ctx) : respuestaInvalida(nombre, herramienta, validado);
   const pedido = valido ? pedidoParaLog(validado.data) : { campos: Object.keys(entrada ?? {}) };
   registrarLlamada(ctx, nombre, pedido, respuesta);
+  avisarUso(ctx, nombre, valido ? validado.data : entrada, respuesta);
   return respuesta;
 }
 

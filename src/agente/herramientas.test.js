@@ -1052,3 +1052,23 @@ test("registrar_consentimiento repetido: dice que ya estaba registrado y que, si
   const no = await ejecutarHerramienta("registrar_consentimiento", { acepta: false }, ctx(baseFalsa(), { credito }));
   assert.match(no.resultado.sigue, /Ya estaba registrado: seguí con el recorrido, sin pedir el CUIL/);
 });
+
+// ── Gancho para ver el resultado completo (simulador) ──
+
+test("ctx.alUsarHerramienta recibe el nombre, el pedido y el resultado completo de cada herramienta", async () => {
+  const usos = [];
+  const db = baseFalsa({ "horarios_atencion.findMany": [{ dia: 1, abierto: true, apertura: "09:00", cierre: "18:00" }] });
+  await ejecutarHerramienta("horarios_atencion", {}, ctx(db, { alUsarHerramienta: (u) => usos.push(u) }));
+  assert.equal(usos.length, 1);
+  assert.equal(usos[0].nombre, "horarios_atencion");
+  assert.equal(usos[0].esError, false);
+  assert.match(JSON.stringify(usos[0].resultado), /Lunes/);
+});
+
+test("ctx.alUsarHerramienta también ve los errores de una herramienta, y si el gancho falla no rompe la respuesta", async () => {
+  const usos = [];
+  await ejecutarHerramienta("buscar_autos", { tipo: "avion" }, ctx(baseFalsa(), { alUsarHerramienta: (u) => usos.push(u) }));
+  assert.equal(usos[0].esError, true);
+  const r = await ejecutarHerramienta("horarios_atencion", {}, ctx(baseFalsa({ "horarios_atencion.findMany": [] }), { alUsarHerramienta: () => { throw new Error("falló el gancho"); } }));
+  assert.equal(r.esError, false);
+});

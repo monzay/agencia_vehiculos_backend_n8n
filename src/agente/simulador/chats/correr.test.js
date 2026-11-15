@@ -11,7 +11,7 @@ function armar({ responder = (e, n) => ({ texto: `respuesta ${n}`, fotos: [], en
   const llamadas = [];
   const atender = async (entrada, deps) => {
     llamadas.push({ entrada, deps });
-    return responder(entrada, llamadas.length);
+    return responder(entrada, llamadas.length, deps);
   };
   return { llamadas, deps: { atender, leerGuardado: async () => ({ guardado: GUARDADO, costoUsd: 0.01 }), pausaRafagaMs: 0, ...resto } };
 }
@@ -162,4 +162,20 @@ test("correr un chat no hace ningún fetch (nada llega a WhatsApp) y las deps no
   } finally {
     globalThis.fetch = original;
   }
+});
+
+test("cada turno anota el nombre, el pedido y el resultado completo de las herramientas, recortado a 600 caracteres", async () => {
+  const { deps } = armar({
+    responder: (entrada, n, depsDeAtender) => {
+      depsDeAtender.alUsarHerramienta({ nombre: "ver_auto", pedido: { ref: "69" }, resultado: { auto: "x".repeat(2000) }, esError: false });
+      depsDeAtender.alUsarHerramienta({ nombre: "horarios_atencion", pedido: {}, resultado: { horarios: [] }, esError: false });
+      return { texto: "ok", fotos: [], envios: [{ type: "text" }] };
+    },
+  });
+  const r = await correr(chatBase([mensaje("hola")]), deps);
+  const bot = r.turnos.find((t) => t.de === "bot");
+  assert.deepEqual(bot.usos.map((u) => u.nombre), ["ver_auto", "horarios_atencion"]);
+  assert.deepEqual(bot.usos[0].pedido, { ref: "69" });
+  assert.ok(bot.usos[0].resultado.length <= 601, "recortado");
+  assert.equal(bot.usos[1].resultado, '{"horarios":[]}');
 });

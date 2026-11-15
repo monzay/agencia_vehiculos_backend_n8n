@@ -89,3 +89,11 @@ test("el pedido para Codex lleva las instrucciones, los specs, el requisito vige
   assert.ok(md.indexOf("SPEC NUEVO") < md.indexOf("REQUISITO VIGENTE"));
   assert.ok(md.indexOf("REQUISITO VIGENTE") < md.indexOf("TRANSCRIPCION"));
 });
+
+test("la transcripción muestra debajo de cada respuesta el resultado completo de las herramientas", () => {
+  const r = resultado();
+  r.turnos[1].usos = [{ nombre: "horarios_atencion", pedido: {}, resultado: '{"horarios":[{"dia":"Lunes","apertura":"08:00"}]}', esError: false }];
+  const md = transcripcionMarkdown([r]);
+  assert.match(md, /horarios_atencion/);
+  assert.match(md, /"apertura":"08:00"/);
+});

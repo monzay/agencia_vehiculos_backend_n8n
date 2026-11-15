@@ -37,7 +37,12 @@ function turnoMarkdown(t) {
   if (t.de === "error") return `**ERROR:** ${t.texto}`;
   const etiqueta = t.recordatorio ? "Bot (recordatorio)" : "Bot";
   const fotos = t.fotos ? `\n\n_[${t.fotos} fotos]_` : "";
-  const herramientas = t.herramientas?.length ? `\n\n${t.herramientas.map((h) => `_${h}_`).join("\n\n")}` : "";
+  // El resultado entero de cada herramienta (gancho del orquestador); si no hay, las líneas del log como respaldo.
+  const usos = t.usos?.length
+    ? `\n\n${t.usos.map((u) => `_herramienta ${u.nombre} ${JSON.stringify(u.pedido)} → ${u.esError ? "ERROR " : ""}${u.resultado}_`).join("\n\n")}`
+    : "";
+  const lineas = !usos && t.herramientas?.length ? `\n\n${t.herramientas.map((h) => `_${h}_`).join("\n\n")}` : "";
+  const herramientas = usos || lineas;
   return `**${etiqueta}:**\n${citar(t.texto || "(sin texto)")}${fotos}${herramientas}`;
 }
 

@@ -396,6 +396,7 @@ async function responderConAgente(turno, imagenes, deps) {
         clienteId: cliente.id,
         sesionId: sesion.id,
         urlPublica: process.env.PUBLIC_WEB_URL,
+        ...(deps.alUsarHerramienta && { alUsarHerramienta: deps.alUsarHerramienta }),
         ahora,
         // Cambiar el auto de la consulta (y avisar al asesor): con el usuario del backend.
         cambiarAuto: (sesionId, autoId) => cambiarAuto({ db: root, sesionId, ahora }, autoId),

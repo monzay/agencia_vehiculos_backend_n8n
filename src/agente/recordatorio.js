@@ -71,8 +71,17 @@ function esPreguntaSinContestar(ultimo, ahora, minutos) {
 
 // ── Qué dice ──
 
+const SALUDO_INICIAL = /^[¡!\s]*(?:hola|buenas(?: tardes| noches)?|buen d[ií]a|buenos d[ií]as)(?= |[,!.¡:]|$)(?: de nuevo)?\s*[,!.:¡]*\s*/i;
+
+// Un saludo al empezar el recordatorio sobra: se quita (y la primera letra queda en mayúscula).
+export function sinSaludoInicial(texto) {
+  const resto = texto.replace(SALUDO_INICIAL, "");
+  if (!resto.trim()) return texto;
+  return resto.replace(/\p{L}/u, (letra) => letra.toUpperCase());
+}
+
 const lineaDelRecordatorio = (minutos) =>
-  `RECORDATORIO: el cliente no respondió tu último mensaje hace ${minutos} minutos. Escribí un único mensaje corto (una o dos oraciones) que retome tu última pregunta con otras palabras, sin saludar de nuevo, sin presionar y sin datos nuevos. Respondé únicamente ${NO_CORRESPONDE} solo si el último mensaje del cliente dice expresamente que está ocupado, que escribe más tarde o que se despide. Si simplemente no contestó tu pregunta, escribí el recordatorio: es lo normal.`;
+  `RECORDATORIO: el cliente no respondió tu último mensaje hace ${minutos} minutos. Escribí un único mensaje de una oración que retome tu última pregunta con otras palabras: sin "hola", sin "perdón por escribir de nuevo", sin "no hay apuro", sin explicar para qué sirve el dato, sin presionar y sin datos nuevos. Respondé únicamente ${NO_CORRESPONDE} solo si el último mensaje del cliente dice expresamente que está ocupado, que escribe más tarde o que se despide. Si simplemente no contestó tu pregunta, escribí el recordatorio: es lo normal.`;
 
 const textoDeClaude = (respuesta) =>
   respuesta.content
@@ -127,7 +136,7 @@ export async function textoDelRecordatorio({ db, candidato, ahora, minutos = MIN
     if (new RegExp(`^${NO_CORRESPONDE}\\b`, "i").test(texto)) return null;
     // Nunca nombres internos ni un 👍 suelto, como en el resto de las respuestas.
     const limpio = sinPulgarSuelto(NOMBRES_HERRAMIENTAS.some((n) => texto.includes(n)) ? sinOracionesInternas(texto) : texto);
-    return limpio || textoFijo;
+    return limpio ? sinSaludoInicial(limpio) : textoFijo;
   } catch (err) {
     console.error("[recordatorio] falló la IA, sale el texto fijo:", err?.status ?? "", err?.message);
     return textoFijo;
