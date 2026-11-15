@@ -1706,3 +1706,24 @@ test("si la respuesta no repite la pregunta del último mensaje, no se toca", as
   const r = await atenderMensaje({ telefono: TEL, texto: "y ese tiene aire?", ahora }, deps(root, claudeFalso("Sí, tiene aire.\n\n¿Cuándo podrías pasar a verlo?")));
   assert.equal(r.texto, "Sí, tiene aire.\n\n¿Cuándo podrías pasar a verlo?");
 });
+
+test("antes de que conteste lo del recibo, el permiso del BCRA ya figura en lo que falta (después del recibo) sin pedirse todavía", async () => {
+  const root = baseFalsa({
+    cliente: { id: 50 },
+    sesion: { ...consultaConCharla, pago_tipo: "financiado", anticipo: "4 millones" },
+    historial: [mensajeDe(1, "saliente", "¿Tenés recibo de sueldo o garante?", haceHoras(0.1))],
+  });
+  root.terminos_versiones = { findFirst: async () => ({ id: 3 }) };
+  root.consentimientos = { findFirst: async () => null };
+  root.consultas_crediticias = { findFirst: async () => null };
+  const anthropic = claudeFalso();
+  process.env.PUBLIC_WEB_URL = "https://agencia.com";
+  try {
+    await atenderMensaje({ telefono: TEL, texto: "si tengo recibo", ahora }, deps(root, anthropic));
+  } finally {
+    delete process.env.PUBLIC_WEB_URL;
+  }
+  const contexto = anthropic.pedidos[0].system.at(-1).text;
+  assert.match(contexto.match(/Falta averiguar[^\n]*/)?.[0] ?? "", /1\) recibo o garante[^;]*; 2\) permiso para consultar su situación en el BCRA \(apenas responda lo del recibo o garante\); 3\) si entrega un usado/);
+  assert.doesNotMatch(contexto, /Verificación crediticia: pedile permiso/, "todavía no se pide");
+});

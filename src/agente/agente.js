@@ -76,6 +76,23 @@ export function sinOracionesInternas(texto) {
     .join("\n");
 }
 
+// El código del auto es interno: "(REF #65)", "REF 65", "ref. 65". El \b después de REF evita tocar "referencia".
+const CODIGO_DE_AUTO = /\(?\bREF\b\.?[ \t]*#?[ \t]*[\w-]+\)?/gi;
+
+export function sinCodigoDeAuto(texto) {
+  if (!new RegExp(CODIGO_DE_AUTO.source, "i").test(texto)) return texto;
+  return texto
+    .replace(CODIGO_DE_AUTO, "")
+    .replace(/\([ \t]*\)/g, "")
+    .replace(/[ \t]+([.,;:!?])/g, "$1")
+    .replace(/[ \t]{2,}/g, " ")
+    .split(/\r?\n/)
+    .map((linea) => linea.trim())
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 const PULGAR_SUELTO = /^👍[\u{1F3FB}-\u{1F3FF}]?\uFE0F?$/u;
 
 // Un texto con más de una línea no termina con un 👍 solo: ese va únicamente como respuesta entera (reacción).
@@ -185,7 +202,7 @@ export async function responderConIA({ mensajes, contexto, ctx, registrarConsumo
     }
 
     const crudo = textoDe(respuesta) || textos.filter(Boolean).join("\n");
-    const texto = crudo ? sinPulgarSuelto(await sinNombresInternos(crudo, { anthropic, system, tools, conversacion, registrarConsumo })) : "";
+    const texto = crudo ? sinPulgarSuelto(sinCodigoDeAuto(await sinNombresInternos(crudo, { anthropic, system, tools, conversacion, registrarConsumo }))) : "";
     // Si el turno pasó a la consulta de otro auto, el orquestador lo cierra en esa.
     const otraConsulta = ctxTurno.sesionId !== ctx.sesionId && { sesionId: ctxTurno.sesionId };
     return texto ? { ok: true, texto, fotos, ficha, fotosRef: fotos.length ? fotosRef : null, guardados, ...otraConsulta } : respaldo("sin_texto");

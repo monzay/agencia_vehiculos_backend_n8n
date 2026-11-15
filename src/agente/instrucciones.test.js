@@ -390,3 +390,10 @@ test("con los km sin cargar, después de decirlo cierra con la invitación a ver
   const t = await instrucciones();
   assert.match(t, /Después de decir que no los tenés a mano, no repitas la pregunta del recorrido que ya hiciste: cerrá con la invitación a verlo en la agencia/);
 });
+
+test("con el CUIL: usa SIEMPRE verificar_situacion_crediticia, no inventa que no coincide ni que falló, y después solo dice que el asesor arma las opciones", async () => {
+  const t = await instrucciones();
+  assert.match(t, /Cuando el cliente te manda 11 números después de autorizar, usá SIEMPRE verificar_situacion_crediticia antes de contestar/);
+  assert.match(t, /Nunca digas que un CUIL no coincide o que la consulta falló si la herramienta no lo dijo/);
+  assert.match(t, /Después de consultar, decile solo que el asesor le arma las opciones: nunca el resultado ni palabras como "cargado" o "sistema"/);
+});

@@ -1044,3 +1044,11 @@ test("registrar_calificacion, cuando lo que sigue es el permiso, devuelve tambi�
   const nada = await ejecutarHerramienta("registrar_calificacion", { ...calificacionVacia }, ctx(dbDeCalificacion()));
   assert.equal(nada.resultado.privacidad, undefined);
 });
+
+test("registrar_consentimiento repetido: dice que ya estaba registrado y que, si ya pasó el CUIL, use verificar_situacion_crediticia ahora", async () => {
+  const credito = { registrarConsentimiento: async () => ({ registrado: true, repetido: true }) };
+  const r = await ejecutarHerramienta("registrar_consentimiento", { acepta: true }, ctx(baseFalsa(), { credito }));
+  assert.match(r.resultado.sigue, /Ya estaba registrado: si el cliente ya te pasó el CUIL, usá verificar_situacion_crediticia ahora/);
+  const no = await ejecutarHerramienta("registrar_consentimiento", { acepta: false }, ctx(baseFalsa(), { credito }));
+  assert.match(no.resultado.sigue, /Ya estaba registrado: seguí con el recorrido, sin pedir el CUIL/);
+});

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { registrarConsentimiento, verificarSituacion, estadoCredito } from "./verificacion.js";
+import { registrarConsentimiento, verificarSituacion, estadoCredito, permisoAnticipado } from "./verificacion.js";
 
 const AHORA = new Date("2026-11-01T15:00:00Z");
 const DIA_MS = 24 * 3_600_000;
@@ -240,7 +240,7 @@ test("si la IA repite el mismo sí con la misma versión de términos, queda un 
   const { db, estado } = baseFalsa();
   await registrarConsentimiento({ ...ctx(db), wamid: "wamid.DEL_SI" }, true);
   const repetido = await registrarConsentimiento({ ...ctx(db), wamid: "wamid.DOS_MENSAJES_DESPUES" }, true);
-  assert.deepEqual(repetido, { registrado: true });
+  assert.deepEqual(repetido, { registrado: true, repetido: true });
   assert.equal(estado.consentimientos.length, 1);
   assert.equal(estado.consentimientos[0].wamid, "wamid.DEL_SI");
 });
@@ -248,7 +248,7 @@ test("si la IA repite el mismo sí con la misma versión de términos, queda un 
 test("el mismo no repetido tampoco crea otro registro", async () => {
   const { db, estado } = baseFalsa();
   await registrarConsentimiento(ctx(db), false);
-  assert.deepEqual(await registrarConsentimiento(ctx(db), false), { registrado: true });
+  assert.deepEqual(await registrarConsentimiento(ctx(db), false), { registrado: true, repetido: true });
   assert.equal(estado.consentimientos.length, 1);
 });
 
@@ -266,4 +266,33 @@ test("el mismo sí pero con una versión nueva de los términos se guarda otra v
   await registrarConsentimiento(ctx(db), true);
   assert.equal(estado.consentimientos.length, 2);
   assert.equal(estado.consentimientos[1].terminos_version_id, 3);
+});
+
+// ── El permiso en el orden desde antes del recibo ──
+
+test("permisoAnticipado: si financia y todavía no dijo lo del recibo, avisa que el permiso va justo después (sin habilitar pedirlo ahora)", async () => {
+  const antes = { id: 7, pago_tipo: "financiado", credito_ok: null };
+  const estadoCon = (opciones, sesion = antes) => permisoAnticipado({ db: baseFalsa(opciones).db, clienteId: 1, sesion, ahora: AHORA });
+  assert.equal(await estadoCon({}), "pedir_consentimiento_tras_el_recibo");
+  // estadoCredito sigue sin pedir nada antes del recibo.
+  assert.equal(await estadoCredito({ db: baseFalsa({}).db, clienteId: 1, sesion: antes, ahora: AHORA }), null);
+});
+
+test("permisoAnticipado: no aplica si paga de contado, ya dijo lo del recibo, ya respondió al permiso, ya se consultó o no hay términos", async () => {
+  const antes = { id: 7, pago_tipo: "financiado", credito_ok: null };
+  const estadoCon = (opciones, sesion = antes) => permisoAnticipado({ db: baseFalsa(opciones).db, clienteId: 1, sesion, ahora: AHORA });
+  assert.equal(await estadoCon({}, { id: 7, pago_tipo: "contado", credito_ok: null }), null);
+  assert.equal(await estadoCon({}, { id: 7, pago_tipo: null, credito_ok: null }), null);
+  assert.equal(await estadoCon({}, { id: 7, pago_tipo: "financiado", credito_ok: 1 }), null);
+  assert.equal(await estadoCon({}, { id: 7, pago_tipo: "financiado", credito_ok: 0 }), null);
+  assert.equal(await estadoCon({ consentimientos: [aceptado] }), null);
+  assert.equal(await estadoCon({ consentimientos: [{ ...aceptado, acepta: false }] }), null);
+  assert.equal(await estadoCon({ terminos: [] }), null);
+  assert.equal(await estadoCon({ consultas: [{ cliente_id: 1, estado: "ok", consultado_at: AHORA }] }), null);
+});
+
+test("si la IA repite el mismo permiso, la respuesta avisa que ya estaba registrado (para que siga con el CUIL)", async () => {
+  const { db } = baseFalsa();
+  assert.deepEqual(await registrarConsentimiento(ctx(db), true), { registrado: true });
+  assert.deepEqual(await registrarConsentimiento(ctx(db), true), { registrado: true, repetido: true });
 });

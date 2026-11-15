@@ -205,3 +205,8 @@ test("la visita propuesta lleva el día en que el cliente la dijo", () => {
   assert.ok(respondido({ visita_propuesta: "mañana a la mañana", visita_propuesta_at: dijo }).includes('visita propuesta: "mañana a la mañana" (lo dijo el miércoles 11/11)'));
   assert.ok(respondido({ visita_propuesta: "el sábado" }).includes('visita propuesta: "el sábado"'));
 });
+
+test("con el permiso anticipado, figura justo después del recibo o garante (que todavía falta) y antes del usado", () => {
+  const faltan = pendientes({ auto_id: 5, pago_tipo: "financiado", anticipo: "4 millones" }, null, "pedir_consentimiento_tras_el_recibo");
+  assert.deepEqual(faltan.slice(0, 3), ["recibo o garante", "permiso para consultar su situación en el BCRA (apenas responda lo del recibo o garante)", "si entrega un usado"]);
+});

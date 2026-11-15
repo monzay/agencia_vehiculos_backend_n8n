@@ -79,6 +79,8 @@ try {
   const { leerChats } = await import("../src/agente/simulador/chats/leer.js");
   const { correrChat } = await import("../src/agente/simulador/chats/correr.js");
   const { crearLectorDeGuardado } = await import("../src/agente/simulador/chats/guardado.js");
+  const { traeCuil, crearExclusion } = await import("../src/agente/simulador/chats/cuil.js");
+  const unoConCuil = crearExclusion(); // los chats con CUIL usan el mismo: de a uno
   const { transcripcionMarkdown, resumir, resumenMarkdown, pedidoCodex } = await import("../src/agente/simulador/chats/informe.js");
   baseAgente = dbAgente();
 
@@ -141,7 +143,16 @@ try {
     while (siguiente < tareas.length) {
       const i = siguiente++;
       const { chat, repeticion, telefono } = tareas[i];
-      resultados[i] = await correrChat(chat, { telefono, repeticion }, deps);
+      const correr = () => correrChat(chat, { telefono, repeticion }, deps);
+      // El backend guarda el CUIL en la ficha y no deja usar el de otra: se libera al terminar (base de simulación, verificada arriba).
+      const conCuil = async () => {
+        try {
+          return await correr();
+        } finally {
+          await prisma.clientes.updateMany({ where: { cuil: { not: null } }, data: { cuil: null } });
+        }
+      };
+      resultados[i] = await (traeCuil(chat) ? unoConCuil(conCuil) : correr());
       const r = resultados[i];
       console.log(`  ${chat.codigo} #${repeticion}: ${r.error ? `ERROR ${r.error}` : r.controles.every((c) => c.ok) ? "controles bien" : "falla algún control"}`);
     }

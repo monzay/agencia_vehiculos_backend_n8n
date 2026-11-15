@@ -14,7 +14,7 @@ import { PASO_AGENTE, PASO_REACCION, PASO_HUMANO } from "./pasos.js";
 import { gastoDelMes, topeConfigurado, registrarConsumoClaude, registrarConsumoGroq } from "../services/ia-consumos.service.js";
 import { avisoReciente, darDeBaja, esBaja, BAJA_CONFIRMADA } from "../services/avisos-cuotas.service.js";
 import { resolverCliente } from "../services/clientes.service.js";
-import { estadoCredito, registrarConsentimiento, verificarSituacion } from "../credito/verificacion.js";
+import { estadoCredito, permisoAnticipado, registrarConsentimiento, verificarSituacion } from "../credito/verificacion.js";
 import { crearClienteBcra } from "../credito/bcra.js";
 import { temasSinContestar, marcarPreguntados, sinPreguntaRepetida, temasSinGuardar } from "./temas-preguntados.js";
 
@@ -297,6 +297,11 @@ async function creditoDelTurno({ root, cliente, sesion, ahora }) {
   });
 }
 
+async function permisoAnticipadoDelTurno({ root, cliente, sesion, ahora }) {
+  if (!process.env.PUBLIC_WEB_URL) return null;
+  return permisoAnticipado({ db: root, clienteId: cliente.id, sesion, ahora }).catch(() => null);
+}
+
 // El auto de la consulta en curso, para que la IA tenga su código en cada mensaje.
 // Un fallo acá no frena la respuesta.
 async function autoDeLaConsulta(root, autoId) {
@@ -340,7 +345,8 @@ export async function contextoDelTurno({ root, cliente, sesion, ahora, autoWeb, 
     creditoDelTurno({ root, cliente, sesion, ahora }),
     autoDeLaConsulta(root, sesion.auto_id),
   ]);
-  const faltan = pendientes(sesion, usado, credito);
+  // Para el orden de lo que falta, el permiso ya figura tras el recibo aunque todavía no se pueda pedir.
+  const faltan = pendientes(sesion, usado, credito ?? (await permisoAnticipadoDelTurno({ root, cliente, sesion, ahora })));
   const sinContestar = temasSinContestar(historial, faltan);
   const fotosEnviadas = await fotosYaEnviadas(root, historial);
   return {

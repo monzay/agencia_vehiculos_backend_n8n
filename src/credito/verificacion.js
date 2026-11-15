@@ -51,7 +51,7 @@ export async function registrarConsentimiento({ db, clienteId, ahora, wamid = nu
   if (!terminos) return { registrado: false, motivo: MOTIVOS.sinTerminos };
   // La misma respuesta con la misma versión ya está guardada: se conserva la primera (con el wamid del mensaje en que lo dijo).
   const anterior = await ultimoConsentimiento(db, clienteId);
-  if (anterior && anterior.acepta === acepta && anterior.terminos_version_id === terminos.id) return { registrado: true };
+  if (anterior && anterior.acepta === acepta && anterior.terminos_version_id === terminos.id) return { registrado: true, repetido: true };
   await db.consentimientos.create({
     data: { cliente_id: clienteId, terminos_version_id: terminos.id, finalidad: FINALIDAD, acepta, wamid, created_at: ahora },
   });
@@ -110,6 +110,19 @@ export async function verificarSituacion({ db, clienteId, sesionId, ahora, bcra 
     data: { cliente_id: clienteId, sesion_id: sesionId, consentimiento_id: consentimiento.id, ...resumenDe(respuesta), consultado_at: ahora },
   });
   return respuesta.estado === "ok" ? { consultado: true } : no(MOTIVOS.bcraCaido);
+}
+
+/**
+ * Para ordenar lo que falta: si financia y todavía no dijo lo del recibo o garante, el permiso del BCRA va justo
+ * después. NO habilita pedirlo ni consultar antes: eso sigue dependiendo de `estadoCredito`.
+ * @returns {Promise<"pedir_consentimiento_tras_el_recibo"|null>}
+ */
+export async function permisoAnticipado({ db, clienteId, sesion, ahora }) {
+  if (sesion?.pago_tipo !== "financiado" || (sesion.credito_ok !== null && sesion.credito_ok !== undefined)) return null;
+  if (!(await versionVigente(db))) return null;
+  if ((await conResultadoVigente(db, clienteId, ahora)) || (await errorReciente(db, clienteId, ahora))) return null;
+  if (await ultimoConsentimiento(db, clienteId)) return null;
+  return "pedir_consentimiento_tras_el_recibo";
 }
 
 /**

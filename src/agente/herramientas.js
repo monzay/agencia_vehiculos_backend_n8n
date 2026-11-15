@@ -208,6 +208,8 @@ async function autoDeLaConsulta(db, sesionId) {
 
 const SIGUE_TRAS_AUTORIZAR = "Pedile ahora su CUIL (11 números) y usá verificar_situacion_crediticia.";
 const SIGUE_TRAS_NEGAR = "Seguí con el recorrido, sin pedir el CUIL.";
+const SIGUE_SI_YA_ESTABA_AUTORIZADO = "Ya estaba registrado: si el cliente ya te pasó el CUIL, usá verificar_situacion_crediticia ahora; si no, pedíselo (11 números).";
+const SIGUE_SI_YA_ESTABA_NEGADO = "Ya estaba registrado: seguí con el recorrido, sin pedir el CUIL.";
 
 const HERRAMIENTAS = [
   {
@@ -435,6 +437,7 @@ const HERRAMIENTAS = [
       if (!credito) return { registrado: false, motivo: SIN_VERIFICACION };
       const r = await credito.registrarConsentimiento(acepta);
       if (!r.registrado) return r;
+      if (r.repetido) return { ...r, sigue: acepta ? SIGUE_SI_YA_ESTABA_AUTORIZADO : SIGUE_SI_YA_ESTABA_NEGADO };
       return { ...r, sigue: acepta ? SIGUE_TRAS_AUTORIZAR : SIGUE_TRAS_NEGAR };
     },
   },

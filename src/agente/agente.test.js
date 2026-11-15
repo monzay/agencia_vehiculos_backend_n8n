@@ -355,3 +355,24 @@ test("devuelve los campos que la IA guardó con registrar_calificacion en el tur
   assert.deepEqual([...r.guardados].sort(), ["auto_ref", "pago_tipo", "tiene_recibo_o_garante"]);
   assert.deepEqual((await responderConIA(entrada(), { anthropic: claudeFalso([texto("Hola")]) })).guardados, []);
 });
+
+// ── El código del auto es interno ──
+
+test("se quita del texto el código del auto (REF #65, (REF 65), ref. 65) y quedan prolijos los espacios y la puntuación", async () => {
+  const casos = [
+    ["El Gol Trend 2019 (REF #65) está a $16.500.000.", "El Gol Trend 2019 está a $16.500.000."],
+    ["El Gol Trend REF #65, de 2019, está disponible.", "El Gol Trend, de 2019, está disponible."],
+    ["Te paso las fotos de la ref. 65 👇", "Te paso las fotos de la 👇"],
+    ["Mirá este (ref 12-B) que te puede servir.\n\nREF 65\n\n¿Lo pensás pagar de contado?", "Mirá este que te puede servir.\n\n¿Lo pensás pagar de contado?"],
+  ];
+  for (const [crudo, esperado] of casos) {
+    const r = await responderConIA(entrada(), { anthropic: claudeFalso([texto(crudo)]) });
+    assert.equal(r.texto, esperado, crudo);
+  }
+});
+
+test("no toca palabras que solo empiezan con ref (referencia, referido) ni un texto sin código", async () => {
+  const dicho = "Te lo dejo de referencia y quedó referido por un amigo.";
+  const r = await responderConIA(entrada(), { anthropic: claudeFalso([texto(dicho)]) });
+  assert.equal(r.texto, dicho);
+});

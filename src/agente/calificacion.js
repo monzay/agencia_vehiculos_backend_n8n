@@ -67,6 +67,7 @@ function pendientesDelUsado(usado) {
 
 // `credito`: en qué va la verificación crediticia (ver credito/verificacion.js › estadoCredito).
 const PEDIR_PERMISO = "permiso para consultar su situación en el BCRA (pedilo como dice Verificación crediticia)";
+const PEDIR_PERMISO_TRAS_EL_RECIBO = "permiso para consultar su situación en el BCRA (apenas responda lo del recibo o garante)";
 const PEDIR_CUIL = "su CUIL (ya autorizó la consulta)";
 
 export function pendientes(sesion = {}, usado = null, credito = null) {
@@ -77,6 +78,7 @@ export function pendientes(sesion = {}, usado = null, credito = null) {
     !definido(s.pago_tipo) && "forma de pago",
     s.pago_tipo === "financiado" && !presente(s.anticipo) && "anticipo",
     s.pago_tipo === "financiado" && !definido(s.credito_ok) && "recibo o garante",
+    credito === "pedir_consentimiento_tras_el_recibo" && PEDIR_PERMISO_TRAS_EL_RECIBO,
     credito === "pedir_consentimiento" && PEDIR_PERMISO,
     credito === "pedir_cuil" && PEDIR_CUIL,
     !definido(s.entrega_usado) && "si entrega un usado",
