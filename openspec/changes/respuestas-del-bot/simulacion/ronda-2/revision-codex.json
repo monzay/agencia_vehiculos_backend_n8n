@@ -1,0 +1,520 @@
+{
+  "veredicto": "no aprueba",
+  "chats": [
+    {
+      "codigo": "K1",
+      "repeticion": 1,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "K1",
+      "repeticion": 2,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "K2",
+      "repeticion": 1,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "alta",
+          "regla": "Entrega mínima sin cargar: no decir si el anticipo alcanza",
+          "evidencia": "Perfecto, con el anticipo que tenés lo vemos en la agencia.",
+          "explicacion": "La frase puede dar a entender que los $8 millones alcanzan para el auto."
+        }
+      ]
+    },
+    {
+      "codigo": "K2",
+      "repeticion": 2,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "alta",
+          "regla": "Kilómetros sin cargar",
+          "evidencia": "Con los km te pido que lo veas en persona, que ahí lo ves bien de cerca 🙌",
+          "explicacion": "No mantiene la respuesta de que no tiene los kilómetros a mano; solo remite a verlos en persona."
+        }
+      ]
+    },
+    {
+      "codigo": "K3",
+      "repeticion": 1,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "K3",
+      "repeticion": 2,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "media",
+          "regla": "Solo la información que pidieron",
+          "evidencia": "Te paso las fotos 👇 ¿Tenés algún vehículo para entregar como parte de pago?",
+          "explicacion": "El cliente preguntó los kilómetros; la respuesta agrega fotos y una pregunta de calificación que no pidió."
+        }
+      ]
+    },
+    {
+      "codigo": "E1",
+      "repeticion": 1,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "E1",
+      "repeticion": 2,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "alta",
+          "regla": "Entrega mínima sin cargar: no decir si el anticipo alcanza",
+          "evidencia": "con recibo de sueldo y los 4 millones de anticipo ya tenemos una buena base para armarte la financiación",
+          "explicacion": "Califica positivamente el anticipo y puede sugerir que alcanza, algo que la regla prohíbe."
+        }
+      ]
+    },
+    {
+      "codigo": "E2",
+      "repeticion": 1,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "media",
+          "regla": "Una sola pregunta por mensaje y recorrido en orden",
+          "evidencia": "¿Con cuánto de ese anticipo contás? Y si tenés recibo de sueldo o un garante, así te oriento mejor.",
+          "explicacion": "Pregunta por el anticipo y el recibo o garante en el mismo mensaje, adelantándose al orden del recorrido."
+        }
+      ]
+    },
+    {
+      "codigo": "E2",
+      "repeticion": 2,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "E3",
+      "repeticion": 1,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "E3",
+      "repeticion": 2,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "alta",
+          "regla": "Entrega mínima sin cargar: explicar las tres cosas necesarias",
+          "evidencia": "Para decírtela necesito saber cuánto tenés de anticipo.",
+          "explicacion": "No menciona si entrega un vehículo ni el CUIL, que también son necesarios."
+        }
+      ]
+    },
+    {
+      "codigo": "R1",
+      "repeticion": 1,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "R1",
+      "repeticion": 2,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "R2",
+      "repeticion": 1,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "alta",
+          "regla": "No hablar de cuotas ni de si el anticipo alcanza",
+          "evidencia": "Con 4 millones de anticipo arrancás con una buena base para el Prisma.",
+          "explicacion": "La asesora evalúa el anticipo como una buena base, lo que puede implicar que alcanza."
+        }
+      ]
+    },
+    {
+      "codigo": "R2",
+      "repeticion": 2,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "R3",
+      "repeticion": 1,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "media",
+          "regla": "El cliente avisó que escribía después",
+          "evidencia": "Cuando puedas me escribís y seguimos con el Vento 👍",
+          "explicacion": "El texto termina con un pulgar suelto; la regla de despedidas requiere responder solo 👍 cuando el cliente se despide o confirma sin agregar otra cosa."
+        }
+      ]
+    },
+    {
+      "codigo": "R3",
+      "repeticion": 2,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "media",
+          "regla": "El cliente avisó que escribía después",
+          "evidencia": "Cuando puedas me escribís y seguimos. Que tengas buen día en el trabajo 👍",
+          "explicacion": "Incluye un pulgar suelto al final de una respuesta con texto, prohibido por la regla de despedidas."
+        }
+      ]
+    },
+    {
+      "codigo": "R4",
+      "repeticion": 1,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "R4",
+      "repeticion": 2,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "P1",
+      "repeticion": 1,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "P1",
+      "repeticion": 2,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "media",
+          "regla": "No anunciar que guardó datos",
+          "evidencia": "¡Anotado, con 5 millones de anticipo!",
+          "explicacion": "Le comunica al cliente que registró su dato."
+        }
+      ]
+    },
+    {
+      "codigo": "P2",
+      "repeticion": 1,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "P2",
+      "repeticion": 2,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "P3",
+      "repeticion": 1,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "media",
+          "regla": "Una sola pregunta por mensaje y recorrido en orden",
+          "evidencia": "¿Tenés algún auto para dar como parte de pago?",
+          "explicacion": "Cuando todavía falta el recibo o garante, desvía el recorrido preguntando por el usado."
+        }
+      ]
+    },
+    {
+      "codigo": "P3",
+      "repeticion": 2,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "alta",
+          "regla": "Solo datos reales",
+          "evidencia": "Tengo una Gol Trend 2019 versión 1.6 Trendline, que es de 4 puertas",
+          "explicacion": "La cantidad de puertas no está cargada y la respuesta la inventa."
+        },
+        {
+          "severidad": "media",
+          "regla": "Responder primero lo que pregunta el cliente",
+          "evidencia": "Te paso las fotos del Gol Trend 2019 👇",
+          "explicacion": "Ante la pregunta por el año, no responde el dato que está disponible y ofrece fotos."
+        }
+      ]
+    },
+    {
+      "codigo": "P4",
+      "repeticion": 1,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "P4",
+      "repeticion": 2,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "alta",
+          "regla": "No inventa lo que hizo; fotos enviadas",
+          "evidencia": "También te mandé las del 2015 que te interesa",
+          "explicacion": "Asegura que envió fotos del 2015 aunque el cliente no las pidió y el registro muestra que se enviaron fotos de ambos autos."
+        }
+      ]
+    },
+    {
+      "codigo": "P5",
+      "repeticion": 1,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "media",
+          "regla": "Ofrecer parecidos si el auto no está disponible",
+          "evidencia": "Si querés, te busco autos parecidos al Gol Trend en precio",
+          "explicacion": "Ofrece parecidos al Gol Trend, aunque el cliente preguntó por un Fiat Cronos."
+        }
+      ]
+    },
+    {
+      "codigo": "P5",
+      "repeticion": 2,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "P6",
+      "repeticion": 1,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "P6",
+      "repeticion": 2,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "P7",
+      "repeticion": 1,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "media",
+          "regla": "Ofrecer coordinar de nuevo con los horarios de la agencia",
+          "evidencia": "¿Te queda mejor pasar esta semana o la que viene?",
+          "explicacion": "Ofrece coordinar, pero no informa los horarios de la agencia."
+        }
+      ]
+    },
+    {
+      "codigo": "P7",
+      "repeticion": 2,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "media",
+          "regla": "Ofrecer coordinar de nuevo con los horarios de la agencia",
+          "evidencia": "¿Te queda bien pasarte por la agencia esta semana o la que viene?",
+          "explicacion": "Ofrece coordinar, pero no informa los horarios de la agencia."
+        }
+      ]
+    },
+    {
+      "codigo": "P8",
+      "repeticion": 1,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "media",
+          "regla": "Responder primero lo que pregunta el cliente",
+          "evidencia": "Veo que pensabas pagarlo de contado.",
+          "explicacion": "No responde por la Duster; tampoco da su precio ni pregunta por la forma de pago para ese nuevo interés."
+        }
+      ]
+    },
+    {
+      "codigo": "P8",
+      "repeticion": 2,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "media",
+          "regla": "Solo la información que pidieron",
+          "evidencia": "Como ya me dijiste que lo pensás pagar de contado, el precio de contado de esta unidad no lo tengo a mano",
+          "explicacion": "El cliente no preguntó por el precio de contado y la respuesta omite el precio de lista disponible de la Duster."
+        }
+      ]
+    },
+    {
+      "codigo": "P9",
+      "repeticion": 1,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "P9",
+      "repeticion": 2,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "P10",
+      "repeticion": 1,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "media",
+          "regla": "No anunciar que guardó datos",
+          "evidencia": "Ya dejé registrado todo para que el asesor llegue preparado.",
+          "explicacion": "Le dice al cliente que registró sus datos."
+        }
+      ]
+    },
+    {
+      "codigo": "P10",
+      "repeticion": 2,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "N1",
+      "repeticion": 1,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "N1",
+      "repeticion": 2,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "N2",
+      "repeticion": 1,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "N2",
+      "repeticion": 2,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "N3",
+      "repeticion": 1,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "media",
+          "regla": "Derivar a un vendedor sin seguir el recorrido",
+          "evidencia": "Mientras tanto, si querés, podés seguir charlando conmigo sobre el Vento.",
+          "explicacion": "Después de que el cliente pidió hablar con un vendedor, invita a continuar la charla con la asesora."
+        }
+      ]
+    },
+    {
+      "codigo": "N3",
+      "repeticion": 2,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "N4",
+      "repeticion": 1,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "alta",
+          "regla": "Formato correcto de precios",
+          "evidencia": "$19.800.£000",
+          "explicacion": "El precio queda malformado y es información confusa para el cliente."
+        }
+      ]
+    },
+    {
+      "codigo": "N4",
+      "repeticion": 2,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "N5",
+      "repeticion": 1,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "N5",
+      "repeticion": 2,
+      "pasa": true,
+      "fallas": []
+    }
+  ],
+  "tests": [
+    {
+      "severidad": "media",
+      "chat": "K2",
+      "hallazgo": "El control de repetición y guardado no verifica que la segunda respuesta sobre kilómetros mantenga explícitamente que el dato no está a mano.",
+      "sugerencia": "Agregar una comprobación de contenido para ambas respuestas ante la insistencia."
+    },
+    {
+      "severidad": "alta",
+      "chat": "E1",
+      "hallazgo": "Los controles de cuotas con números no detectan evaluaciones implícitas como llamar al anticipo una «buena base».",
+      "sugerencia": "Agregar una revisión semántica para detectar afirmaciones sobre si el anticipo alcanza o sirve."
+    },
+    {
+      "severidad": "media",
+      "chat": "E2",
+      "hallazgo": "Los controles comprueban que se diga el monto y no se mencionen cuotas, pero no controlan que se haga una sola pregunta ni que se respete el orden del recorrido.",
+      "sugerencia": "Validar que se pregunte solo por el anticipo en esa respuesta."
+    },
+    {
+      "severidad": "alta",
+      "chat": "P3",
+      "hallazgo": "El control de repetición del recibo no detecta una cantidad de puertas inventada en la respuesta de la repetición 2.",
+      "sugerencia": "Agregar una aserción que prohíba afirmar datos no incluidos en la ficha y compruebe respuestas a cada pregunta del cliente."
+    },
+    {
+      "severidad": "alta",
+      "chat": "P4",
+      "hallazgo": "El control cuenta fotos, pero no verifica que se envíen únicamente las fotos pedidas ni que el texto describa correctamente qué se envió.",
+      "sugerencia": "Comprobar la referencia de cada foto y contrastarla con la solicitud del cliente."
+    },
+    {
+      "severidad": "media",
+      "chat": "P7",
+      "hallazgo": "El control solo comprueba que no haya disculpas ni recordatorio; no verifica que la nueva coordinación incluya los horarios disponibles.",
+      "sugerencia": "Validar que la respuesta ofrezca horarios reales de la agencia."
+    },
+    {
+      "severidad": "alta",
+      "chat": "P10",
+      "hallazgo": "El control confirma que hay permiso y CUIL, pero no comprueba que la respuesta tras el permiso pida el CUIL ni que no se anuncie que los datos quedaron registrados.",
+      "sugerencia": "Agregar controles de secuencia y de frases que anuncian el registro de datos."
+    },
+    {
+      "severidad": "alta",
+      "chat": "P10",
+      "hallazgo": "La transcripción muestra varias llamadas repetidas a registrar_consentimiento con la misma aceptación, pero el control de permisos = 1 no demuestra que se conservó un solo registro con el wamid original.",
+      "sugerencia": "Comprobar el número de registros de consentimiento y el wamid asociado."
+    },
+    {
+      "severidad": "media",
+      "chat": "P5",
+      "hallazgo": "Los controles buscan nombres de herramientas, pero no comprueban que los parecidos ofrecidos correspondan al auto por el que preguntó el cliente.",
+      "sugerencia": "Validar que las alternativas se busquen cerca del modelo y presupuesto consultados."
+    },
+    {
+      "severidad": "media",
+      "chat": "P8",
+      "hallazgo": "Los controles de guardado no verifican que la nueva consulta reciba su precio de lista ni que se responda a la pregunta sobre el nuevo auto.",
+      "sugerencia": "Agregar una comprobación de respuesta al interés nuevo y del precio disponible."
+    }
+  ]
+}

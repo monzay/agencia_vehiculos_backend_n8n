@@ -50,3 +50,24 @@ Hallazgos sobre los tests:
 | 13 | P6, P1 | Agrega la pregunta del recorrido a quien solo preguntó el precio | No es correcto: es la regla vigente del recorrido | Nada |
 | 14 | P4 (test) | El control "REF" mira también el mensaje del cliente | No es correcto: el control mira solo los mensajes del bot; el bot escribió el código | Nada |
 | 15 | N2, N4, P7 (tests) | Faltan controles automáticos | Los juzga Codex con el "Debe" y "No debe" | Nada |
+
+## Ronda 2 — 2026-11-15
+
+- Controles automáticos: 25 de 25 chats pasan en las 2 repeticiones.
+- Codex: 29 de 50 conversaciones pasan (ronda 0: 13; ronda 1: 22). No aprueba.
+- Costo de IA: USD 0,114.
+
+| # | Chat | Hallazgo de Codex | Verificación de Claude | Qué se hizo |
+|---|---|---|---|---|
+| 1 | P3 | Dice que el Gol Trend 2019 "es de 4 puertas" | Correcto: el dato no está en el catálogo | Para la ronda 3: regla y ejemplo de no deducir datos que la ficha no trae |
+| 2 | E1, R2 | Llama "buena base" al anticipo | Correcto: la regla escrita no alcanzó | Para la ronda 3: se quita por código la oración que valora el anticipo |
+| 3 | P1, P10 | "¡Anotado…!", "Ya dejé registrado todo" | Correcto | Para la ronda 3: se quita por código |
+| 4 | P8 | En la consulta por la Duster no da su precio de lista | Correcto | Para la ronda 3: regla (una consulta nueva de la web siempre recibe el precio de lista) |
+| 5 | P7 | Ofrece coordinar de nuevo sin los horarios | Correcto, menor | Para la ronda 3: regla |
+| 6 | P4 | Mandó también las fotos del auto que no le pidieron | Correcto | Para la ronda 3: regla (solo las fotos del auto pedido) |
+| 7 | N3 | Tras derivar invita a seguir charlando | Correcto, menor | Para la ronda 3: regla |
+| 8 | E2, K3, P3 | Dos preguntas, o pregunta del recorrido fuera de orden | Correcto en E2 | Para la ronda 3: regla reforzada |
+| 9 | N4 | Un precio salió como "$19.800.£000" | Es un error de tipeo del modelo, en 1 de 50 | Para la ronda 3: se corrige por código un precio con símbolos extraños |
+| 10 | R3 | "👍 suelto" al final de una frase | No es correcto: un emoji al final de la oración no es el 👍 suelto de la regla | Nada |
+| 11 | K2 | "Con el anticipo que tenés lo vemos en la agencia" sugiere que alcanza; no repite que no tiene los km | No es correcto: no dice que alcanza, y sobre los km dice que se ven en persona, sin inventar | Nada |
+| 12 | Tests | Faltan controles automáticos para lo que juzga Codex | Es el diseño: los controles son la red de abajo | Nada |
