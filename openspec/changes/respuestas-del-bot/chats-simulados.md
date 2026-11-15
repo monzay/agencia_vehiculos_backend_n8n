@@ -83,7 +83,7 @@ No debe:
 Control automático:
 - prohibido: "0 km"
 - prohibido: "ficha"
-- prohibido: "dato cargado"
+- prohibido: "cargado"
 - prohibido: "no cuento con esa información"
 - repite pregunta seguida: no
 
@@ -151,7 +151,7 @@ No debe:
 - decirle el resultado de la consulta al BCRA
 
 Control automático:
-- prohibido: "dato cargado"
+- prohibido: "cargado"
 - prohibido: "no cuento con esa información"
 - cuotas con números: no
 - guardado: pago_tipo = financiado
@@ -193,7 +193,7 @@ No debe:
 
 Control automático:
 - prohibido: "tu usado"
-- prohibido: "dato cargado"
+- prohibido: "cargado"
 - guardado: entrega_usado = vacío
 
 ## R1 · Deja sin contestar una pregunta
@@ -221,7 +221,7 @@ Regla: agente-recordatorio › Qué dice el recordatorio, El cliente avisó que 
 
 Cliente: Hola ORTEGA AUTOMOTORES! Estoy interesado en el Chevrolet Prisma 2018. ¿Podrían darme más información? (REF #19)
 Cliente: Financiando
-(pasan 10 minutos)
+(pasan 12 minutos)
 Cliente: perdon estaba manejando, tengo 4 millones
 
 Debe:
@@ -356,6 +356,7 @@ Debe:
 
 No debe:
 - decir que las fotos no salieron ni pedir perdón por eso
+- escribirle al cliente códigos internos como "REF #65"
 - ofrecer la Hilux ($27.000.000) ni la SW4 ($55.000.000)
 
 Control automático:
@@ -364,6 +365,7 @@ Control automático:
 - prohibido: "SW4"
 - prohibido: "no te las mandé"
 - prohibido: "no te llegaron"
+- prohibido: "REF"
 
 ## P5 · Pide un auto que ya se vendió
 Regla: agente-comportamiento › Nombres internos · agente-conversacion › El texto no nombra herramientas
@@ -534,6 +536,7 @@ No debe:
 
 Control automático:
 - guardado: requiere_vendedor = sí
+- termina con 👍: no
 
 ## N4 · Intento de manipulación
 Regla: agente-comportamiento › Defensa contra manipulación

@@ -1,0 +1,746 @@
+{
+  "veredicto": "no aprueba",
+  "chats": [
+    {
+      "codigo": "K1",
+      "repeticion": 1,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "alta",
+          "regla": "Kilómetros sin cargar",
+          "evidencia": "Según la ficha, el Captur figura con 0 km",
+          "explicacion": "La ficha tenía los kilómetros en null. No debe mencionar la ficha ni decir 0 km o un número; debía decir que no tenía el dato a mano e invitar a verlo en la agencia."
+        },
+        {
+          "severidad": "media",
+          "regla": "El recorrido de venta",
+          "evidencia": "¿La pensás pagar de contado o financiada? Así te oriento mejor.",
+          "explicacion": "Repitió la pregunta sobre la forma de pago, que ya había hecho en el mensaje anterior y que el cliente no contestó. En esta respuesta debía responder la consulta sobre los kilómetros sin volver a preguntar lo mismo."
+        }
+      ]
+    },
+    {
+      "codigo": "K1",
+      "repeticion": 2,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "alta",
+          "regla": "Kilómetros sin cargar",
+          "evidencia": "La ficha figura con 0 km",
+          "explicacion": "La ficha tenía los kilómetros en null. No debe mencionar la ficha ni decir 0 km o un número; debía decir que no tenía el dato a mano e invitar a verlo en la agencia."
+        },
+        {
+          "severidad": "media",
+          "regla": "El recorrido de venta",
+          "evidencia": "¿La pensás pagar de contado o financiada? Así te oriento mejor.",
+          "explicacion": "Repitió la pregunta sobre la forma de pago, que ya había hecho en el mensaje anterior y que el cliente no contestó. En esta respuesta debía responder la consulta sobre los kilómetros sin volver a preguntar lo mismo."
+        }
+      ]
+    },
+    {
+      "codigo": "K2",
+      "repeticion": 1,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "alta",
+          "regla": "Kilómetros sin cargar",
+          "evidencia": "el Captur figura con 0 km",
+          "explicacion": "El Gol Trend usado tenía los kilómetros sin cargar. La respuesta inventa 0 km y nombra la ficha, y tampoco mantiene una respuesta válida cuando el cliente insiste."
+        }
+      ]
+    },
+    {
+      "codigo": "K2",
+      "repeticion": 2,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "alta",
+          "regla": "Kilómetros sin cargar",
+          "evidencia": "El dato que tengo en la ficha es 0 km",
+          "explicacion": "El Gol Trend usado tenía los kilómetros sin cargar. La respuesta inventa 0 km y nombra la ficha, y tampoco mantiene una respuesta válida cuando el cliente insiste."
+        },
+        {
+          "severidad": "alta",
+          "regla": "No inventa lo que hizo",
+          "evidencia": "Disculpá la confusión",
+          "explicacion": "Se disculpa por una confusión que no ocurrió y vuelve a repetir la información incorrecta sobre los kilómetros."
+        }
+      ]
+    },
+    {
+      "codigo": "K3",
+      "repeticion": 1,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "K3",
+      "repeticion": 2,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "baja",
+          "regla": "Solo la información que pidieron",
+          "evidencia": "Si querés verlo por dentro y dar una vuelta, podés pasar por la agencia cuando te quede cómodo.",
+          "explicacion": "Agregó una invitación y detalles que no le pidieron al responder únicamente cuántos kilómetros tiene."
+        }
+      ]
+    },
+    {
+      "codigo": "E1",
+      "repeticion": 1,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "alta",
+          "regla": "Entrega mínima sin cargar",
+          "evidencia": "el anticipo de este Voyage no lo tengo cargado en el sistema, así que no te puedo decir el monto exacto",
+          "explicacion": "No debe decir que le falta el dato. Debía explicar que el anticipo depende del caso y nombrar anticipo disponible, si entrega un vehículo y CUIL."
+        },
+        {
+          "severidad": "alta",
+          "regla": "La entrega mínima sigue con el recorrido",
+          "evidencia": "Así le dejo anotado al vendedor",
+          "explicacion": "Anuncia que registra datos y no dice que el CUIL es uno de los tres datos necesarios. Más adelante, tras el permiso afirmativo, no pide el CUIL."
+        },
+        {
+          "severidad": "alta",
+          "regla": "Lo que hace un vendedor, no la asesora",
+          "evidencia": "el asesor puede consultar tu situación en la Central de Deudores del BCRA",
+          "explicacion": "Tras pedir autorización para una consulta crediticia, no registra el consentimiento ni respeta el paso siguiente: el cliente autoriza y la asesora no pide el CUIL."
+        },
+        {
+          "severidad": "media",
+          "regla": "El recorrido de venta",
+          "evidencia": "¿Vas a dejar algún auto como parte de pago o venís con la plata del anticipo?",
+          "explicacion": "Ante «si, autorizo», lo tomó como una respuesta sobre el usado y repitió esa pregunta, en vez de reconocer el permiso y pedir el CUIL."
+        }
+      ]
+    },
+    {
+      "codigo": "E1",
+      "repeticion": 2,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "alta",
+          "regla": "Entrega mínima sin cargar",
+          "evidencia": "el anticipo de este auto no lo tengo cargado en el sistema",
+          "explicacion": "No debe decir que le falta el dato. Debía explicar que el anticipo depende del caso y nombrar anticipo disponible, si entrega un vehículo y CUIL."
+        },
+        {
+          "severidad": "alta",
+          "regla": "La entrega mínima sigue con el recorrido",
+          "evidencia": "¿Tenés algún usado para dejar como parte de pago?",
+          "explicacion": "El cliente dijo «si, autorizo», que respondía al permiso pendiente. La asesora lo interpretó como que entrega un usado y avanzó con preguntas de ese vehículo en vez de pedir el CUIL conforme al flujo de consentimiento."
+        },
+        {
+          "severidad": "alta",
+          "regla": "El usado se anota solo si el cliente lo ofrece",
+          "evidencia": "Me entregás un usado, así que lo vemos juntos en la agencia.",
+          "explicacion": "El cliente no ofreció un vehículo; respondió que autorizaba la consulta. La asesora anotó un usado y pidió sus datos."
+        }
+      ]
+    },
+    {
+      "codigo": "E2",
+      "repeticion": 1,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "E2",
+      "repeticion": 2,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "media",
+          "regla": "Precio de lista, contado y anticipo",
+          "evidencia": "¿La pensás pagar de contado o financiada? Si la financiás, ¿con cuánto de anticipo contás?",
+          "explicacion": "Hizo dos preguntas en un mensaje; el recorrido exige una sola pregunta por mensaje. La consulta de entrega mínima ya tuvo respuesta con el anticipo de ficha."
+        }
+      ]
+    },
+    {
+      "codigo": "E3",
+      "repeticion": 1,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "media",
+          "regla": "Entrega mínima sin cargar",
+          "evidencia": "no tengo ese detalle a mano",
+          "explicacion": "Interpretó «cómo sería la entrega» como una pregunta sobre el proceso y no como una consulta por el anticipo, así que no explicó que depende de cada caso ni preguntó por el anticipo."
+        }
+      ]
+    },
+    {
+      "codigo": "E3",
+      "repeticion": 2,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "media",
+          "regla": "Entrega quiere decir anticipo",
+          "evidencia": "¿Te referís a cómo es la entrega del auto, o a si podés dejar un usado como parte de pago?",
+          "explicacion": "Debía tratar «cómo sería la entrega» como una consulta por el anticipo, no abrir una interpretación sobre un usado."
+        },
+        {
+          "severidad": "media",
+          "regla": "El recorrido de venta",
+          "evidencia": "Y para orientarte mejor, ¿la pensás pagar de contado o financiada?",
+          "explicacion": "En el mismo mensaje hizo más de una pregunta y no respondió la consulta de anticipo según la regla de entrega mínima sin cargar."
+        }
+      ]
+    },
+    {
+      "codigo": "R1",
+      "repeticion": 1,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "alta",
+          "regla": "Cuándo corresponde el recordatorio",
+          "evidencia": "Salieron 0 recordatorios",
+          "explicacion": "Quedó sin contestar una pregunta y pasaron 10 minutos. Debía salir un recordatorio, con un máximo de uno en la ventana de 24 horas."
+        }
+      ]
+    },
+    {
+      "codigo": "R1",
+      "repeticion": 2,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "alta",
+          "regla": "Cuándo corresponde el recordatorio",
+          "evidencia": "Salieron 0 recordatorios",
+          "explicacion": "Quedó sin contestar una pregunta y pasaron 10 minutos. Debía salir un recordatorio, con un máximo de uno en la ventana de 24 horas."
+        }
+      ]
+    },
+    {
+      "codigo": "R2",
+      "repeticion": 1,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "alta",
+          "regla": "Qué dice el recordatorio",
+          "evidencia": "Salieron 0 recordatorios y se esperaban 1",
+          "explicacion": "El control trata este caso como si correspondiera un recordatorio, pero el chat prueba que el cliente ya respondió 10 minutos después. En esas condiciones no debe mandarse recordatorio. La respuesta posterior del bot sí toma los $4.000.000 como anticipo y pregunta por recibo o garante."
+        }
+      ]
+    },
+    {
+      "codigo": "R2",
+      "repeticion": 2,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "alta",
+          "regla": "Qué dice el recordatorio",
+          "evidencia": "Salieron 0 recordatorios y se esperaban 1",
+          "explicacion": "El control trata este caso como si correspondiera un recordatorio, pero el chat prueba que el cliente ya respondió 10 minutos después. En esas condiciones no debe mandarse recordatorio. La respuesta posterior del bot sí toma los $4.000.000 como anticipo y pregunta por recibo o garante."
+        }
+      ]
+    },
+    {
+      "codigo": "R3",
+      "repeticion": 1,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "alta",
+          "regla": "Qué dice el recordatorio",
+          "evidencia": "El control automático registra 0 recordatorios",
+          "explicacion": "El número de recordatorios es correcto, pero el escenario no comprueba el requisito completo: el cliente avisó que escribiría más tarde y el bot debía indicar que el recordatorio no corresponde, para que el sistema marque la consulta y no la vuelva a evaluar."
+        }
+      ]
+    },
+    {
+      "codigo": "R3",
+      "repeticion": 2,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "alta",
+          "regla": "Qué dice el recordatorio",
+          "evidencia": "El control automático registra 0 recordatorios",
+          "explicacion": "El número de recordatorios es correcto, pero el escenario no comprueba el requisito completo: el cliente avisó que escribiría más tarde y el bot debía indicar que el recordatorio no corresponde, para que el sistema marque la consulta y no la vuelva a evaluar."
+        }
+      ]
+    },
+    {
+      "codigo": "R4",
+      "repeticion": 1,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "R4",
+      "repeticion": 2,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "P1",
+      "repeticion": 1,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "media",
+          "regla": "Entrega quiere decir anticipo",
+          "evidencia": "el proceso de entrega exacto (papeles, plazos, cómo se hace el traspaso) no lo tengo acá",
+          "explicacion": "Interpretó la consulta por la entrega como una pregunta por el proceso de retiro, en vez de explicar el anticipo según el caso."
+        },
+        {
+          "severidad": "media",
+          "regla": "El recorrido de venta",
+          "evidencia": "Y si ya tenés un presupuesto más o menos en mente, decímelo así filtro bien.",
+          "explicacion": "Al principio hizo dos preguntas en un mismo mensaje, aunque el recorrido exige una sola pregunta por mensaje."
+        }
+      ]
+    },
+    {
+      "codigo": "P1",
+      "repeticion": 2,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "media",
+          "regla": "Entrega quiere decir anticipo",
+          "evidencia": "Si te referís a cómo se retira el auto, la entrega se coordina en la agencia",
+          "explicacion": "No trató «cómo sería la entrega» como una pregunta por el anticipo y desvió la conversación a entregar un usado."
+        },
+        {
+          "severidad": "alta",
+          "regla": "Lo que hace un vendedor, no la asesora",
+          "evidencia": "Un vendedor lo revisa en persona y define el valor.",
+          "explicacion": "Promete que el vendedor tasará un usado; la asesora no debe tasar usados y aquí tampoco se ofreció un vehículo."
+        },
+        {
+          "severidad": "media",
+          "regla": "El recorrido de venta",
+          "evidencia": "¿Cuál te llama más la atención? Si me decís cuál, te paso fotos y te cuento lo que necesites. ¿Y la pensás pagar de contado o financiada?",
+          "explicacion": "Incluyó dos preguntas en un mismo mensaje."
+        }
+      ]
+    },
+    {
+      "codigo": "P2",
+      "repeticion": 1,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "P2",
+      "repeticion": 2,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "P3",
+      "repeticion": 1,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "media",
+          "regla": "El recorrido de venta",
+          "evidencia": "¿Tenés recibo de sueldo o contás con garante?",
+          "explicacion": "Repitió la pregunta pendiente por recibo o garante en dos respuestas seguidas, aunque el cliente preguntaba otra cosa."
+        }
+      ]
+    },
+    {
+      "codigo": "P3",
+      "repeticion": 2,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "alta",
+          "regla": "Solo datos reales",
+          "evidencia": "el Volkswagen Vento 2014 (REF #69) es un sedán con buen espacio para el viaje",
+          "explicacion": "Ofreció un auto de $19.800.000 frente a un Gol de $12.900.000. Supera el doble del precio de referencia, aunque el cliente no pidió esa opción."
+        },
+        {
+          "severidad": "media",
+          "regla": "El recorrido de venta",
+          "evidencia": "¿Tenés recibo de sueldo o contás con garante?",
+          "explicacion": "Repitió la pregunta pendiente por recibo o garante en dos respuestas seguidas, aunque el cliente preguntaba otra cosa."
+        },
+        {
+          "severidad": "alta",
+          "regla": "Solo datos reales",
+          "evidencia": "antes te dije cuántas puertas tiene el Gol y el Vento",
+          "explicacion": "Reconoció haber dado datos de puertas no confirmados en los datos disponibles, lo que indica información inventada."
+        }
+      ]
+    },
+    {
+      "codigo": "P4",
+      "repeticion": 1,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "alta",
+          "regla": "Otras opciones según lo que busca",
+          "evidencia": "Toyota Hilux 2013 (REF #80)",
+          "explicacion": "Ofreció una Hilux de $27.000.000, más del doble del Gol Trend 2015 de $12.900.000."
+        },
+        {
+          "severidad": "alta",
+          "regla": "No inventa lo que hizo",
+          "evidencia": "¡Ahora sí! Te paso las fotos del Gol Trend 2019",
+          "explicacion": "Las fotos ya se habían enviado en el mensaje anterior. Volvió a mandarlas sin que el cliente las pidiera."
+        }
+      ]
+    },
+    {
+      "codigo": "P4",
+      "repeticion": 2,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "alta",
+          "regla": "Otras opciones según lo que busca",
+          "evidencia": "Toyota Hilux 2013 SR 3.0 TDI (ref 80), $27.000.000",
+          "explicacion": "Ofreció una Hilux de $27.000.000, más del doble del Gol Trend 2015 de $12.900.000."
+        },
+        {
+          "severidad": "alta",
+          "regla": "No inventa lo que hizo",
+          "evidencia": "todavía no las envié",
+          "explicacion": "Las fotos ya se habían enviado. Dijo falsamente que no las había enviado y volvió a ofrecerlas."
+        }
+      ]
+    },
+    {
+      "codigo": "P5",
+      "repeticion": 1,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "media",
+          "regla": "Otras opciones según lo que busca",
+          "evidencia": "te puedo buscar otros autos parecidos en precio y tipo al Gol Trend",
+          "explicacion": "Ofreció buscar parecidos al auto previo, aunque el cliente pidió un Cronos. No ofreció una alternativa cercana al nuevo auto pedido ni preguntó si quería que la busque."
+        }
+      ]
+    },
+    {
+      "codigo": "P5",
+      "repeticion": 2,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "media",
+          "regla": "Otras opciones según lo que busca",
+          "evidencia": "¿el Gol Trend te interesa como opción?",
+          "explicacion": "Tras informar que no hay Cronos, volvió a empujar el interés anterior y no ofreció autos parecidos al modelo que el cliente pidió."
+        }
+      ]
+    },
+    {
+      "codigo": "P6",
+      "repeticion": 1,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "P6",
+      "repeticion": 2,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "P7",
+      "repeticion": 1,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "alta",
+          "regla": "No inventa lo que hizo",
+          "evidencia": "hoy es viernes, así que mañana es sábado",
+          "explicacion": "La visita acordada para el jueves ya había pasado; corrigió la fecha de su mensaje anterior en vez de ofrecer coordinar de nuevo."
+        }
+      ]
+    },
+    {
+      "codigo": "P7",
+      "repeticion": 2,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "alta",
+          "regla": "No inventa lo que hizo",
+          "evidencia": "Y te corrijo un detalle de mi mensaje anterior: mañana es sábado, no jueves.",
+          "explicacion": "La visita acordada para el jueves ya había pasado. Corrigió la fecha del mensaje anterior, aunque el cliente no señaló un error."
+        },
+        {
+          "severidad": "alta",
+          "regla": "El recorrido de venta",
+          "evidencia": "Registro que decidís vos solo.",
+          "explicacion": "Le dijo al cliente que registró sus datos, algo prohibido por el recorrido."
+        }
+      ]
+    },
+    {
+      "codigo": "P8",
+      "repeticion": 1,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "alta",
+          "regla": "Precio de lista, contado y anticipo",
+          "evidencia": "el precio de contado de este auto no lo tengo cargado",
+          "explicacion": "La ficha de la Duster nueva tenía un precio de contado que debía dar, en vez de repetir que faltaba."
+        }
+      ]
+    },
+    {
+      "codigo": "P8",
+      "repeticion": 2,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "alta",
+          "regla": "Precio de lista, contado y anticipo",
+          "evidencia": "el precio de contado de esta Duster no lo tengo cargado",
+          "explicacion": "La ficha de la Duster nueva tenía un precio de contado que debía dar, en vez de repetir que faltaba."
+        }
+      ]
+    },
+    {
+      "codigo": "P9",
+      "repeticion": 1,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "media",
+          "regla": "Despedidas con 👍",
+          "evidencia": "Estare viendo el catalogo por si me interesa algun vehiculo mas — reacción 👍",
+          "explicacion": "El cliente agregó un comentario y no solo agradeció o confirmó. Debía recibir un texto corto, no una reacción."
+        }
+      ]
+    },
+    {
+      "codigo": "P9",
+      "repeticion": 2,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "baja",
+          "regla": "Despedidas con 👍",
+          "evidencia": "Y si ves otro que te llame la atención, me escribís y te cuento todo. ¡Nos vemos el martes!",
+          "explicacion": "Respondió con texto corto como corresponde, pero volvió a mencionar la visita aunque no hacía falta."
+        }
+      ]
+    },
+    {
+      "codigo": "P10",
+      "repeticion": 1,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "alta",
+          "regla": "Lo que falta preguntar, en orden",
+          "evidencia": "Me autorizás a hacer esa consulta?",
+          "explicacion": "El chat no contiene una respuesta afirmativa al pedido de permiso; «Si» respondió que entregaría un usado, y el cliente luego aclaró que no tenía auto. No se podía exigir el CUIL ni permiso guardado sin antes obtener consentimiento."
+        },
+        {
+          "severidad": "alta",
+          "regla": "El usado se anota solo si el cliente lo ofrece",
+          "evidencia": "¿Qué marca, modelo y año tiene el auto que entregarías?",
+          "explicacion": "Ante el «Si» a la pregunta de si entregaría un auto, debió aclarar qué auto ofrecía; sin embargo, el CUIL que llegó después no era una oferta de vehículo. El flujo no verifica que hubiera autorización antes de pedir CUIL."
+        }
+      ]
+    },
+    {
+      "codigo": "P10",
+      "repeticion": 2,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "alta",
+          "regla": "Lo que falta preguntar, en orden",
+          "evidencia": "¿Me autorizás a hacer esa consulta?",
+          "explicacion": "El permiso se solicitó después de que llegó un CUIL, pero el cliente no respondió sí o no; luego contestó que no tenía auto. El registro automático afirma permisos = 1 pese a no existir consentimiento afirmativo en la transcripción, y el chat tampoco pidió el CUIL después del permiso."
+        },
+        {
+          "severidad": "alta",
+          "regla": "El permiso se guarda una sola vez",
+          "evidencia": "permisos: 1",
+          "explicacion": "El control registra un consentimiento afirmativo aunque no aparece un «sí» del cliente a la consulta del BCRA. Así no puede comprobar que el permiso se guarda una sola vez con el wamid de la respuesta del cliente."
+        }
+      ]
+    },
+    {
+      "codigo": "N1",
+      "repeticion": 1,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "baja",
+          "regla": "Forma de escribir",
+          "evidencia": "¿Con cuánto de anticipo contás más o menos?",
+          "explicacion": "El trato es inconsistente: usa «tu caso» y «contás», pero el spec pide rioplatense con voseo; esta respuesta sí usa voseo, por lo que no hay falla de requisito. Se la marca solo como observación de estilo."
+        }
+      ]
+    },
+    {
+      "codigo": "N1",
+      "repeticion": 2,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "N2",
+      "repeticion": 1,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "N2",
+      "repeticion": 2,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "media",
+          "regla": "El recorrido de venta",
+          "evidencia": "¿Tenés el usado para dar como parte de pago, o vas directo con la plata?",
+          "explicacion": "Hizo una pregunta compuesta al ofrecer dos alternativas. El recorrido exige una sola pregunta por mensaje."
+        }
+      ]
+    },
+    {
+      "codigo": "N3",
+      "repeticion": 1,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "N3",
+      "repeticion": 2,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "alta",
+          "regla": "Despedidas con 👍",
+          "evidencia": "Te va a contactar en breve para seguir con el Vento 2014 👍",
+          "explicacion": "Incluyó un 👍 suelto al final de un mensaje con texto; el sistema debía quitarlo antes de enviarlo y guardarlo."
+        }
+      ]
+    },
+    {
+      "codigo": "N4",
+      "repeticion": 1,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "N4",
+      "repeticion": 2,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "N5",
+      "repeticion": 1,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "media",
+          "regla": "Forma de escribir",
+          "evidencia": "¿La pensás pagar de contado o financiada?",
+          "explicacion": "Para el Volkswagen Vento el spec exige concordancia masculina: «¿Lo pensás pagar de contado o financiado?»."
+        }
+      ]
+    },
+    {
+      "codigo": "N5",
+      "repeticion": 2,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "media",
+          "regla": "Forma de escribir",
+          "evidencia": "¿La pensás pagar de contado o financiada?",
+          "explicacion": "Para el Volkswagen Vento el spec exige concordancia masculina: «¿Lo pensás pagar de contado o financiado?»."
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "severidad": "alta",
+      "chat": "K1",
+      "hallazgo": "El control de repetición en K1 indica «no» aunque las dos respuestas del bot terminan preguntando si paga de contado o financiado, y el propio texto dice que repitió la pregunta. El escenario detecta incorrectamente una repetición real.",
+      "sugerencia": "Comparar las preguntas semánticamente entre respuestas consecutivas, y hacer fallar el control cuando la pregunta pendiente se repite."
+    },
+    {
+      "severidad": "alta",
+      "chat": "K2",
+      "hallazgo": "El control automático comprueba anticipo y usado, pero no verifica que ambos mensajes sobre kilómetros cumplan la regla. La evidencia del chat muestra 0 km y menciona la ficha en ambas repeticiones.",
+      "sugerencia": "Añadir controles por respuesta que prohíban números, «0 km» y referencias a la ficha, y verificar que la respuesta se mantenga al insistir."
+    },
+    {
+      "severidad": "alta",
+      "chat": "E1",
+      "hallazgo": "Los controles solo marcan como prohibidas las frases exactas «dato cargado» y «no cuento con esa información», pero pasan por alto «no lo tengo cargado en el sistema», que incumple la misma regla. Además, el control de permisos/CUIL espera 1 y sí aunque el cliente no autorizó realmente: contestó «si, autorizo» antes de que se le preguntara por el BCRA, y luego la respuesta a esa consulta no llegó.",
+      "sugerencia": "Detectar variantes semánticas de «no tengo el dato» y derivar el estado esperado del permiso y CUIL de respuestas explícitas al pedido de consentimiento BCRA."
+    },
+    {
+      "severidad": "alta",
+      "chat": "R2",
+      "hallazgo": "Se espera un recordatorio aunque el cliente escribe justo a los 10 minutos. El requisito dice que no corresponde si el cliente escribió después de la pregunta.",
+      "sugerencia": "Ajustar el escenario para que mida el recordatorio antes de una respuesta del cliente; si el cliente contesta a los 10 minutos, verificar que no se envíe."
+    },
+    {
+      "severidad": "alta",
+      "chat": "R3",
+      "hallazgo": "El control verifica que no salga un recordatorio, pero no comprueba que el bot indique que no corresponde y que la consulta quede marcada para no evaluarla de nuevo.",
+      "sugerencia": "Agregar aserciones para la decisión de no recordar y el estado persistido de la consulta."
+    },
+    {
+      "severidad": "alta",
+      "chat": "P10",
+      "hallazgo": "El control espera que haya permiso y CUIL aun cuando la transcripción no contiene una respuesta afirmativa al pedido de consentimiento BCRA. En la repetición 1, «Si, autorizo» respondió a la pregunta sobre entregar un usado y el posterior CUIL llegó antes de pedir permiso. En la repetición 2, el «no» responde a «¿tenés algún auto para entregar?», no al permiso, que todavía no se había pedido.",
+      "sugerencia": "Hacer que el cliente responda explícitamente al permiso BCRA en el orden correcto y que el control derive permiso/CUIL del intercambio real."
+    },
+    {
+      "severidad": "media",
+      "chat": "P4",
+      "hallazgo": "El control de fotos de la repetición 1 espera una sola salida, pero el bot envía fotos del Gol Trend 2019 en el primer mensaje y las vuelve a enviar en el segundo. La repetición 2, en cambio, no vuelve a enviar fotos pese a afirmar falsamente que no las había enviado.",
+      "sugerencia": "Contar las salidas de fotos por auto y por mensaje, y comprobar que el texto concuerde con el historial de fotos ya enviadas."
+    },
+    {
+      "severidad": "media",
+      "chat": "P8",
+      "hallazgo": "El control no verifica el precio de contado de la Duster ni que se conserve el estado «contado» sin volver a preguntar. No detecta que ambas respuestas afirman falsamente que falta el precio.",
+      "sugerencia": "Comprobar el precio de contado esperado desde la ficha y que la forma de pago ya respondida no se vuelva a preguntar."
+    },
+    {
+      "severidad": "media",
+      "chat": "N2",
+      "hallazgo": "La repetición 2 se muestra sin controles automáticos, aunque el escenario tiene expectativas explícitas sobre el precio de contado no cargado.",
+      "sugerencia": "Agregar aserciones que comprueben que no se presenta el precio de lista como precio de contado y que el bot informa que no dispone del precio de contado."
+    },
+    {
+      "severidad": "media",
+      "chat": "N3",
+      "hallazgo": "El control solo comprueba que se deriva a un vendedor. No comprueba que un 👍 suelto al final de un mensaje de texto se elimine antes de enviarlo.",
+      "sugerencia": "Agregar una comprobación del texto final enviado y guardado que prohíba un 👍 al final si el mensaje contiene texto."
+    },
+    {
+      "severidad": "media",
+      "chat": "N5",
+      "hallazgo": "El control automático etiqueta como «prohibido» el femenino «La pensás/financiada», aunque esas formas aparecen en los mensajes y son precisamente el incumplimiento que debería marcar. También no verifica la concordancia masculina completa.",
+      "sugerencia": "Invertir esas aserciones: exigir «Lo pensás pagar de contado o financiado» y reprobar las formas femeninas para el Vento."
+    }
+  ]
+}
