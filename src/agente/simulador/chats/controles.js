@@ -10,6 +10,19 @@ const comoBooleano = (v) => v === true || v === 1 || v === "1" || v === "true";
 const TIENE_VALOR = new Set(["anticipo", "visita", "cuil"]);
 const PULGAR_SUELTO = /^👍[\u{1F3FB}-\u{1F3FF}]?️?$/u;
 
+// Un texto que empieza con un número no vale si en el mensaje va pegado a otro
+// número, punto o coma ("0 km" no está en "148.000 km", sí en "tiene 0 km").
+function contiene(mensaje, buscado) {
+  const heno = normalizar(mensaje);
+  const aguja = normalizar(buscado);
+  if (!aguja) return false;
+  const empiezaConDigito = /^\d/.test(aguja);
+  for (let i = heno.indexOf(aguja); i !== -1; i = heno.indexOf(aguja, i + 1)) {
+    if (!(empiezaConDigito && i > 0 && /[\d.,]/.test(heno[i - 1]))) return true;
+  }
+  return false;
+}
+
 const resultado = (control, ok, detalle) => ({ control, ok, detalle: ok ? null : detalle });
 const textos = (t) => t.mensajesBot.map((m) => m.texto);
 
@@ -40,11 +53,11 @@ function controlRepitePregunta(control, transcripcion) {
 
 const CONTROLES = {
   prohibido: (c, t) => {
-    const hallado = textos(t).some((x) => normalizar(x).includes(normalizar(c.texto)));
+    const hallado = textos(t).some((x) => contiene(x, c.texto));
     return resultado(c, !hallado, `algún mensaje contiene "${c.texto}"`);
   },
   obligatorio: (c, t) => {
-    const hallado = textos(t).some((x) => normalizar(x).includes(normalizar(c.texto)));
+    const hallado = textos(t).some((x) => contiene(x, c.texto));
     return resultado(c, hallado, `ningún mensaje contiene "${c.texto}"`);
   },
   guardado: controlGuardado,

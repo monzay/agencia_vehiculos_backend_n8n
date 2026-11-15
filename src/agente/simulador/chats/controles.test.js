@@ -169,3 +169,20 @@ test("termina_con_pulgar falla con un mensaje de texto que termina con una líne
   assert.equal(r.ok, false);
   assert.ok(r.detalle.length > 0);
 });
+
+// ── texto que empieza con un número ──
+
+test("prohibido que empieza con un dígito no coincide si va pegado a otro número, punto o coma", () => {
+  const c = { tipo: "prohibido", texto: "0 km" };
+  assert.equal(uno(c, [msg("Tiene 148.000 km")]).ok, true);
+  assert.equal(uno(c, [msg("Tiene 10 km de ruta")]).ok, true);
+  assert.equal(uno(c, [msg("Tiene 1,0 km")]).ok, true);
+  assert.equal(uno(c, [msg("tiene 0 km")]).ok, false);
+  assert.equal(uno(c, [msg("Tiene 148.000 km y después tiene 0 km")]).ok, false);
+});
+
+test("obligatorio que empieza con un dígito tampoco coincide dentro de un número más largo", () => {
+  const c = { tipo: "obligatorio", texto: "000.000" };
+  assert.equal(uno(c, [msg("Son 19.000.000")]).ok, false);
+  assert.equal(uno(c, [msg("Son $ 000.000 pesos")]).ok, true);
+});

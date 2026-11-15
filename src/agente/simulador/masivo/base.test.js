@@ -80,3 +80,14 @@ test("el error de prepararBase por una base no válida no muestra la clave", asy
     (e) => !/SECRETO123/.test(String(e.message)),
   );
 });
+
+test("prepararBase carga los datos que le pasan y, sin datos, los de siempre", async () => {
+  const { sentencias, ejecutar } = espia();
+  const esquema = () => sentencias.push("ESQUEMA");
+  await prepararBase({ urlRoot: OK_ROOT, urlAgente: OK_AGENTE }, { prohibidas: PROHIBIDAS, ejecutar, esquema, datos: "INSERT INTO propio VALUES (1);" });
+  assert.equal(sentencias.at(-1), "INSERT INTO propio VALUES (1);");
+  assert.ok(sentencias.indexOf("ESQUEMA") > 1, "el esquema va después de crear la base");
+  const otra = espia();
+  await prepararBase({ urlRoot: OK_ROOT, urlAgente: OK_AGENTE }, { prohibidas: PROHIBIDAS, ejecutar: otra.ejecutar, esquema: () => {} });
+  assert.match(otra.sentencias.at(-1), /SIM-01/);
+});

@@ -14,7 +14,7 @@ const MYSQL_POR_DEFECTO = "C:\\Program Files\\MySQL\\MySQL Server 9.5\\bin\\mysq
 function ejecutorMysql(urlRoot) {
   const u = new URL(urlRoot);
   return async (sql, { base } = {}) => {
-    const args = ["--protocol=TCP", "-h", u.hostname.replace(/^\[|\]$/g, ""), "-P", u.port || "3306", "-u", decodeURIComponent(u.username), "-N", "-B"];
+    const args = ["--protocol=TCP", "-h", u.hostname.replace(/^\[|\]$/g, ""), "-P", u.port || "3306", "-u", decodeURIComponent(u.username), "-N", "-B", "--default-character-set=utf8mb4"];
     if (base) args.push(base);
     const r = spawnSync(process.env.MYSQL_BIN || MYSQL_POR_DEFECTO, args, {
       input: sql,
@@ -49,7 +49,7 @@ function aplicarEsquema(urlRoot) {
   if (r.status !== 0) throw new Error(`prisma db push falló (código ${r.status}): ${(r.stderr || r.stdout || String(r.error ?? "")).trim().slice(0, 2000)}`);
 }
 
-const DATOS = `
+export const DATOS_POR_DEFECTO = `
 INSERT INTO vendedores (nombre, slug, activo, recibe_consultas) VALUES
   ('Juan Simulado', 'juan', 1, 1),
   ('Pepito Simulado', 'pepito', 1, 1),
@@ -66,14 +66,16 @@ INSERT INTO autos (ref, marca, modelo, anio, tipo, precio, disponible, vendido_a
   ('SIM-06', 'Fiat', 'Cronos', 2022, 'usado', 17000000, 0, NOW());
 `;
 
-export async function prepararBase({ urlRoot, urlAgente } = {}, { prohibidas, ejecutar } = {}) {
+// `datos` es el SQL con lo que se carga después del esquema (por defecto, los de los casos masivos);
+// `esquema` existe para los tests: reemplaza a `prisma db push`.
+export async function prepararBase({ urlRoot, urlAgente } = {}, { prohibidas, ejecutar, datos = DATOS_POR_DEFECTO, esquema = aplicarEsquema } = {}) {
   // Lo primero, antes de ejecutar nada: si las URLs no son las de simulación, se aborta.
   verificarBases({ backend: urlRoot, agente: urlAgente }, { prohibidas });
   const sql = ejecutar ?? ejecutorMysql(urlRoot);
 
   await sql(`DROP DATABASE IF EXISTS \`${BASE_SIMULACION}\``);
   await sql(`CREATE DATABASE \`${BASE_SIMULACION}\``);
-  aplicarEsquema(urlRoot);
+  esquema(urlRoot);
   for (const permiso of permisosDelAgente()) await sql(permiso);
-  await sql(DATOS, { base: BASE_SIMULACION });
+  await sql(datos, { base: BASE_SIMULACION });
 }
