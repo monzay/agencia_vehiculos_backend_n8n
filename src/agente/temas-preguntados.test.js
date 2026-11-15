@@ -71,3 +71,8 @@ test("temasSinGuardar descarta los temas cuyo dato guardó la IA en el turno con
   assert.deepEqual(temasSinGuardar(["visita"], ["disponibilidad"]), []);
   assert.deepEqual(temasSinGuardar(["anticipo"], []), ["anticipo"]);
 });
+
+test("sinPreguntaRepetida quita la pregunta que va en la misma línea después de un emoji, sin coletilla (caso K1)", () => {
+  const texto = "Ese dato no lo tengo a mano en este momento, pero lo vas a ver en persona cuando pases por la agencia 🙌 ¿Lo pensás pagar de contado o financiado?";
+  assert.equal(sinPreguntaRepetida(texto, ["forma de pago"]), "Ese dato no lo tengo a mano en este momento, pero lo vas a ver en persona cuando pases por la agencia 🙌");
+});

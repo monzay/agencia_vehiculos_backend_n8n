@@ -1741,3 +1741,26 @@ test("si las deps traen alUsarHerramienta, el orquestador se lo pasa a las herra
   assert.equal(usos[0].nombre, "horarios_atencion");
   assert.match(JSON.stringify(usos[0].resultado), /Lunes/);
 });
+
+test("la pregunta repetida después de un emoji, en la misma línea, también se quita en el camino completo", async () => {
+  const root = baseFalsa({
+    cliente: { id: 50 },
+    sesion: consultaFinanciando,
+    historial: charlaDeRecibo("Es del 2019. ¿Tenés recibo de sueldo o garante?", "Es nafta. ¿Y tenés recibo de sueldo o garante?"),
+  });
+  const anthropic = claudeFalso("Ese dato no lo tengo a mano, lo ves en la agencia 🙌 ¿Tenés recibo de sueldo o garante?");
+  const r = await atenderMensaje({ telefono: TEL, texto: "km?", ahora }, deps(root, anthropic));
+  assert.equal(r.texto, "Ese dato no lo tengo a mano, lo ves en la agencia 🙌");
+});
+
+test("con una visita propuesta y varios días sin hablar, el contexto trae la línea de volver a coordinar con los horarios", async () => {
+  const miercoles = new Date("2026-10-07T13:00:00Z");
+  const root = baseFalsa({
+    cliente: { id: 50 },
+    sesion: { ...consultaConCharla, sesion_inicio: miercoles, pago_tipo: "contado", visita_propuesta: "mañana a la mañana", visita_propuesta_at: miercoles },
+    historial: [mensajeDe(1, "saliente", "Te esperamos", miercoles)],
+  });
+  const anthropic = claudeFalso();
+  await atenderMensaje({ telefono: TEL, texto: "no pude ir", ahora }, deps(root, anthropic));
+  assert.match(anthropic.pedidos[0].system.at(-1).text, /La visita que había propuesto puede haber pasado/);
+});

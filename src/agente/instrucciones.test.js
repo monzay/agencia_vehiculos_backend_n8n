@@ -465,3 +465,38 @@ test("la pregunta del recorrido va en su orden: no salta al usado si falta el re
   assert.match(t, /La pregunta del recorrido va en su orden: no saltes a "usado" si falta "recibo o garante"/);
   assert.match(t, /Una sola pregunta por mensaje, sin excepciones/);
 });
+
+// ── Reglas de la ronda 3 ──
+
+test("lo que dice la versión o la descripción del auto sí es un dato y se dice; lo que no figura ahí no se deduce", async () => {
+  const t = await instrucciones();
+  assert.match(t, /Lo que dice la versión o la descripción del auto SÍ es un dato: decilo \(por ejemplo, si la versión dice "3 puertas", tiene 3 puertas\)/);
+});
+
+test("si un modelo no está, ofrece 1 o 2 parecidos concretos con su precio, no solo el catálogo", async () => {
+  const t = await instrucciones();
+  assert.match(t, /Si un modelo no está, ofrecé 1 o 2 parecidos concretos con su precio \(no solo el catálogo\)/);
+});
+
+test("si el cliente avisa que escribe más tarde, se despide sin recordarle la pregunta pendiente", async () => {
+  const t = await instrucciones();
+  assert.match(t, /Si el cliente avisa que escribe más tarde, despedite sin recordarle la pregunta pendiente/);
+});
+
+test("en el primer mensaje desde la web va solo el precio de lista, sin versión ni combustible", async () => {
+  const t = await instrucciones();
+  assert.match(t, /En el primer mensaje desde la web va solo el precio de lista, sin versión ni combustible/);
+});
+
+test("no pone en duda un auto que ya mostró con datos de la herramienta", async () => {
+  const t = await instrucciones();
+  assert.match(t, /No pongas en duda un auto que ya mostraste con datos de la herramienta/);
+});
+
+test("con una visita propuesta y 12 horas o más sin hablar, el contexto avisa que pudo pasar y manda a consultar horarios_atencion", () => {
+  const tiempoDesdeElAnterior = { horas: 49, cuando: new Date("2026-10-09T13:00:00Z") };
+  const c = contextoDelMomento({ ahora, tiempoDesdeElAnterior, visitaPropuesta: true });
+  assert.match(c, /La visita que había propuesto puede haber pasado: si hay que coordinar de nuevo, consultá horarios_atencion y decile los días y horarios\./);
+  assert.doesNotMatch(contextoDelMomento({ ahora, tiempoDesdeElAnterior }), /La visita que había propuesto/);
+  assert.doesNotMatch(contextoDelMomento({ ahora, visitaPropuesta: true }), /La visita que había propuesto/);
+});

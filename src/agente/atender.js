@@ -366,6 +366,7 @@ export async function contextoDelTurno({ root, cliente, sesion, ahora, autoWeb, 
     sinContestar,
     fotosEnviadas,
     tiempoDesdeElAnterior: tiempoDesdeElAnterior(historial, ahora),
+    visitaPropuesta: Boolean(sesion.visita_propuesta),
     credito,
     privacidadUrl: credito && new URL("/privacidad", process.env.PUBLIC_WEB_URL).href,
   };

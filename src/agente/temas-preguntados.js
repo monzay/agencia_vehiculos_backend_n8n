@@ -87,7 +87,7 @@ export function sinPreguntaRepetida(texto, temas) {
   const lineas = String(texto)
     .split(/\r?\n/)
     .map((linea) => {
-      const oraciones = linea.split(/(?<=[.!?…])\s+/).filter(Boolean);
+      const oraciones = linea.split(/(?<=[.!?…])\s+|\s+(?=¿)/).filter(Boolean);
       const quedan = [];
       let anteriorQuitada = false;
       for (const oracion of oraciones) {
@@ -100,6 +100,8 @@ export function sinPreguntaRepetida(texto, temas) {
         anteriorQuitada = false;
         quedan.push(oracion);
       }
+      // Un fragmento que quedó colgando de la pregunta quitada ("Y contame,") se va con ella.
+      if (quitado && /[,:;]$/.test(quedan.at(-1) ?? "")) quedan.pop();
       return oraciones.length && !quedan.length ? null : quedan.join(" ");
     })
     .filter((linea) => linea !== null);
