@@ -18,7 +18,7 @@ const TEMAS = [
 // Del usado no se preguntan km ni estado: se ven en la agencia (13/10/2026).
 const TEMAS_PROHIBIDOS = new Set(["usado_kms", "usado_detalles"]);
 // Hablar de cuotas con números está prohibido: la financiación se arma en la agencia.
-const CUOTAS_CON_NUMEROS = /\d+\s*cuotas|cuotas?\b[^.?!]*\$\s?\d/i;
+export const CUOTAS_CON_NUMEROS =/\d+\s*cuotas|cuotas?\b[^.?!]*\$\s?\d/i;
 const UBICACION = /direcci[oó]n|queda en|maps\.|goo\.gl/i;
 
 const INVITACION =/\bvenir\b|\bvuelta\b|\bpas(ar|ás|arte|es)\b|\bacerc|\bvisit|\b(te|los|las) esperamos|\b(te|los|las) (va|van|vamos) a estar esperando|en persona/i;
