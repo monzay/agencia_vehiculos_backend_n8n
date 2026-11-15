@@ -27,6 +27,16 @@ después. Reemplaza la regla del 15/10/2026 ("al cliente que deja de responder n
 - **THEN** no sale nada
 <!-- test: FALTA -->
 
+#### Scenario: Justo a los 10 minutos
+- **WHEN** pasaron exactamente 10 minutos desde la pregunta
+- **THEN** el recordatorio corresponde
+<!-- test: FALTA -->
+
+#### Scenario: Justo a los 60 minutos
+- **WHEN** pasaron exactamente 60 minutos desde la pregunta
+- **THEN** ya no corresponde
+<!-- test: FALTA -->
+
 #### Scenario: El sistema estuvo apagado
 - **WHEN** pasó más de una hora desde la pregunta
 - **THEN** no sale nada, aunque nunca se haya mandado un recordatorio
@@ -101,12 +111,19 @@ marcada igual, para no volver a evaluarla cada minuto.
 
 ### Requirement: Texto fijo si la IA no puede
 Si la llamada a la IA falla, o se alcanzó el tope de gasto del mes, el recordatorio MUST salir con el texto
-fijo "¿Seguís por ahí? Cuando puedas, contame y seguimos 🙂".
+fijo "¿Seguís por ahí? Cuando puedas, contame y seguimos 🙂", salvo que el último mensaje del cliente avise
+una demora ("más tarde", "después te escribo", "estoy ocupado", "estoy en el trabajo" y parecidos): en ese
+caso MUST NOT salir nada.
 <!-- id: recordatorio.textoDelRecordatorio -->
 
 #### Scenario: La IA falla
 - **WHEN** la llamada a Claude falla
 - **THEN** sale el texto fijo
+<!-- test: FALTA -->
+
+#### Scenario: La IA falla y el cliente había avisado
+- **WHEN** la llamada a Claude falla y el último mensaje del cliente decía "más tarde te escribo"
+- **THEN** no sale nada
 <!-- test: FALTA -->
 
 #### Scenario: Tope de gasto alcanzado
@@ -144,6 +161,23 @@ el aviso al vendedor. El costo de la IA MUST registrarse como cualquier otra lla
 #### Scenario: No cambia la consulta
 - **WHEN** sale un recordatorio
 - **THEN** la consulta conserva su último mensaje, su temperatura y su aviso al vendedor
+<!-- test: FALTA -->
+
+### Requirement: La consulta se reserva antes de enviar
+Antes de escribir o enviar el recordatorio, el sistema MUST reservar la consulta con una sola escritura
+condicional sobre `recordatorio_en` (solo si sigue vacío o tiene más de 24 horas). Si la reserva no cambia
+ninguna fila, MUST NOT enviar. `recordatorio_en` es entonces el momento en que la consulta se evaluó para un
+recordatorio, haya salido o no. Un envío con resultado incierto (timeout) MUST NOT reintentarse.
+<!-- id: recordatorio.enviarRecordatorio -->
+
+#### Scenario: Dos revisiones a la vez
+- **WHEN** dos revisiones eligen la misma consulta al mismo tiempo
+- **THEN** solo una la reserva y sale un único recordatorio
+<!-- test: FALTA -->
+
+#### Scenario: Timeout al enviar
+- **WHEN** el envío a WhatsApp no responde a tiempo
+- **THEN** no se reintenta y la consulta queda reservada
 <!-- test: FALTA -->
 
 ### Requirement: El recordatorio no pisa un mensaje nuevo

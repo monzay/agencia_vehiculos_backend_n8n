@@ -411,7 +411,7 @@ Cliente: mañana a la mañana
 Cliente: hola, al final no pude ir
 
 Debe:
-- entender que la visita era el jueves y ya pasó
+- entender que la visita era el jueves 12/11 y ya pasó (el último mensaje llega el viernes 13/11 a las 10:00, con la agencia abierta)
 - ofrecerle coordinar otro día, con los horarios de la agencia
 
 No debe:

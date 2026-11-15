@@ -26,8 +26,9 @@ Las rondas de chats quedan en `simulacion/ronda-N/` de esta carpeta. Cada ronda 
   - Qué: `scripts/simular-chats.js`.
     - Arma `agencia_simulacion` de cero con el catálogo y la agencia del documento (`simulador/masivo/base.js`
       pasa a recibir los datos a cargar) y aborta si alguna conexión no es esa base (`guardas.js`).
-    - Corre cada chat por `atenderMensaje`, con Claude Haiku 5.5 real, reloj simulado, BCRA simulado,
-      transcripción de audio simulada y un envío de WhatsApp de prueba que solo anota.
+    - Corre cada chat por `atenderMensaje`, con reloj simulado. Lo único real que sale a la red es Claude
+      Haiku 5.5. Todo lo demás se inyecta: BCRA simulado, transcripción de audio simulada (sin Groq) y un
+      envío de WhatsApp de prueba que solo anota. Sin `WA_TOKEN` ni `GROQ_API_KEY` en el proceso.
     - Guarda en `simulacion/ronda-N/`: `transcripcion.md` (cada chat con las respuestas, las herramientas
       usadas, lo que quedó guardado y el resultado de los controles), `resultados.json`, el costo y la
       cantidad de mensajes de WhatsApp, y `pedido-codex.md`.
@@ -100,7 +101,8 @@ Las rondas de chats quedan en `simulacion/ronda-N/` de esta carpeta. Cada ronda 
 
 - [ ] 10. Nivel de razonamiento
   - Qué: `agente.js`: el nivel sale de una constante y el máximo de tokens depende del nivel. Correr los 25
-    chats con `low`, `medium` y `high` y comparar cuántos pasan, el costo, el tiempo por respuesta y el
+    chats con `low`, `medium` y `high`, 2 veces cada uno y con los mismos controles y la misma revisión de
+    Codex que una ronda, y comparar cuántos pasan, el costo, el tiempo por respuesta y el
     largo de las respuestas.
   - Criterio: tabla en `simulacion/esfuerzo.md`. Queda el nivel más bajo con el que pasan todos los chats;
     si con ninguno pasan todos, el que más pasa, y queda anotado. `agente-conversacion` › Cómo se llama a
