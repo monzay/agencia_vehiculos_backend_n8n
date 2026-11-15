@@ -71,3 +71,22 @@ Hallazgos sobre los tests:
 | 10 | R3 | "👍 suelto" al final de una frase | No es correcto: un emoji al final de la oración no es el 👍 suelto de la regla | Nada |
 | 11 | K2 | "Con el anticipo que tenés lo vemos en la agencia" sugiere que alcanza; no repite que no tiene los km | No es correcto: no dice que alcanza, y sobre los km dice que se ven en persona, sin inventar | Nada |
 | 12 | Tests | Faltan controles automáticos para lo que juzga Codex | Es el diseño: los controles son la red de abajo | Nada |
+
+## Ronda 3 — 2026-11-15
+
+- Controles automáticos: 24 de 25 (K1 falló en una de las dos pasadas).
+- Codex: 32 de 50 conversaciones pasan (13 → 22 → 29 → 32). No aprueba. Una sola falla alta, descartada.
+- Costo de IA: USD 0,104.
+
+| # | Chat | Hallazgo de Codex | Verificación de Claude | Qué se hizo |
+|---|---|---|---|---|
+| 1 | K1 | Repite la pregunta de la forma de pago tras los km | Correcto: el freno por código no la quitó cuando la pregunta va en la misma línea, después de un emoji | Para la ronda 4: arreglar el freno |
+| 2 | P3 | Dice que no tiene a mano las puertas del Gol Trend 2015, y la versión dice "3 puertas" | Correcto: la regla nueva de no deducir datos se pasó de largo | Para la ronda 4: lo que dice la versión es un dato |
+| 3 | P7 | Vuelve a coordinar sin decir los horarios | Correcto, por segunda ronda | Para la ronda 4: el contexto avisa que la visita propuesta ya pasó y pide los horarios |
+| 4 | P1 | Dos preguntas en un mensaje; duda de un auto que ya había mostrado | Correcto, menor | Para la ronda 4: refuerzo |
+| 5 | P5 | No ofrece parecidos al auto que no hay, solo el catálogo | Correcto, menor | Para la ronda 4: regla |
+| 6 | R3 | Tras "más tarde te escribo" le recuerda el anticipo | Correcto, menor | Para la ronda 4: regla |
+| 7 | N5 | Agrega la versión al precio | Correcto según la regla vigente (solo el precio), menor | Para la ronda 4: regla |
+| 8 | N4 | "El costo de la agencia es algo interno" sería divulgar información interna | No es correcto: se niega a darlo | Nada |
+| 9 | P8 | Dice que no tiene el precio de contado de la Duster | No es correcto: ese precio no está cargado | Nada |
+| 10 | P3 | Repite la pregunta del recibo en la tercera respuesta | No es correcto: la regla permite retomarla una vez más adelante | Nada |

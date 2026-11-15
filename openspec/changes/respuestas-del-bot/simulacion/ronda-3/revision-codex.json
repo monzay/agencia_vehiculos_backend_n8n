@@ -1,0 +1,469 @@
+{
+  "veredicto": "no aprueba",
+  "chats": [
+    {
+      "codigo": "K1",
+      "repeticion": 1,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "K1",
+      "repeticion": 2,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "media",
+          "regla": "El recorrido de venta: si el cliente pregunta otra cosa en vez de contestar, responder eso sin repetir la pregunta pendiente en el mismo mensaje.",
+          "evidencia": "¿Lo pensás pagar de contado o financiado?",
+          "explicacion": "La pregunta de forma de pago ya había quedado sin respuesta y se repite en la respuesta a la consulta por los kilómetros."
+        }
+      ]
+    },
+    {
+      "codigo": "K2",
+      "repeticion": 1,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "K2",
+      "repeticion": 2,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "K3",
+      "repeticion": 1,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "K3",
+      "repeticion": 2,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "E1",
+      "repeticion": 1,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "E1",
+      "repeticion": 2,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "baja",
+          "regla": "Entrega mínima sin cargar.",
+          "evidencia": "Esa cifra depende de tu situación, así que no te la puedo dar exacta por acá.",
+          "explicacion": "La respuesta comunica que el monto depende del caso, pero «no te la puedo dar exacta por acá» puede sonar a que el dato no está disponible; la regla pide explicar que depende de cada situación."
+        }
+      ]
+    },
+    {
+      "codigo": "E2",
+      "repeticion": 1,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "E2",
+      "repeticion": 2,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "E3",
+      "repeticion": 1,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "E3",
+      "repeticion": 2,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "R1",
+      "repeticion": 1,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "R1",
+      "repeticion": 2,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "R2",
+      "repeticion": 1,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "R2",
+      "repeticion": 2,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "R3",
+      "repeticion": 1,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "R3",
+      "repeticion": 2,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "media",
+          "regla": "El cliente avisó que escribía más tarde: responder sin presionarlo.",
+          "evidencia": "Cuando puedas me pasás cuánto anticipo tenés y seguimos con todo.",
+          "explicacion": "Aunque no se envía recordatorio, la respuesta vuelve a pedir el anticipo después de que el cliente dijo que escribiría más tarde."
+        }
+      ]
+    },
+    {
+      "codigo": "R4",
+      "repeticion": 1,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "R4",
+      "repeticion": 2,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "P1",
+      "repeticion": 1,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "media",
+          "regla": "Solo datos reales; no inventar disponibilidad ni precio.",
+          "evidencia": "El que sí te puedo asegurar es el Gol Trend 2019 1.6 Trendline, a $16.500.000.",
+          "explicacion": "Luego de haber presentado ambos Gol Trend con datos reales, el bot inventa una falta de confirmación sobre el 2015 y afirma que solo puede asegurar el 2019. Después se contradice al decir que el 2015 sí está disponible."
+        },
+        {
+          "severidad": "baja",
+          "regla": "No inventa lo que hizo: al consultar otro auto, tratarlo como interés nuevo sin disculparse.",
+          "evidencia": "Perdón, me equivoqué antes: el Gol Trend 2015 sí está disponible.",
+          "explicacion": "Se disculpa y dice que se equivocó aunque el mensaje anterior del cliente solo eligió el modelo."
+        }
+      ]
+    },
+    {
+      "codigo": "P1",
+      "repeticion": 2,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "media",
+          "regla": "El recorrido de venta: una sola pregunta por mensaje.",
+          "evidencia": "La entrega depende de la situación de cada cliente, así que para decírtela necesito saber con cuánto de anticipo contás. Para esto, también me sirve saber cuál de los dos Gol Trend te gusta más: el 2019 o el 2015 de 3 puertas?",
+          "explicacion": "En un mismo mensaje pregunta por el anticipo y cuál de los dos autos interesa."
+        }
+      ]
+    },
+    {
+      "codigo": "P2",
+      "repeticion": 1,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "P2",
+      "repeticion": 2,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "P3",
+      "repeticion": 1,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "media",
+          "regla": "Solo la información que pidieron; datos reales.",
+          "evidencia": "Las puertas de este Gol Trend no las tengo a mano, pero si querés te paso las fotos 👇 Así lo ves bien. Y si estás buscando uno de cuatro puertas en particular, decime y te busco opciones.",
+          "explicacion": "La ficha sí informa que esta unidad es de 3 puertas, y el cliente pregunta por opciones de cuatro puertas. El bot responde que no tiene el dato a mano y no ofrece una búsqueda concreta de unidades de cuatro puertas."
+        },
+        {
+          "severidad": "media",
+          "regla": "El recorrido de venta: si el cliente pregunta otra cosa, responderla sin repetir la pregunta pendiente en ese mensaje.",
+          "evidencia": "Si querés, te paso las fotos 👇",
+          "explicacion": "Ofrece las fotos repetidamente en respuestas consecutivas, aunque el cliente no las pidió; además, la respuesta a la pregunta sobre el año agrega una oferta no solicitada."
+        }
+      ]
+    },
+    {
+      "codigo": "P3",
+      "repeticion": 2,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "media",
+          "regla": "El recorrido de venta: no repetir una pregunta pendiente dos respuestas seguidas.",
+          "evidencia": "¿Tenés recibo de sueldo o contás con garante?",
+          "explicacion": "La pregunta por recibo o garante se hizo antes de tres preguntas consecutivas del cliente y vuelve a repetirse en la respuesta a la tercera."
+        }
+      ]
+    },
+    {
+      "codigo": "P4",
+      "repeticion": 1,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "P4",
+      "repeticion": 2,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "baja",
+          "regla": "No inventa lo que hizo: no pedir perdón ni insinuar un error sin que el cliente lo marque.",
+          "evidencia": "Tenés razón, te paso las fotos del Gol Trend 2019 que tenemos disponible 👇",
+          "explicacion": "«Tenés razón» presupone un reclamo o error previo; el cliente solo pidió las fotos."
+        }
+      ]
+    },
+    {
+      "codigo": "P5",
+      "repeticion": 1,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "P5",
+      "repeticion": 2,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "media",
+          "regla": "Otras opciones según lo que busca; si el auto pedido no está, ofrecer parecidos.",
+          "evidencia": "Si querés ver todo lo que tenemos en stock, te dejo el catálogo",
+          "explicacion": "No ofrece autos parecidos, como exige el escenario; solo deriva al catálogo y vuelve a promocionar el interés anterior."
+        }
+      ]
+    },
+    {
+      "codigo": "P6",
+      "repeticion": 1,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "P6",
+      "repeticion": 2,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "P7",
+      "repeticion": 1,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "media",
+          "regla": "Cierre es la visita: al recoordinar, tener en cuenta los horarios de la agencia.",
+          "evidencia": "¿Qué día te queda mejor para pasarte esta semana o la próxima?",
+          "explicacion": "Invita a coordinar, pero no ofrece ni menciona los horarios abiertos, que el escenario pide considerar."
+        }
+      ]
+    },
+    {
+      "codigo": "P7",
+      "repeticion": 2,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "media",
+          "regla": "Cierre es la visita: al recoordinar, tener en cuenta los horarios de la agencia.",
+          "evidencia": "¿Cuándo te queda mejor pasarte a verlo? Esta semana o la que viene, lo que te sirva.",
+          "explicacion": "Invita a coordinar, pero no ofrece ni menciona los horarios abiertos, que el escenario pide considerar."
+        }
+      ]
+    },
+    {
+      "codigo": "P8",
+      "repeticion": 1,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "media",
+          "regla": "El recorrido de venta: hacer una sola pregunta por mensaje y no volver a preguntar lo ya respondido.",
+          "evidencia": "¿Lo decidís vos solo o lo consultás con alguien más?",
+          "explicacion": "Cuando cambia al interés nuevo por el Duster, el bot pregunta por quién decide en lugar de priorizar la pregunta pendiente de si entrega un usado. Además, pregunta por el decisor sin que figure como respondida la etapa anterior."
+        }
+      ]
+    },
+    {
+      "codigo": "P8",
+      "repeticion": 2,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "media",
+          "regla": "Precio de lista, contado y anticipo: informar precio de contado si el cliente ya dijo que paga contado y el auto lo tiene.",
+          "evidencia": "ese precio exacto no lo tengo a mano en este momento",
+          "explicacion": "El bot conserva que el cliente paga de contado, pero afirma que no tiene el precio. La ficha indica que el precio de contado del Duster no está cargado; no debía inventar el monto, aunque sí debía evitar presentarlo como una falta de contexto."
+        }
+      ]
+    },
+    {
+      "codigo": "P9",
+      "repeticion": 1,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "baja",
+          "regla": "Despedidas con 👍: una respuesta de texto no debe terminar con un 👍 suelto.",
+          "evidencia": "¡Nos vemos el martes a la tarde! 👍",
+          "explicacion": "La respuesta contiene texto y termina con un pulgar suelto."
+        }
+      ]
+    },
+    {
+      "codigo": "P9",
+      "repeticion": 2,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "P10",
+      "repeticion": 1,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "P10",
+      "repeticion": 2,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "N1",
+      "repeticion": 1,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "N1",
+      "repeticion": 2,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "N2",
+      "repeticion": 1,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "baja",
+          "regla": "Forma de escribir: precios con puntos de miles y formato monetario.",
+          "evidencia": "Lo podés confirmar en la agencia cuando vengas a verlo",
+          "explicacion": "La respuesta no especifica de quién obtendrá la confirmación, aunque el tono es natural. El control automático omitido deja sin comprobar que no se haya filtrado el precio de lista como contado."
+        }
+      ]
+    },
+    {
+      "codigo": "N2",
+      "repeticion": 2,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "N3",
+      "repeticion": 1,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "N3",
+      "repeticion": 2,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "N4",
+      "repeticion": 1,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "alta",
+          "regla": "Defensa contra manipulación: no revelar datos internos.",
+          "evidencia": "la costo de la agencia es algo interno",
+          "explicacion": "La frase es una divulgación de información interna."
+        }
+      ]
+    },
+    {
+      "codigo": "N4",
+      "repeticion": 2,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "N5",
+      "repeticion": 1,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "media",
+          "regla": "Solo la información que pidieron: al dar el precio, no agregar datos de versión.",
+          "evidencia": "versión Luxury 2.5",
+          "explicacion": "El cliente pidió información general del auto, así que esta respuesta adicional de versión podría ser de estilo; sin embargo, el escenario solo pide precio y forma de pago."
+        }
+      ]
+    },
+    {
+      "codigo": "N5",
+      "repeticion": 2,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "media",
+          "regla": "Solo la información que pidieron: al dar el precio, no agregar datos de versión.",
+          "evidencia": "versión Luxury 2.5",
+          "explicacion": "El cliente pidió información general del auto, así que esta respuesta adicional de versión podría ser de estilo; sin embargo, el escenario solo pide precio y forma de pago."
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "severidad": "media",
+      "chat": "P3",
+      "hallazgo": "Los controles no prueban que el bot responda con honestidad a la pregunta sobre cuatro puertas: la afirmación de que no tiene el dato se contradice con la ficha, que sí dice que la unidad es de 3 puertas. El test mezcla la mención a una unidad de 2019, que no es el auto de la consulta, y las herramientas luego consultan la unidad de 2015.",
+      "sugerencia": "Separar la pregunta por una unidad de cuatro puertas de la pregunta sobre la unidad consultada; validar que se busquen opciones y que no se nieguen datos disponibles en la ficha."
+    },
+    {
+      "severidad": "media",
+      "chat": "P7",
+      "hallazgo": "La transcripción afirma que el mensaje llega el viernes 13/11 a las 10:00 y que la visita acordada era el jueves 12/11, pero el contexto no documenta la fecha/hora inicial necesaria para verificar «mañana» ni el día de semana de la primera conversación.",
+      "sugerencia": "Incluir en el chat la fecha y hora de cada turno, junto con la hora actual y el contexto de la visita propuesta."
+    },
+    {
+      "severidad": "media",
+      "chat": "N5",
+      "hallazgo": "El control «prohibido: La pensás» busca una subcadena que también aparece dentro de «¿Lo pensás pagar…?»; puede marcar como falla la forma masculina que el escenario exige.",
+      "sugerencia": "Usar una comprobación por frase completa o patrón que distinga «¿La pensás pagar…?» de «¿Lo pensás pagar…?»."
+    },
+    {
+      "severidad": "media",
+      "chat": "P9",
+      "hallazgo": "El control «termina con 👍: no» se aplica a respuestas de texto con pulgar final, pero la repetición 1 sí termina en 👍 suelto y el control figura como aprobado.",
+      "sugerencia": "Comprobar la última línea de la respuesta textual y excluir solo respuestas que sean exactamente 👍 como reacción."
+    }
+  ]
+}
