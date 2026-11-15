@@ -93,6 +93,28 @@ export function sinCodigoDeAuto(texto) {
     .trim();
 }
 
+// Quita las oraciones que cumplen `sale`; si no queda texto, deja el original.
+function sinOraciones(texto, sale) {
+  const lineas = texto.split(/\r?\n/).map((linea) => {
+    const oraciones = linea.split(/(?<=[.!?…])\s+/).filter(Boolean);
+    return { quedan: oraciones.filter((o) => !sale(o)), habia: oraciones.length };
+  });
+  const limpio = lineas.filter((l) => l.quedan.length || !l.habia).map((l) => l.quedan.join(" ")).join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  return limpio || texto;
+}
+
+// Valorar el anticipo o los datos del cliente ("buena base", "muy buen anticipo", "arrancás bien", "sumás puntos").
+const VALORACION = /(?:muy buen[ao]? anticipo|buen anticipo|buena base(?! de datos)|arranc[aá]s bien|sum[aá]s puntos|vamos muy bien|buen punto de partida)/i;
+export const sinValoraciones = (texto) => sinOraciones(texto, (o) => VALORACION.test(o));
+
+// Anunciar que se guardaron datos.
+const ANUNCIO_DE_GUARDADO = /(?:\banotad[oa]|\blo anoto|dej[eé] registrad[oa]|dejo anotad[oa]|qued[oó] registrad[oa])/i;
+export const sinAnuncioDeGuardado = (texto) => sinOraciones(texto, (o) => ANUNCIO_DE_GUARDADO.test(o));
+
+// "$19.800.£000" -> "$19.800.000": dentro de un monto que empieza con $ solo van dígitos y puntos.
+export const precioNormalizado = (texto) =>
+  texto.replace(/\$[ \t]?\d[\d.]*[^\d\s.,;:!?)]+[\d.]*\d/g, (monto) => monto.replace(/[^\d.$ \t]/g, ""));
+
 const PULGAR_SUELTO = /^👍[\u{1F3FB}-\u{1F3FF}]?\uFE0F?$/u;
 
 // Un texto con más de una línea no termina con un 👍 solo: ese va únicamente como respuesta entera (reacción).
@@ -202,7 +224,7 @@ export async function responderConIA({ mensajes, contexto, ctx, registrarConsumo
     }
 
     const crudo = textoDe(respuesta) || textos.filter(Boolean).join("\n");
-    const texto = crudo ? sinPulgarSuelto(sinCodigoDeAuto(await sinNombresInternos(crudo, { anthropic, system, tools, conversacion, registrarConsumo }))) : "";
+    const texto = crudo ? sinPulgarSuelto(precioNormalizado(sinAnuncioDeGuardado(sinValoraciones(sinCodigoDeAuto(await sinNombresInternos(crudo, { anthropic, system, tools, conversacion, registrarConsumo })))))) : "";
     // Si el turno pasó a la consulta de otro auto, el orquestador lo cierra en esa.
     const otraConsulta = ctxTurno.sesionId !== ctx.sesionId && { sesionId: ctxTurno.sesionId };
     return texto ? { ok: true, texto, fotos, ficha, fotosRef: fotos.length ? fotosRef : null, guardados, ...otraConsulta } : respaldo("sin_texto");

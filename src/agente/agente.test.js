@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { responderConIA, MODELO, ESFUERZO, esfuerzoEfectivo } from "./agente.js";
+import { responderConIA, MODELO, ESFUERZO, esfuerzoEfectivo, sinValoraciones, sinAnuncioDeGuardado, precioNormalizado } from "./agente.js";
 import { maxTokensPara } from "./limites.js";
 import { MENSAJES_FIJOS } from "./limites.js";
 
@@ -375,4 +375,39 @@ test("no toca palabras que solo empiezan con ref (referencia, referido) ni un te
   const dicho = "Te lo dejo de referencia y quedó referido por un amigo.";
   const r = await responderConIA(entrada(), { anthropic: claudeFalso([texto(dicho)]) });
   assert.equal(r.texto, dicho);
+});
+
+// ── Limpieza final: valoraciones, anuncios de guardado y precios ──
+
+test("sinValoraciones quita la oración que valora el anticipo o los datos del cliente y deja el resto", () => {
+  assert.equal(sinValoraciones("¡Muy buen anticipo! ¿Tenés recibo de sueldo?"), "¿Tenés recibo de sueldo?");
+  assert.equal(sinValoraciones("Perfecto, con recibo de sueldo tenés buena base.\n\n¿Entregás un usado?"), "¿Entregás un usado?");
+  assert.equal(sinValoraciones("Con eso arrancás bien. Sumás puntos. ¿Cuándo venís?"), "¿Cuándo venís?");
+  assert.equal(sinValoraciones("¡Genial, con $4.000.000 de anticipo vamos muy bien! ¿Tenés recibo?"), "¿Tenés recibo?");
+});
+
+test("sinValoraciones es conservador: no toca oraciones normales y, si quedaría vacío, deja el original", () => {
+  assert.equal(sinValoraciones("El Vento está a $19.800.000. ¿Lo pensás pagar de contado?"), "El Vento está a $19.800.000. ¿Lo pensás pagar de contado?");
+  assert.equal(sinValoraciones("Es una buena base de datos de autos."), "Es una buena base de datos de autos.");
+  assert.equal(sinValoraciones("Muy buen anticipo."), "Muy buen anticipo.");
+});
+
+test("sinAnuncioDeGuardado quita 'anotado', 'lo anoto', 'quedó registrado' y 'ya dejé registrado'", () => {
+  assert.equal(sinAnuncioDeGuardado("¡Anotado! ¿Tenés recibo de sueldo?"), "¿Tenés recibo de sueldo?");
+  assert.equal(sinAnuncioDeGuardado("Ya dejé registrado todo. El asesor te arma las opciones cuando vengas."), "El asesor te arma las opciones cuando vengas.");
+  assert.equal(sinAnuncioDeGuardado("Listo, quedó registrada la consulta. El asesor te arma las opciones cuando vengas."), "El asesor te arma las opciones cuando vengas.");
+  assert.equal(sinAnuncioDeGuardado("Lo dejo anotado. Te esperamos el martes."), "Te esperamos el martes.");
+  assert.equal(sinAnuncioDeGuardado("Te esperamos el martes."), "Te esperamos el martes.");
+  assert.equal(sinAnuncioDeGuardado("¡Anotado!"), "¡Anotado!");
+});
+
+test("precioNormalizado corrige un monto con símbolos extraños como $19.800.£000", () => {
+  assert.equal(precioNormalizado("El Vento está a $19.800.£000 de lista."), "El Vento está a $19.800.000 de lista.");
+  assert.equal(precioNormalizado("Sale $ 21.900.000, y $16.500.000."), "Sale $ 21.900.000, y $16.500.000.");
+  assert.equal(precioNormalizado("Son $10.900.x000 en total."), "Son $10.900.000 en total.");
+});
+
+test("la respuesta que sale pasa por las tres limpiezas", async () => {
+  const r = await responderConIA(entrada(), { anthropic: claudeFalso([texto("¡Anotado! Está a $19.800.£000. Muy buen anticipo. ¿Tenés recibo?")]) });
+  assert.equal(r.texto, "Está a $19.800.000. ¿Tenés recibo?");
 });

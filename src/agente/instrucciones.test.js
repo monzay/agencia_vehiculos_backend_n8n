@@ -430,3 +430,38 @@ test("si deriva o dice que un vendedor lo va a contactar, tiene que haber usado 
   const t = await instrucciones();
   assert.match(t, /Si derivás o decís que un vendedor lo va a contactar, tenés que haber usado derivar_a_vendedor en ese turno/);
 });
+
+// ── Reglas de la ronda 2 ──
+
+test("no deduce datos que la ficha no trae (puertas, equipamiento, color): dice que no lo tiene a mano y ofrece las fotos", async () => {
+  const t = await instrucciones();
+  assert.match(t, /No deduzcas datos que la ficha no trae \(puertas, equipamiento, color\)/);
+  assert.match(t, /decí que ese dato no lo tenés a mano y ofrecé las fotos/);
+});
+
+test("una consulta nueva de la web por otro auto recibe su precio de lista y conserva lo anotado sin comentarlo", async () => {
+  const t = await instrucciones();
+  assert.match(t, /Una consulta nueva de la web por otro auto recibe siempre su precio de lista/);
+  assert.match(t, /lo ya anotado \(la forma de pago\) se conserva sin comentarlo/);
+});
+
+test("al volver a coordinar una visita usa horarios_atencion y dice los días y horarios", async () => {
+  const t = await instrucciones();
+  assert.match(t, /Al volver a coordinar una visita, usá horarios_atencion y decí los días y horarios/);
+});
+
+test("manda solo las fotos del auto que pidió", async () => {
+  const t = await instrucciones();
+  assert.match(t, /Mandá solo las fotos del auto que pidió/);
+});
+
+test("después de derivar a un vendedor cierra: no invita a seguir charlando ni sigue el recorrido", async () => {
+  const t = await instrucciones();
+  assert.match(t, /Después de derivar a un vendedor, cerrá: no invites a seguir charlando ni sigas el recorrido/);
+});
+
+test("la pregunta del recorrido va en su orden: no salta al usado si falta el recibo o garante", async () => {
+  const t = await instrucciones();
+  assert.match(t, /La pregunta del recorrido va en su orden: no saltes a "usado" si falta "recibo o garante"/);
+  assert.match(t, /Una sola pregunta por mensaje, sin excepciones/);
+});
