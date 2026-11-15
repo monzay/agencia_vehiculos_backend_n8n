@@ -26,3 +26,27 @@ Hallazgos sobre los tests:
 | 5 | P4 | El control de fotos no distingue el auto | Cierto; lo juzga Codex en la transcripción | Se suma prohibir "REF": el bot le escribió "REF #65" al cliente |
 | 6 | N3 | No controla el 👍 suelto | Correcto | Control "termina con 👍: no" |
 | 7 | P8 | No verifica el precio de contado de la Duster | La Duster de la simulación no tiene precio de contado: decir que no lo tiene es correcto | Nada |
+
+## Ronda 1 — 2026-11-15 (con las tareas 3 a 10)
+
+- Controles automáticos: 22 de 25 chats pasan en las 2 repeticiones. Fallan E1, P4 y P10 (cada uno en una de las dos pasadas).
+- Codex: 22 de 50 conversaciones pasan (en la ronda 0, 13). No aprueba.
+- Costo de IA: USD 0,103.
+
+| # | Chat | Hallazgo de Codex | Verificación de Claude | Qué se hizo |
+|---|---|---|---|---|
+| 1 | E1, P10 | Le dice al cliente un resultado de la consulta al BCRA ("el CUIL no coincide", "no pude hacerla") y que un vendedor lo va a contactar sin haber derivado | Correcto: en esos turnos la herramienta que figura es `registrar_consentimiento`, no la de verificar | Arreglo en curso: usar siempre la verificación al recibir el CUIL y no afirmar nada que la herramienta no dijo |
+| 2 | P10 | Tras el recibo pregunta por el usado antes del permiso | Correcto: sigue el orden del contexto, armado antes de guardar el recibo | Arreglo en curso: el permiso figura en el orden desde antes |
+| 3 | P4 | Código "REF" en el texto | Correcto | Arreglo en curso: se quita por código |
+| 4 | E1, R2, varios | Opina sobre el anticipo ("buena base", "muy buen anticipo"), pese a la regla de no decir si alcanza | Correcto | Para la ronda 2: regla explícita |
+| 5 | P1, E2, P4 | Dos preguntas en un mismo mensaje | Correcto | Para la ronda 2: regla más firme |
+| 6 | K2 | Tras "tengo 8 millones para entregar" vuelve a preguntar la forma de pago | Correcto: quien habla de anticipo financia | Para la ronda 2: regla |
+| 7 | P6 | Tras el audio no deja anotado el auto | Correcto | Para la ronda 2: regla (anotar el auto cuando el cliente lo nombra) |
+| 8 | R1 | El recordatorio saluda de nuevo o presiona | Parcial: revisar los textos | Para la ronda 2: ajustar la línea del recordatorio |
+| 9 | E1, P10, R4 | "La herramienta devuelve vacío": afirma horarios o consultas sin respaldo | No es correcto: el registro de herramientas resume el resultado y Codex no lo ve | Para la ronda 2: la transcripción de la simulación muestra el resultado completo de cada herramienta |
+| 10 | P3 | Inventa que el Gol Trend tiene 3 puertas | No es correcto: la versión del 2015 dice "3 puertas" en el catálogo | Nada |
+| 11 | E3 | "Inventa" que financia | No es correcto: la regla pide guardar que financia cuando pregunta por la entrega | Nada |
+| 12 | P8 | Mantiene "de contado" en la consulta por otro auto | No es correcto: es lo que pide el chat | Nada |
+| 13 | P6, P1 | Agrega la pregunta del recorrido a quien solo preguntó el precio | No es correcto: es la regla vigente del recorrido | Nada |
+| 14 | P4 (test) | El control "REF" mira también el mensaje del cliente | No es correcto: el control mira solo los mensajes del bot; el bot escribió el código | Nada |
+| 15 | N2, N4, P7 (tests) | Faltan controles automáticos | Los juzga Codex con el "Debe" y "No debe" | Nada |
