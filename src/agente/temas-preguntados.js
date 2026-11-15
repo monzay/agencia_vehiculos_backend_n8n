@@ -56,3 +56,54 @@ export function marcarPreguntados(faltan, temas) {
   const regex = Object.values(DEL_RECORRIDO).filter((t) => (temas ?? []).includes(t.palabras)).map((t) => t.pendiente);
   return (faltan ?? []).map((f) => (regex.some((re) => re.test(f)) ? `${f} (ya la preguntaste en tu último mensaje: no la repitas ahora)` : f));
 }
+
+// Los campos de registrar_calificacion que contestan cada tema del recorrido.
+const CAMPOS_DEL_TEMA = {
+  pago: ["pago_tipo"],
+  anticipo: ["anticipo"],
+  recibo: ["tiene_recibo_o_garante"],
+  usado: ["entrega_usado", "usado_marca", "usado_modelo", "usado_anio", "usado_kms", "usado_detalles", "usado_precio_pedido", "usado_precio_no_sabe"],
+  decisor: ["decisor", "decisor_con"],
+  visita: ["visita_propuesta", "disponibilidad"],
+};
+const TEMA_DE_LAS_PALABRAS = Object.fromEntries(Object.entries(DEL_RECORRIDO).map(([tema, { palabras }]) => [palabras, tema]));
+
+/** De los temas (en palabras) deja los que la IA NO guardó en este turno con registrar_calificacion. */
+export const temasSinGuardar = (temas, camposGuardados) =>
+  (temas ?? []).filter((t) => !CAMPOS_DEL_TEMA[TEMA_DE_LAS_PALABRAS[t]]?.some((campo) => (camposGuardados ?? []).includes(campo)));
+
+// (sin \b: no funciona después de la í)
+const COLETILLA_DE_APOYO = /^(?:Así|Con eso)(?=\s|$)/;
+
+/**
+ * Quita de la respuesta las oraciones que vuelven a preguntar un tema que el cliente no contestó (`temas`, en
+ * palabras), con su coletilla inmediata de apoyo ("Así te oriento mejor.", "Con eso te armo…"). Si no queda
+ * texto, devuelve la respuesta original: mejor repetir que mandar un mensaje vacío.
+ */
+export function sinPreguntaRepetida(texto, temas) {
+  const claves = (temas ?? []).map((t) => TEMA_DE_LAS_PALABRAS[t]).filter(Boolean);
+  if (!texto || !claves.length) return texto;
+  let quitado = false;
+  const lineas = String(texto)
+    .split(/\r?\n/)
+    .map((linea) => {
+      const oraciones = linea.split(/(?<=[.!?…])\s+/).filter(Boolean);
+      const quedan = [];
+      let anteriorQuitada = false;
+      for (const oracion of oraciones) {
+        const repite = oracion.includes("?") && temasPreguntados(oracion).some((t) => claves.includes(t));
+        if (repite || (anteriorQuitada && COLETILLA_DE_APOYO.test(oracion))) {
+          quitado = true;
+          anteriorQuitada = repite;
+          continue;
+        }
+        anteriorQuitada = false;
+        quedan.push(oracion);
+      }
+      return oraciones.length && !quedan.length ? null : quedan.join(" ");
+    })
+    .filter((linea) => linea !== null);
+  if (!quitado) return texto;
+  const limpio = lineas.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  return limpio || texto;
+}

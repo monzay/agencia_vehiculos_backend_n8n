@@ -1665,3 +1665,44 @@ test("en lo que falta, la pregunta del último mensaje de la asesora llega marca
   const faltan = anthropic.pedidos[0].system.at(-1).text.match(/Falta averiguar[^\n]*/)?.[0] ?? "";
   assert.match(faltan, /1\) recibo o garante \(ya la preguntaste en tu último mensaje: no la repitas ahora\); 2\) si entrega un usado/);
 });
+
+// ── La pregunta sin contestar no se repite ──
+
+const guardaRecibo = () => ({ stop_reason: "tool_use", usage: { input_tokens: 100, output_tokens: 20 }, content: [{ type: "tool_use", id: "t9", name: "registrar_calificacion", input: { tiene_recibo_o_garante: true } }] });
+const dbAgenteDeCalificacion = () => ({
+  chat_estado: { findUnique: async () => ({ id: 1, auto_id: 5, pago_tipo: "financiado", anticipo: "5 millones", credito_ok: null }), update: async (a) => a },
+  vehiculo_cliente: { findFirst: async () => null },
+});
+
+test("si el cliente pregunta otra cosa y la IA repite la pregunta de su último mensaje, la respuesta sale sin esa pregunta", async () => {
+  const root = baseFalsa({
+    cliente: { id: 50 },
+    sesion: consultaFinanciando,
+    historial: charlaDeRecibo("Es del 2019. ¿Tenés recibo de sueldo o garante?", "Es nafta. ¿Y tenés recibo de sueldo o garante?"),
+  });
+  const anthropic = claudeFalso("Sí, tiene aire acondicionado 🙌\n\n¿Tenés recibo de sueldo o garante? Así te armo opciones.");
+  const r = await atenderMensaje({ telefono: TEL, texto: "y ese tiene aire?", ahora }, deps(root, anthropic));
+  assert.equal(r.texto, "Sí, tiene aire acondicionado 🙌");
+  assert.equal(root.estado.historial.filter((h) => h.direccion === "saliente").at(-1).mensaje, "Sí, tiene aire acondicionado 🙌", "se guarda ya limpio");
+});
+
+test("si el cliente contestó la pregunta, la respuesta no se toca", async () => {
+  const root = baseFalsa({
+    cliente: { id: 50 },
+    sesion: consultaFinanciando,
+    historial: charlaDeRecibo("Es del 2019. ¿Tenés recibo de sueldo o garante?", "Es nafta. ¿Y tenés recibo de sueldo o garante?"),
+  });
+  const anthropic = claudeGuionado(guardaRecibo(), respondeTexto("Genial, con recibo avanzamos.\n\n¿Tenés recibo de sueldo o garante? Así te armo opciones."));
+  const r = await atenderMensaje({ telefono: TEL, texto: "si, tengo recibo", ahora }, { ...deps(root, anthropic), dbAgente: dbAgenteDeCalificacion() });
+  assert.equal(r.texto, "Genial, con recibo avanzamos.\n\n¿Tenés recibo de sueldo o garante? Así te armo opciones.", "la IA guardó el dato: el cliente sí contestó");
+});
+
+test("si la respuesta no repite la pregunta del último mensaje, no se toca", async () => {
+  const root = baseFalsa({
+    cliente: { id: 50 },
+    sesion: consultaFinanciando,
+    historial: charlaDeRecibo("Es del 2019. ¿Tenés recibo de sueldo o garante?", "Es nafta. ¿Y tenés recibo de sueldo o garante?"),
+  });
+  const r = await atenderMensaje({ telefono: TEL, texto: "y ese tiene aire?", ahora }, deps(root, claudeFalso("Sí, tiene aire.\n\n¿Cuándo podrías pasar a verlo?")));
+  assert.equal(r.texto, "Sí, tiene aire.\n\n¿Cuándo podrías pasar a verlo?");
+});

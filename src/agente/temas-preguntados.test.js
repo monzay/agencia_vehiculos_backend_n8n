@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { temasSinContestar, marcarPreguntados } from "./temas-preguntados.js";
+import { temasSinContestar, marcarPreguntados, sinPreguntaRepetida, temasSinGuardar } from "./temas-preguntados.js";
 
 const salida = (mensaje, extra = {}) => ({ direccion: "saliente", mensaje, ...extra });
 const entrada = (mensaje) => ({ direccion: "entrante", mensaje });
@@ -30,4 +30,44 @@ test("marcarPreguntados avisa, dentro de la lista de lo que falta, cuáles ya pr
   assert.equal(marcados[0], "forma de pago (ya la preguntaste en tu último mensaje: no la repitas ahora)");
   assert.deepEqual(marcados.slice(1), FALTAN.slice(1));
   assert.deepEqual(marcarPreguntados(FALTAN, []), FALTAN);
+});
+
+// ── sinPreguntaRepetida ──
+
+test("sinPreguntaRepetida quita la pregunta repetida que va en un párrafo aparte, con su coletilla de apoyo", () => {
+  const texto = "Los km no los tengo a mano, pero los ves en la agencia 🙌\n\n¿Lo pensás pagar de contado o financiado? Así te oriento mejor.";
+  assert.equal(sinPreguntaRepetida(texto, ["forma de pago"]), "Los km no los tengo a mano, pero los ves en la agencia 🙌");
+});
+
+test("sinPreguntaRepetida quita la pregunta repetida cuando va en la misma línea y deja el resto", () => {
+  assert.equal(sinPreguntaRepetida("Es nafta. ¿La pensás pagar de contado o financiada? Con eso te armo opciones. Te espero en la agencia.", ["forma de pago"]), "Es nafta. Te espero en la agencia.");
+  assert.equal(sinPreguntaRepetida("Y contame, ¿la pensás pagar de contado o financiada?", ["forma de pago"]), "Y contame, ¿la pensás pagar de contado o financiada?", "si quedaría vacío, se deja la original");
+});
+
+test("sinPreguntaRepetida con dos temas sin contestar quita las dos preguntas", () => {
+  const texto = "Tiene aire.\n\n¿Cuánto tenés de anticipo?\n¿Tenés recibo de sueldo o garante? Así te oriento mejor.";
+  assert.equal(sinPreguntaRepetida(texto, ["anticipo", "recibo o garante"]), "Tiene aire.");
+});
+
+test("sinPreguntaRepetida no toca preguntas de otros temas ni respuestas sin la pregunta repetida", () => {
+  const texto = "Tiene aire.\n\n¿Cuándo podrías pasar a verlo?";
+  assert.equal(sinPreguntaRepetida(texto, ["forma de pago"]), texto);
+  assert.equal(sinPreguntaRepetida("Tiene aire.", ["forma de pago"]), "Tiene aire.");
+  assert.equal(sinPreguntaRepetida(texto, []), texto);
+});
+
+test("sinPreguntaRepetida solo quita la coletilla que sigue a la pregunta quitada y empieza con Así o Con eso", () => {
+  assert.equal(sinPreguntaRepetida("Tiene aire. Así lo ves cómodo.\n\n¿Cómo la pagás, de contado o financiada? Tené en cuenta lo del auto.", ["forma de pago"]), "Tiene aire. Así lo ves cómodo.\n\nTené en cuenta lo del auto.");
+});
+
+test("sinPreguntaRepetida no deja líneas vacías colgando", () => {
+  const r = sinPreguntaRepetida("Primero.\n\n¿Cuánto tenés de anticipo?\n\nSegundo.", ["anticipo"]);
+  assert.equal(r, "Primero.\n\nSegundo.");
+});
+
+test("temasSinGuardar descarta los temas cuyo dato guardó la IA en el turno con registrar_calificacion", () => {
+  assert.deepEqual(temasSinGuardar(["forma de pago", "recibo o garante"], ["pago_tipo"]), ["recibo o garante"]);
+  assert.deepEqual(temasSinGuardar(["usado"], ["usado_marca"]), []);
+  assert.deepEqual(temasSinGuardar(["visita"], ["disponibilidad"]), []);
+  assert.deepEqual(temasSinGuardar(["anticipo"], []), ["anticipo"]);
 });

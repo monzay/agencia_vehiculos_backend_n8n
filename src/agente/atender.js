@@ -16,7 +16,7 @@ import { avisoReciente, darDeBaja, esBaja, BAJA_CONFIRMADA } from "../services/a
 import { resolverCliente } from "../services/clientes.service.js";
 import { estadoCredito, registrarConsentimiento, verificarSituacion } from "../credito/verificacion.js";
 import { crearClienteBcra } from "../credito/bcra.js";
-import { temasSinContestar, marcarPreguntados } from "./temas-preguntados.js";
+import { temasSinContestar, marcarPreguntados, sinPreguntaRepetida, temasSinGuardar } from "./temas-preguntados.js";
 
 // Orquestador: lo que pasa cada vez que llega un mensaje de WhatsApp.
 //   1. reconoce al cliente por su número de WhatsApp o por el teléfono de una ficha que ya existe (o lo crea);
@@ -380,10 +380,11 @@ async function responderConAgente(turno, imagenes, deps) {
   // Se guarda antes de llamar a Claude: el mensaje ya cuenta para el límite del día.
   await guardarEntrantes(turno);
   const nuevo = contenidoNuevo({ texto, imagenes });
+  const contexto = await contextoDelTurno({ ...turno, historial });
   const r = await responderConIA(
     {
       mensajes: conversacionParaClaude([...historial].reverse(), nuevo.length ? nuevo : [{ type: "text", text: entrante }]),
-      contexto: await contextoDelTurno({ ...turno, historial }),
+      contexto,
       ctx: {
         db: deps.dbAgente,
         clienteId: cliente.id,
@@ -412,6 +413,8 @@ async function responderConAgente(turno, imagenes, deps) {
     },
     { anthropic: deps.anthropic }
   );
+  // Si el cliente no contestó lo que se le preguntó (la IA no guardó ese dato) y la respuesta lo vuelve a preguntar, se quita.
+  if (r.ok && r.texto) r.texto = sinPreguntaRepetida(r.texto, temasSinGuardar(contexto.sinContestar, r.guardados));
   // Si Agustina solo contesta 👍 (el cliente agradeció), sale como reacción: gratis.
   const reaccion = r.ok && r.texto?.trim() === REACCION_CIERRE ? REACCION_CIERRE : null;
   await cerrarTurno(reaccion ? { ...turno, paso: PASO_REACCION } : turno, r);

@@ -340,3 +340,18 @@ test("la llamada a Claude usa el nivel de AGENTE_ESFUERZO y su máximo de tokens
     else process.env.AGENTE_ESFUERZO = antes;
   }
 });
+
+test("devuelve los campos que la IA guardó con registrar_calificacion en el turno (solo los que no vienen vacíos)", async () => {
+  const dbConsulta = {
+    autos: { findFirst: async () => ({ id: 7 }) },
+    chat_estado: { findUnique: async ({ where }) => ({ id: where.id, auto_id: 7 }), update: async (a) => a },
+    vehiculo_cliente: { findFirst: async () => null },
+  };
+  const anthropic = claudeFalso([
+    pideHerramienta(["t1", "registrar_calificacion", { auto_ref: "7", pago_tipo: "financiado", anticipo: null, tiene_recibo_o_garante: true }]),
+    texto("Perfecto."),
+  ]);
+  const r = await responderConIA({ ...entrada(), ctx: { ...ctx, db: dbConsulta } }, { anthropic });
+  assert.deepEqual([...r.guardados].sort(), ["auto_ref", "pago_tipo", "tiene_recibo_o_garante"]);
+  assert.deepEqual((await responderConIA(entrada(), { anthropic: claudeFalso([texto("Hola")]) })).guardados, []);
+});
