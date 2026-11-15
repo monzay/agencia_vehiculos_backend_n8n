@@ -66,6 +66,9 @@ const listaDeFotos = (fotosJson) => (Array.isArray(fotosJson) ? fotosJson.filter
 const montoONulo = (valor) => (valor != null ? Number(valor) : null);
 const textoONulo = (valor) => (typeof valor === "string" && valor.trim() ? valor.trim() : null);
 
+// En un usado, 0 km quiere decir que el dato no se cargó: sale como desconocido.
+const kmsDe = (auto) => (auto.tipo !== "km" && !auto.kms ? null : (auto.kms ?? null));
+
 export function autoPublico(auto) {
   const precio = auto.precio != null ? Number(auto.precio) : 0;
   const { descuento, precio_final, ahorro } = aplicarDescuento(precio, auto.descuentos);
@@ -74,7 +77,7 @@ export function autoPublico(auto) {
     marca: auto.marca,
     modelo: auto.modelo,
     anio: auto.anio,
-    km: auto.kms ?? null,
+    km: kmsDe(auto),
     tipo: normalizarTipoVehiculo(auto.tipo_vehiculo),
     condicion: auto.tipo === "km" ? "0km" : "usado",
     combustible: auto.combustible ?? null,

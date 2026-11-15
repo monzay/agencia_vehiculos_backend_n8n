@@ -117,3 +117,20 @@ test("las fotos se devuelven como direcciones públicas completas", () => {
 test("sin fotos devuelve una lista vacía", () => {
   assert.deepEqual(fotosPublicas({ ...auto, fotos_json: null }, "https://agencia.com"), []);
 });
+
+// ── Kilómetros: en un usado, 0 quiere decir que no se cargaron ──
+
+test("un usado con kms = 0 sale con km: null (el 0 es un dato sin cargar)", () => {
+  assert.equal(autoPublico({ ...auto, tipo: "usado", kms: 0 }).km, null);
+  assert.equal(autoPublico({ ...auto, tipo: "usado", kms: null }).km, null);
+});
+
+test("un usado con kilómetros cargados los conserva", () => {
+  assert.equal(autoPublico({ ...auto, tipo: "usado", kms: 148000 }).km, 148000);
+});
+
+test("un auto 0 km conserva km: 0", () => {
+  const ficha = autoPublico({ ...auto, tipo: "km", kms: 0 });
+  assert.equal(ficha.km, 0);
+  assert.equal(ficha.condicion, "0km");
+});

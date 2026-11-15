@@ -218,3 +218,67 @@ test("si escribió antes y después de la herramienta, va solo la respuesta fina
   const r = await responderConIA(entrada(), { anthropic });
   assert.equal(r.texto, "Dale, genial. Te espero.");
 });
+
+// ── Nada interno en el texto ──
+
+test("si el texto nombra una herramienta, pide una reescritura sin herramientas y manda el texto nuevo", async () => {
+  const consumos = [];
+  const anthropic = claudeFalso([texto("Te busco algo parecido con buscar_similares 😉"), texto("Te busco algo parecido 😉")]);
+  const r = await responderConIA(entrada(consumos), { anthropic });
+  assert.equal(r.texto, "Te busco algo parecido 😉");
+  assert.equal(anthropic.pedidos.length, 2);
+  assert.deepEqual(anthropic.pedidos[1].tool_choice, { type: "none" });
+  assert.equal(anthropic.pedidos[1].tools.length, 11, "las herramientas siguen declaradas, pero sin poder usarse");
+  const pedido = anthropic.pedidos[1].messages;
+  assert.match(JSON.stringify(pedido.at(-2)), /buscar_similares/, "lleva el texto a reescribir");
+  assert.equal(pedido.at(-1).role, "user");
+  assert.match(pedido.at(-1).content, /sin nombrar/i);
+  assert.equal(consumos.length, 2, "la reescritura registra su costo como cualquier llamada");
+});
+
+test("si la reescritura sigue nombrando una herramienta, sale sin la oración que la nombra", async () => {
+  const anthropic = claudeFalso([
+    texto("Hola, tengo opciones. Uso buscar_similares para mostrarte. ¿Qué presupuesto tenés?"),
+    texto("Hola, tengo opciones. Lo veo con buscar_similares. ¿Qué presupuesto tenés?"),
+  ]);
+  const r = await responderConIA(entrada(), { anthropic });
+  assert.equal(r.ok, true);
+  assert.doesNotMatch(r.texto, /buscar_similares/);
+  assert.match(r.texto, /Hola, tengo opciones\./);
+  assert.match(r.texto, /¿Qué presupuesto tenés\?/);
+  assert.equal(anthropic.pedidos.length, 2, "una sola reescritura");
+});
+
+test("si al quitar las oraciones con nombres internos no queda texto, responde el respaldo", async () => {
+  const anthropic = claudeFalso([texto("Uso ver_auto."), texto("Uso ver_auto para eso.")]);
+  const r = await responderConIA(entrada(), { anthropic });
+  assert.equal(r.ok, false);
+  assert.equal(r.texto, MENSAJES_FIJOS.respaldo);
+});
+
+test("un texto sin nombres de herramientas sale tal cual, sin una llamada extra a Claude", async () => {
+  const anthropic = claudeFalso([texto("El Vento está disponible, ¿te lo muestro?")]);
+  const r = await responderConIA(entrada(), { anthropic });
+  assert.equal(r.texto, "El Vento está disponible, ¿te lo muestro?");
+  assert.equal(anthropic.pedidos.length, 1);
+});
+
+test("si falla la reescritura, igual sale sin la oración que nombra la herramienta", async () => {
+  const anthropic = claudeFalso([texto("Hola. Usé enviar_fotos_auto."), new Error("overloaded")]);
+  const r = await responderConIA(entrada(), { anthropic });
+  assert.equal(r.texto, "Hola.");
+});
+
+test("un 👍 suelto al final de un texto se quita antes de enviar", async () => {
+  const r = await responderConIA(entrada(), { anthropic: claudeFalso([texto("Nos vemos el viernes\n\n👍")]) });
+  assert.equal(r.texto, "Nos vemos el viernes");
+  const r2 = await responderConIA(entrada(), { anthropic: claudeFalso([texto("Nos vemos el viernes\n👍\n")]) });
+  assert.equal(r2.texto, "Nos vemos el viernes");
+});
+
+test("un texto que es solo 👍 sigue igual (sale como reacción) y un 👍 en medio de una línea no se toca", async () => {
+  const r = await responderConIA(entrada(), { anthropic: claudeFalso([texto("👍")]) });
+  assert.equal(r.texto, "👍");
+  const r2 = await responderConIA(entrada(), { anthropic: claudeFalso([texto("Dale 👍 te espero")]) });
+  assert.equal(r2.texto, "Dale 👍 te espero");
+});

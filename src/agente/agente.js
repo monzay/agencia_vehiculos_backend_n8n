@@ -1,4 +1,4 @@
-import { definicionesParaClaude, ejecutarHerramienta } from "./herramientas.js";
+import { definicionesParaClaude, ejecutarHerramienta, NOMBRES_HERRAMIENTAS } from "./herramientas.js";
 import { INSTRUCCIONES, contextoDelMomento } from "./instrucciones.js";
 import { LIMITES, MENSAJES_FIJOS } from "./limites.js";
 
@@ -45,6 +45,57 @@ async function resolverHerramientas(usos, ctx, disponibles) {
     );
   }
   return { resultados, fotos, ficha, ctx: ctxActual };
+}
+
+// Nada interno le llega al cliente: ni el nombre de una herramienta ni un 👍 suelto con texto.
+const nombraHerramienta = (texto) => NOMBRES_HERRAMIENTAS.some((nombre) => texto.includes(nombre));
+
+// Quita las oraciones que nombran una herramienta (línea por línea, para respetar los párrafos).
+function sinOracionesInternas(texto) {
+  return texto
+    .split(/\r?\n/)
+    .map((linea) =>
+      linea
+        .split(/(?<=[.!?…])\s+/)
+        .filter((oracion) => !nombraHerramienta(oracion))
+        .join(" ")
+        .trim()
+    )
+    .filter(Boolean)
+    .join("\n");
+}
+
+const PULGAR_SUELTO = /^👍[\u{1F3FB}-\u{1F3FF}]?\uFE0F?$/u;
+
+// Un texto con más de una línea no termina con un 👍 solo: ese va únicamente como respuesta entera (reacción).
+function sinPulgarSuelto(texto) {
+  const lineas = texto.trim().split(/\r?\n/);
+  if (lineas.length < 2 || !PULGAR_SUELTO.test(lineas.at(-1).trim())) return texto;
+  return lineas.slice(0, -1).join("\n").trim() || texto;
+}
+
+const PEDIDO_DE_REESCRITURA = "Reescribí ese mismo mensaje para el cliente sin nombrar ninguna herramienta ni nada de cómo trabajás por dentro. Respondé solo con el texto del mensaje.";
+
+// Una sola reescritura sin herramientas; si falla o sigue nombrándolas, se quita la oración.
+async function sinNombresInternos(texto, { anthropic, system, tools, conversacion, registrarConsumo }) {
+  if (!nombraHerramienta(texto)) return texto;
+  let reescrito = "";
+  try {
+    const respuesta = await anthropic.messages.create({
+      model: MODELO,
+      max_tokens: LIMITES.maxTokensRespuesta,
+      system,
+      tools,
+      messages: [...conversacion, { role: "assistant", content: texto }, { role: "user", content: PEDIDO_DE_REESCRITURA }],
+      output_config: { effort: "low" },
+      tool_choice: { type: "none" },
+    }, OPCIONES_PEDIDO);
+    await registrarSinCortar(registrarConsumo, respuesta.usage);
+    if (respuesta.stop_reason === "end_turn") reescrito = textoDe(respuesta);
+  } catch (err) {
+    console.error("[agente] falló la reescritura sin nombres internos:", err?.status ?? "", err?.message);
+  }
+  return sinOracionesInternas(reescrito || texto);
 }
 
 // Un fallo al guardar el costo no le corta la respuesta al cliente: queda en el log
@@ -118,7 +169,8 @@ export async function responderConIA({ mensajes, contexto, ctx, registrarConsumo
       continue;
     }
 
-    const texto = textoDe(respuesta) || textos.filter(Boolean).join("\n");
+    const crudo = textoDe(respuesta) || textos.filter(Boolean).join("\n");
+    const texto = crudo ? sinPulgarSuelto(await sinNombresInternos(crudo, { anthropic, system, tools, conversacion, registrarConsumo })) : "";
     // Si el turno pasó a la consulta de otro auto, el orquestador lo cierra en esa.
     const otraConsulta = ctxTurno.sesionId !== ctx.sesionId && { sesionId: ctxTurno.sesionId };
     return texto ? { ok: true, texto, fotos, ficha, ...otraConsulta } : respaldo("sin_texto");

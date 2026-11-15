@@ -198,6 +198,14 @@ async function guardarUsado(db, sesionId, input, momento) {
   return datos;
 }
 
+// El auto de la consulta en curso (id y precio), o null si todavía no tiene.
+async function autoDeLaConsulta(db, sesionId) {
+  if (!sesionId) return null;
+  const sesion = await db.chat_estado.findUnique({ where: { id: sesionId }, select: { auto_id: true } });
+  if (sesion?.auto_id == null) return null;
+  return (await db.autos.findUnique({ where: { id: sesion.auto_id }, select: { id: true, precio: true } })) ?? null;
+}
+
 const HERRAMIENTAS = [
   {
     nombre: "buscar_autos",
@@ -218,11 +226,25 @@ const HERRAMIENTAS = [
       presupuesto_max: z.number().int().positive().max(10_000_000_000).nullish().describe("Precio de lista máximo en pesos."),
       presupuesto_contado_max: z.number().int().positive().max(10_000_000_000).nullish().describe("Presupuesto máximo en pesos si paga de contado."),
     }),
-    async ejecutar(filtros, { db }) {
+    async ejecutar(filtros, { db, sesionId }) {
+      const conPresupuesto = Boolean(filtros.presupuesto_max || filtros.presupuesto_contado_max);
+      // Sin presupuesto y mirando un auto: las otras opciones son las de precio parecido a ese.
+      const referencia = conPresupuesto ? null : await autoDeLaConsulta(db, sesionId);
+      if (referencia) {
+        const candidatos = await db.autos.findMany({
+          where: { ...whereDeBusqueda(filtros), id: { not: referencia.id } },
+          select: selectFicha(),
+          orderBy: { id: "desc" },
+          take: MAX_CANDIDATOS_SIMILARES,
+        });
+        const distancia = (a) => Math.abs(Number(a.precio) - Number(referencia.precio));
+        const cercanos = [...candidatos].sort((x, y) => distancia(x) - distancia(y)).slice(0, MAX_AUTOS);
+        return { cantidad: cercanos.length, autos: cercanos.map(autoPublico) };
+      }
       const autos = await db.autos.findMany({
         where: whereDeBusqueda(filtros),
         select: selectFicha(),
-        orderBy: filtros.presupuesto_max || filtros.presupuesto_contado_max ? { precio: "desc" } : { id: "desc" },
+        orderBy: conPresupuesto ? { precio: "desc" } : { id: "desc" },
         take: MAX_AUTOS,
       });
       return { cantidad: autos.length, autos: autos.map(autoPublico) };

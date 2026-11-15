@@ -947,3 +947,46 @@ test("si escribir el log falla, la herramienta responde igual", async (t) => {
   assert.match(escrito, /no se pudo registrar la llamada a la herramienta: log caído/);
   assert.doesNotMatch(escrito, /#13/, "no loguea el pedido");
 });
+
+// ── buscar_autos cerca del auto de la consulta ──
+
+const baseConAutoDeLaConsulta = (precioDelAutoDeLaConsulta, candidatos) =>
+  baseFalsa({
+    "chat_estado.findUnique": { auto_id: 64 },
+    "autos.findUnique": { id: 64, precio: precioDelAutoDeLaConsulta },
+    "autos.findMany": candidatos,
+  });
+
+test("buscar_autos sin presupuesto y con un auto en la consulta ordena por cercanía de precio y no trae ese auto", async () => {
+  const db = baseConAutoDeLaConsulta(12900000, [
+    auto({ ref: "78", precio: 55000000 }),
+    auto({ ref: "65", precio: 16500000 }),
+    auto({ ref: "67", precio: 10900000 }),
+    auto({ ref: "80", precio: 27000000 }),
+  ]);
+  const r = await ejecutarHerramienta("buscar_autos", busqueda({}), ctx(db));
+  assert.deepEqual(r.resultado.autos.map((a) => a.ref), ["67", "65", "80", "78"]);
+  const { where } = ultima(db, "autos", "findMany").args;
+  assert.deepEqual(where.id, { not: 64 }, "excluye el auto de la consulta");
+  assert.equal(where.vendido_at, null, "sigue sin traer vendidos");
+});
+
+test("buscar_autos con presupuesto mantiene el orden de siempre: del más caro al más barato", async () => {
+  const db = baseConAutoDeLaConsulta(12900000, [auto()]);
+  await ejecutarHerramienta("buscar_autos", busqueda({ presupuesto_max: 20000000 }), ctx(db));
+  const { orderBy, where } = ultima(db, "autos", "findMany").args;
+  assert.deepEqual(orderBy, { precio: "desc" });
+  assert.equal(where.id, undefined);
+  const dbContado = baseConAutoDeLaConsulta(12900000, [auto()]);
+  await ejecutarHerramienta("buscar_autos", busqueda({ presupuesto_contado_max: 20000000 }), ctx(dbContado));
+  assert.deepEqual(ultima(dbContado, "autos", "findMany").args.orderBy, { precio: "desc" });
+});
+
+test("buscar_autos sin auto en la consulta mantiene el orden de siempre: los últimos cargados primero", async () => {
+  const db = baseFalsa({ "chat_estado.findUnique": { auto_id: null }, "autos.findMany": [auto()] });
+  await ejecutarHerramienta("buscar_autos", busqueda({}), ctx(db));
+  const { orderBy, where, take } = ultima(db, "autos", "findMany").args;
+  assert.deepEqual(orderBy, { id: "desc" });
+  assert.equal(where.id, undefined);
+  assert.equal(take, 5);
+});

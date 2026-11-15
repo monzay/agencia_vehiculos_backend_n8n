@@ -16,6 +16,7 @@ import { avisoReciente, darDeBaja, esBaja, BAJA_CONFIRMADA } from "../services/a
 import { resolverCliente } from "../services/clientes.service.js";
 import { estadoCredito, registrarConsentimiento, verificarSituacion } from "../credito/verificacion.js";
 import { crearClienteBcra } from "../credito/bcra.js";
+import { temasSinContestar } from "./temas-preguntados.js";
 
 // Orquestador: lo que pasa cada vez que llega un mensaje de WhatsApp.
 //   1. reconoce al cliente por su número de WhatsApp o por el teléfono de una ficha que ya existe (o lo crea);
@@ -305,13 +306,14 @@ async function autoDeLaConsulta(root, autoId) {
 
 // Lo que el agente necesita saber en este mensaje: la agencia (nombre, dirección,
 // mapa), el auto de la consulta y en qué punto del recorrido de venta está el cliente.
-async function contextoDelTurno({ root, cliente, sesion, ahora, autoWeb, cobranza }) {
+async function contextoDelTurno({ root, cliente, sesion, ahora, autoWeb, cobranza, historial }) {
   const [usado, ubicacion, credito, auto] = await Promise.all([
     root.vehiculo_cliente.findFirst({ where: { sesion_id: sesion.id, contexto: "trade_in", deleted_at: null } }),
     root.ubicacion.findUnique({ where: { id: 1 }, select: { nombre: true, direccion: true, maps_url: true } }),
     creditoDelTurno({ root, cliente, sesion, ahora }),
     autoDeLaConsulta(root, sesion.auto_id),
   ]);
+  const faltan = pendientes(sesion, usado);
   return {
     asesora: process.env.AGENTE_NOMBRE,
     agencia: ubicacion?.nombre || process.env.AGENCIA_NOMBRE,
@@ -324,7 +326,8 @@ async function contextoDelTurno({ root, cliente, sesion, ahora, autoWeb, cobranz
     autoDeLaConsulta: auto && { ref: auto.ref, descripcion: descripcionDelAuto(auto) },
     cobranza,
     respondido: respondido(sesion, usado),
-    faltan: pendientes(sesion, usado),
+    faltan,
+    sinContestar: temasSinContestar(historial, faltan),
     credito,
     privacidadUrl: credito && new URL("/privacidad", process.env.PUBLIC_WEB_URL).href,
   };
@@ -340,7 +343,7 @@ async function responderConAgente(turno, imagenes, deps) {
     where: { cliente_id: cliente.id, paso_nodo: { in: [turno.paso, PASO_HUMANO] }, created_at: { gte: sesion.sesion_inicio } },
     orderBy: { id: "desc" },
     take: LIMITES.historialMensajes,
-    select: { direccion: true, mensaje: true },
+    select: { direccion: true, mensaje: true, paso_nodo: true },
   });
   // Se guarda antes de llamar a Claude: el mensaje ya cuenta para el límite del día.
   await guardarEntrantes(turno);
@@ -348,7 +351,7 @@ async function responderConAgente(turno, imagenes, deps) {
   const r = await responderConIA(
     {
       mensajes: conversacionParaClaude([...historial].reverse(), nuevo.length ? nuevo : [{ type: "text", text: entrante }]),
-      contexto: await contextoDelTurno(turno),
+      contexto: await contextoDelTurno({ ...turno, historial }),
       ctx: {
         db: deps.dbAgente,
         clienteId: cliente.id,

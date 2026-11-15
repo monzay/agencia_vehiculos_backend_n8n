@@ -403,7 +403,7 @@ test("quien vuelve a los 10 días sigue en la misma consulta, con su asesor, y l
   assert.equal(root.estado.updates.some((u) => "vendedor_id" in u.data), false, "conserva su asesor");
   assert.equal(root.estado.sesiones[0].vendedor_id, 2);
   const contexto = anthropic.pedidos[0].system.at(-1).text;
-  assert.match(contexto, /Ya respondió: paga contado; no entrega usado/);
+  assert.match(contexto, /Tenés anotado \(corregilo con registrar_calificacion si el cliente lo desmiente\): paga contado; no entrega usado/);
   const faltan = contexto.match(/Falta averiguar[^\n]*/)?.[0] ?? "";
   assert.doesNotMatch(faltan, /forma de pago/, "la forma de pago no figura como faltante");
   assert.doesNotMatch(faltan, /si entrega un usado/, "si entrega usado no figura como faltante");
@@ -523,7 +523,7 @@ test("en cada mensaje el agente recibe lo que ya respondió, lo que falta y la d
   assert.match(contexto, /Tu nombre: Agustina, asesora de ventas\./);
   assert.match(contexto, /Nombre de la agencia \(solo si el cliente lo pregunta\): SEA Automotores\./);
   assert.match(contexto, /Av\. Siempreviva 742/);
-  assert.match(contexto, /Ya respondió: paga contado; entrega un usado: "Volkswagen Gol 2015"/);
+  assert.match(contexto, /Tenés anotado \(corregilo con registrar_calificacion si el cliente lo desmiente\): paga contado; entrega un usado: "Volkswagen Gol 2015"/);
   assert.match(contexto, /Falta averiguar, en este orden: 1\) cuánto pide por el usado/);
 });
 
@@ -1220,7 +1220,7 @@ test("vuelve a los 31 días con todo respondido y sin link: consulta nueva sin e
   assert.deepEqual(asignacion(nueva), [PEPITO.id, false], "va por turno, no sigue con Juan");
   assert.deepEqual(nueva.sesion_inicio, ahora, "arranca hoy: de ahí en adelante cuenta la charla");
   const contexto = anthropic.pedidos[0].system.at(-1).text;
-  assert.doesNotMatch(contexto, /Ya respondió/, "no hay nada respondido");
+  assert.doesNotMatch(contexto, /Tenés anotado/, "no hay nada respondido");
   const faltan = contexto.match(/Falta averiguar[^\n]*/)?.[0] ?? "";
   assert.match(faltan, /forma de pago/);
   assert.match(faltan, /si entrega un usado/);
@@ -1507,4 +1507,48 @@ test("la nota de voz a una consulta atendida también la vuelve a pendiente con 
   quedoConElAviso(root);
   assert.equal(r.texto, "¡Sí! Tenemos varias.");
   assert.equal(groq.llamadas.length, 1);
+});
+
+// ── Preguntas del recorrido que el cliente no contestó ──
+
+const consultaFinanciando = { id: 1, cliente_id: 50, sesion_inicio: haceDias(1), ultimo_mensaje: haceDias(0), auto_id: 5, pago_tipo: "financiado", anticipo: "5 millones", entrega_usado: null, decisor: null };
+const charlaDeRecibo = (...saliente) => [
+  mensajeDe(1, "saliente", saliente[0], haceDias(0.5)),
+  mensajeDe(2, "entrante", "y ese de que año es?", haceDias(0.4)),
+  mensajeDe(3, "saliente", saliente[1], haceDias(0.3)),
+  mensajeDe(4, "entrante", "tiene gnc?", haceDias(0.2)),
+];
+
+test("si la asesora preguntó por el recibo en sus dos últimos mensajes y el cliente no lo contestó, el contexto lo dice", async () => {
+  const root = baseFalsa({
+    cliente: { id: 50 },
+    sesion: consultaFinanciando,
+    historial: charlaDeRecibo("Es del 2019. ¿Tenés recibo de sueldo o garante?", "Es nafta. ¿Y tenés recibo de sueldo o garante?"),
+  });
+  const anthropic = claudeFalso();
+  await atenderMensaje({ telefono: TEL, texto: "y ese tiene aire?", ahora }, deps(root, anthropic));
+  const contexto = anthropic.pedidos[0].system.at(-1).text;
+  assert.match(contexto, /ya preguntaste por recibo o garante y el cliente no lo contestó: no lo vuelvas a preguntar en este mensaje/);
+});
+
+test("si el cliente contestó la última pregunta de la asesora, el contexto no agrega la línea de pregunta sin contestar", async () => {
+  const root = baseFalsa({
+    cliente: { id: 50 },
+    sesion: { ...consultaFinanciando, credito_ok: 1 },
+    historial: charlaDeRecibo("Es del 2019. ¿Tenés recibo de sueldo o garante?", "Es nafta. ¿Y tenés recibo de sueldo o garante?"),
+  });
+  const anthropic = claudeFalso();
+  await atenderMensaje({ telefono: TEL, texto: "si tengo recibo", ahora }, deps(root, anthropic));
+  assert.doesNotMatch(anthropic.pedidos[0].system.at(-1).text, /no lo contestó/);
+});
+
+test("una pregunta hecha solo en uno de los dos últimos mensajes no cuenta como sin contestar", async () => {
+  const root = baseFalsa({
+    cliente: { id: 50 },
+    sesion: consultaFinanciando,
+    historial: charlaDeRecibo("Es del 2019. ¿Tenés recibo de sueldo o garante?", "Es nafta. Te lo muestro cuando vengas."),
+  });
+  const anthropic = claudeFalso();
+  await atenderMensaje({ telefono: TEL, texto: "y ese tiene aire?", ahora }, deps(root, anthropic));
+  assert.doesNotMatch(anthropic.pedidos[0].system.at(-1).text, /no lo contestó/);
 });
