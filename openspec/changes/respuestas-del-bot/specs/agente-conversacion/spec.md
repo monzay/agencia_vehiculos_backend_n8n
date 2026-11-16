@@ -138,13 +138,14 @@ En cada mensaje, el sistema MUST pasarle al agente:
 - el link del catálogo (solo si es https);
 - la fecha y hora de Argentina;
 - el nombre del cliente, saneado;
-- el auto de la consulta, si tiene uno: su descripción y su código, para usar con las herramientas. Si el
-  mensaje viene de la web por ese mismo auto, MUST NOT repetirse;
+- el auto de la consulta, si tiene uno: su descripción, su código para usar con las herramientas y si sigue a
+  la venta. Si el mensaje viene de la web por ese mismo auto, MUST NOT repetirse;
 - lo que tiene anotado del cliente y lo que falta, en orden. Lo anotado MUST presentarse como anotado, con
   el aviso de corregirlo si el cliente lo desmiente;
 - las preguntas del recorrido que la asesora hizo en su último mensaje y siguen pendientes, con el aviso de no
   repetirlas si el cliente pregunta otra cosa; en la lista de lo que falta, esas preguntas MUST ir marcadas;
-- si hay una visita propuesta, el día en que el cliente la dijo;
+- si hay una visita propuesta, el día en que el cliente la dijo; si además pasaron 12 horas o más, que la
+  visita puede haber pasado, con los horarios de la agencia en palabras para coordinar de nuevo;
 - cuánto pasó desde el mensaje anterior de la charla, si pasaron 12 horas o más;
 - de qué autos ya se le mandaron fotos en esta consulta, y cuándo.
 <!-- id: atender.contextoDelTurno -->
@@ -186,6 +187,27 @@ En cada mensaje, el sistema MUST pasarle al agente:
 - **THEN** el contexto dice que la visita se propuso el miércoles y que pasaron dos días desde el mensaje anterior
 <!-- test: src/agente/atender.test.js › "si pasaron cuatro días desde el mensaje anterior, el contexto lo dice y la visita propuesta lleva el día en que se dijo" -->
 <!-- test: src/agente/calificacion.test.js › "la visita propuesta lleva el día en que el cliente la dijo" -->
+<!-- test: src/agente/atender.test.js › "con una visita propuesta y varios días sin hablar, el contexto trae la línea de volver a coordinar con los horarios" -->
+<!-- test: src/agente/instrucciones.test.js › "con una visita propuesta y 12 horas o más sin hablar, el contexto avisa que pudo pasar y manda a consultar horarios_atencion" -->
+
+#### Scenario: Horarios para volver a coordinar
+- **WHEN** la visita propuesta pudo haber pasado
+- **THEN** el contexto trae los horarios de la agencia en palabras; si no se pueden leer, sale sin ellos y la respuesta no se frena
+<!-- test: src/agente/atender.test.js › "con la visita propuesta ya pasada, el contexto trae los horarios de la agencia en palabras" -->
+<!-- test: src/agente/atender.test.js › "si no se pueden leer los horarios, el contexto sale sin ellos y la respuesta no se frena" -->
+<!-- test: src/agente/instrucciones.test.js › "con una visita pasada y horarios, el contexto los dice en esa misma línea" -->
+<!-- test: src/agente/instrucciones.test.js › "horariosEnPalabras escribe la tabla de la agencia agrupando días y marcando la excepción" -->
+<!-- test: src/agente/instrucciones.test.js › "horariosEnPalabras con todos los días iguales dice todos los días" -->
+<!-- test: src/agente/instrucciones.test.js › "horariosEnPalabras con un día cerrado en el medio lo marca como excepción" -->
+<!-- test: src/agente/instrucciones.test.js › "horariosEnPalabras con la tabla vacía da null" -->
+<!-- eval: chats simulados › P7 -->
+
+#### Scenario: El auto de la consulta sigue a la venta o no
+- **WHEN** se arma la línea del auto de la consulta
+- **THEN** dice si sigue disponible o, si ya no, que se lo diga y ofrezca parecidos
+<!-- test: src/agente/atender.test.js › "la línea del auto de la consulta dice si sigue disponible" -->
+<!-- test: src/agente/atender.test.js › "si el auto de la consulta ya no está a la venta, la línea lo dice" -->
+<!-- test: src/agente/instrucciones.test.js › "la línea del auto de la consulta dice si sigue disponible o ya no" -->
 
 #### Scenario: Mensajes seguidos
 - **WHEN** el mensaje anterior de la charla es de hace unos minutos

@@ -123,3 +123,16 @@ Codex revisó el diff completo de la rama (sin el simulador) contra las reglas. 
 | 4 | Media | `sinPreguntaRepetida` puede borrar el final de otra línea que termina en coma | Correcto: la marca de "se quitó algo" no se reinicia por línea | Arreglo |
 | 5 | Media | La detección de nombres de herramientas distingue mayúsculas | Correcto | Arreglo |
 | 6 | Media | El permiso del BCRA se puede duplicar con dos instancias a la vez | Con un solo proceso no pasa: las herramientas corren de a una y los mensajes de un número van en cola | Nada; queda anotado junto con el #1 |
+
+## Tanda extra: horarios al volver a coordinar — 2026-11-15
+
+Pedida por el user después de la ronda 4 ("vamos con la 2"): arreglar solo la falla que se repitió tres rondas.
+
+- Arreglo: cuando la visita propuesta pudo haber pasado, el contexto trae los horarios de la agencia ya escritos en
+  palabras, y la línea del auto de la consulta dice si sigue a la venta.
+- P7, R4 y P9, 3 repeticiones (`simulacion/horarios/`): en las 3 de P7 el bot dice los días y horarios al volver a
+  coordinar y no afirma que el auto "sigue ahí". Controles automáticos bien en las 9.
+- Codex: marcó 3 altas en P7 ("mañana jueves" con la visita ya pasada). No es correcto: esa frase la dijo el bot el
+  miércoles, antes de los dos días; Codex la leyó como si fuera del viernes. El resto son detalles de estilo de la
+  misma lista que quedó en la ronda 4 (cerrar con "escribime", el nombre del cliente, un emoji al final).
+- Los 25 chats una vez más, para ver que no se rompió nada (`simulacion/ronda-5/`): 25 de 25 en los controles.

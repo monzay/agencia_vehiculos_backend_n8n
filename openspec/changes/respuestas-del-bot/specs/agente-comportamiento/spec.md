@@ -273,6 +273,18 @@ más tarde, MUST despedirse sin recordarle la pregunta pendiente.
 <!-- test: src/agente/instrucciones.test.js › "si el cliente avisa que escribe más tarde, se despide sin recordarle la pregunta pendiente" -->
 <!-- eval: chats simulados › R3 -->
 
+### Requirement: Volver a coordinar la visita
+Si el cliente no pudo venir, la asesora MUST coordinar de nuevo diciendo los días y horarios que tiene en el
+contexto. MUST NOT decir que un auto sigue disponible si el contexto no lo dice.
+<!-- id: instrucciones.INSTRUCCIONES -->
+
+#### Scenario: No pudo ir
+- **WHEN** el cliente escribe "hola, al final no pude ir" dos días después de acordar la visita
+- **THEN** la asesora le dice los días y horarios de la agencia y le pregunta qué día le queda bien
+<!-- test: src/agente/instrucciones.test.js › "si el cliente no pudo venir, coordina de nuevo con los horarios del contexto y no afirma disponibilidad sin que el contexto lo diga" -->
+<!-- test: src/agente/instrucciones.test.js › "al volver a coordinar una visita usa horarios_atencion y dice los días y horarios" -->
+<!-- eval: chats simulados › P7 -->
+
 ## MODIFIED Requirements
 
 ### Requirement: El recorrido de venta
