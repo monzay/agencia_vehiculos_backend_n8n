@@ -24,6 +24,9 @@ export function combinar(mensajes) {
   return { ...ultimo, texto: textos.length ? textos.join("\n") : null, partes };
 }
 
+// ¿Hay mensajes de este número esperando en la ráfaga? Todavía no están en la cola ni en el historial.
+export const hayMensajesEsperando = (telefono) => (pendientes.get(telefono)?.mensajes.length ?? 0) > 0;
+
 // Devuelve el lote para atender, o null si un mensaje más nuevo se encarga.
 // Con foto o audio no se espera: sale ya, con lo que estaba esperando.
 export async function juntarRafaga(telefono, datos, espera = ESPERA_RAFAGA_MS) {

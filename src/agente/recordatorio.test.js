@@ -267,6 +267,51 @@ test("si falla la IA y el último mensaje del cliente decía que escribía más 
   }
 });
 
+test("si falla la IA y el cliente se había despedido, no sale nada", async () => {
+  const restaurar = sinRegistrarLogs();
+  try {
+    for (const despedida of ["chau", "Chau, gracias", "hasta mañana", "hasta luego", "nos vemos", "me despido", "saludos"]) {
+      const db = baseFalsa();
+      db.estado.historial.splice(0, 1, { id: 1, cliente_id: 50, direccion: "entrante", mensaje: despedida, paso_nodo: "agente_ia", created_at: hace(11) });
+      const envio = envioFalso();
+      await revisar(db, { anthropic: claudeFalso(new Error("caída")), envio });
+      assert.equal(envio.enviados.length, 0, despedida);
+    }
+  } finally {
+    restaurar();
+  }
+});
+
+test("si el cliente tiene un mensaje esperando en la ráfaga, el recordatorio no sale", async () => {
+  const db = baseFalsa();
+  const envio = envioFalso();
+  const anthropic = claudeFalso();
+  const r = await revisarRecordatorios({ ahora: AHORA, minutos: 10, root: db, dbAgente: {}, anthropic, enviar: envio.enviar, hayMensajesEsperando: (tel) => tel === TEL });
+  assert.deepEqual(r, []);
+  assert.equal(envio.enviados.length, 0);
+  assert.equal(anthropic.llamadas.length, 0);
+});
+
+test("la consulta de candidatas excluye en la base las cerradas (visita propuesta o no sabe) y no pierde la elegible", async () => {
+  const db = baseFalsa();
+  const wheres = [];
+  // Base que respeta lo que pide el where: las cerradas quedan afuera antes del `take`.
+  const elegible = db.estado.sesiones[0];
+  const cerradas = Array.from({ length: 150 }, (_, i) => ({ ...elegible, id: 100 + i, cliente_id: 900 + i, visita_propuesta: i % 2 ? "martes 10hs" : null, disponibilidad: i % 2 ? null : "no_sabe", ultimo_mensaje: hace(11) }));
+  const todas = [...cerradas, elegible];
+  db.chat_estado.findMany = async ({ where, take }) => {
+    wheres.push(where);
+    const cumple = (s) => where.visita_propuesta === null ? s.visita_propuesta === null : true;
+    const noCerrada = (s) => s.disponibilidad == null || s.disponibilidad !== "no_sabe";
+    return todas.filter(cumple).filter(noCerrada).slice(0, take);
+  };
+  const candidatas = await consultasParaRecordar({ db, ahora: AHORA, minutos: 10 });
+  assert.equal(candidatas.length, 1);
+  assert.equal(candidatas[0].sesion.id, 1);
+  assert.equal(wheres[0].visita_propuesta, null);
+  assert.deepEqual(wheres[0].AND[1], { OR: [{ disponibilidad: null }, { disponibilidad: { not: "no_sabe" } }] });
+});
+
 test("si se alcanzó el tope de gasto del mes, sale el texto fijo sin llamar a Claude", async () => {
   const db = baseFalsa({ gastoMes: 999 });
   const anthropic = claudeFalso();

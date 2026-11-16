@@ -59,7 +59,7 @@ async function resolverHerramientas(usos, ctx, disponibles) {
 }
 
 // Nada interno le llega al cliente: ni el nombre de una herramienta ni un 👍 suelto con texto.
-const nombraHerramienta = (texto) => NOMBRES_HERRAMIENTAS.some((nombre) => texto.includes(nombre));
+const nombraHerramienta = (texto) => NOMBRES_HERRAMIENTAS.some((nombre) => texto.toLowerCase().includes(nombre));
 
 // Quita las oraciones que nombran una herramienta (línea por línea, para respetar los párrafos).
 export function sinOracionesInternas(texto) {

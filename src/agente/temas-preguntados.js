@@ -90,10 +90,12 @@ export function sinPreguntaRepetida(texto, temas) {
       const oraciones = linea.split(/(?<=[.!?…])\s+|\s+(?=¿)/).filter(Boolean);
       const quedan = [];
       let anteriorQuitada = false;
+      let quitadoEnLinea = false; // el fragmento colgando solo se quita en la línea donde se quitó una pregunta
       for (const oracion of oraciones) {
         const repite = oracion.includes("?") && temasPreguntados(oracion).some((t) => claves.includes(t));
         if (repite || (anteriorQuitada && COLETILLA_DE_APOYO.test(oracion))) {
           quitado = true;
+          quitadoEnLinea = true;
           anteriorQuitada = repite;
           continue;
         }
@@ -101,7 +103,7 @@ export function sinPreguntaRepetida(texto, temas) {
         quedan.push(oracion);
       }
       // Un fragmento que quedó colgando de la pregunta quitada ("Y contame,") se va con ella.
-      if (quitado && /[,:;]$/.test(quedan.at(-1) ?? "")) quedan.pop();
+      if (quitadoEnLinea && /[,:;]$/.test(quedan.at(-1) ?? "")) quedan.pop();
       return oraciones.length && !quedan.length ? null : quedan.join(" ");
     })
     .filter((linea) => linea !== null);

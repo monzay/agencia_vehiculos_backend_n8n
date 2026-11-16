@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { juntarRafaga } from "./rafagas.js";
+import { juntarRafaga, hayMensajesEsperando } from "./rafagas.js";
 
 const esperar = (ms) => new Promise((listo) => setTimeout(listo, ms));
 const mensaje = (texto, wamid, extra = {}) => ({ texto, wamid, imagenes: [], audio: null, ...extra });
@@ -59,4 +59,13 @@ test("el mismo mensaje dos veces dentro de la ráfaga (reintento) se toma una so
   ]);
   assert.equal(repetido, null, "el repetido no hace nada");
   assert.deepEqual(primero.partes, [{ texto: "hola", wamid: "w1" }]);
+});
+
+test("hayMensajesEsperando es true mientras el mensaje espera en la ráfaga y false después", async () => {
+  const tel = "5491100000008";
+  assert.equal(hayMensajesEsperando(tel), false);
+  const lote = juntarRafaga(tel, mensaje("hola", "w1"), 30);
+  assert.equal(hayMensajesEsperando(tel), true);
+  await lote;
+  assert.equal(hayMensajesEsperando(tel), false);
 });

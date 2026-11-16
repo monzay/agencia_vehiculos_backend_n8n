@@ -76,3 +76,8 @@ test("sinPreguntaRepetida quita la pregunta que va en la misma línea después d
   const texto = "Ese dato no lo tengo a mano en este momento, pero lo vas a ver en persona cuando pases por la agencia 🙌 ¿Lo pensás pagar de contado o financiado?";
   assert.equal(sinPreguntaRepetida(texto, ["forma de pago"]), "Ese dato no lo tengo a mano en este momento, pero lo vas a ver en persona cuando pases por la agencia 🙌");
 });
+
+test("sinPreguntaRepetida no toca una línea anterior ni posterior terminada en coma, solo el fragmento colgando de la misma línea", () => {
+  const texto = "Mirá estos datos,\n\nY contame, ¿la pensás pagar de contado o financiada?\n\nTe cuento más,";
+  assert.equal(sinPreguntaRepetida(texto, ["forma de pago"]), "Mirá estos datos,\n\nTe cuento más,");
+});

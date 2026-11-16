@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { responderConIA, MODELO, ESFUERZO, esfuerzoEfectivo, sinValoraciones, sinAnuncioDeGuardado, precioNormalizado } from "./agente.js";
+import { responderConIA, sinOracionesInternas, MODELO, ESFUERZO, esfuerzoEfectivo, sinValoraciones, sinAnuncioDeGuardado, precioNormalizado } from "./agente.js";
 import { maxTokensPara } from "./limites.js";
 import { MENSAJES_FIJOS } from "./limites.js";
 
@@ -410,4 +410,9 @@ test("precioNormalizado corrige un monto con símbolos extraños como $19.800.£
 test("la respuesta que sale pasa por las tres limpiezas", async () => {
   const r = await responderConIA(entrada(), { anthropic: claudeFalso([texto("¡Anotado! Está a $19.800.£000. Muy buen anticipo. ¿Tenés recibo?")]) });
   assert.equal(r.texto, "Está a $19.800.000. ¿Tenés recibo?");
+});
+
+test("sinOracionesInternas detecta los nombres de herramientas sin distinguir mayúsculas", () => {
+  assert.equal(sinOracionesInternas("Uso Buscar_Similares para ver. Tengo opciones."), "Tengo opciones.");
+  assert.equal(sinOracionesInternas("Consulto BUSCAR_AUTOS ahora. Dale."), "Dale.");
 });

@@ -3,6 +3,7 @@
 // de responder. Todo con dependencias inyectadas (base, Claude, envío, reloj): los tests no tocan nada real.
 import { MODELO, esfuerzoEfectivo, sinOracionesInternas, sinPulgarSuelto } from "./agente.js";
 import { enCola, contextoDelTurno } from "./atender.js";
+import { hayMensajesEsperando as hayMensajesEsperandoEnRafaga } from "./rafagas.js";
 import { conversacionCerrada, pregunta } from "./cierre.js";
 import { INSTRUCCIONES, contextoDelMomento } from "./instrucciones.js";
 import { LIMITES, historialParaClaude, maxTokensPara } from "./limites.js";
@@ -24,7 +25,7 @@ export const TEXTO_FIJO = "¿Seguís por ahí? Cuando puedas, contame y seguimos
 const NO_CORRESPONDE = "NO_CORRESPONDE";
 
 // El cliente avisó que se demoraba: no se le escribe aunque el sistema no pueda armar un texto.
-const AVISO_DE_DEMORA = /m[aá]s tarde|(?:despu[eé]s|luego) te (?:escribo|aviso|hablo)|luego te|estoy ocupad|en el trabajo|manejando|ahora no puedo/i;
+const AVISO_DE_DEMORA = /m[aá]s tarde|(?:despu[eé]s|luego) te (?:escribo|aviso|hablo)|luego te|estoy ocupad|en el trabajo|manejando|ahora no puedo|\bchau\b|hasta (?:ma[ñn]ana|luego)|nos vemos|me despido|\bsaludos\b/i;
 
 const hace = (ahora, ms) => new Date(ahora.getTime() - ms);
 
@@ -42,7 +43,12 @@ export async function consultasParaRecordar({ db, ahora, minutos = MINUTOS_POR_D
       bot_pausado: false,
       opt_out: false,
       requiere_vendedor: false,
-      OR: [{ recordatorio_en: null }, { recordatorio_en: { lt: hace(ahora, MIN_ENTRE_RECORDATORIOS_H * 3_600_000) } }],
+      // Las cerradas (visita propuesta o "no sabe") no ocupan lugar en el `take`.
+      visita_propuesta: null,
+      AND: [
+        { OR: [{ recordatorio_en: null }, { recordatorio_en: { lt: hace(ahora, MIN_ENTRE_RECORDATORIOS_H * 3_600_000) } }] },
+        { OR: [{ disponibilidad: null }, { disponibilidad: { not: "no_sabe" } }] },
+      ],
     },
     orderBy: { ultimo_mensaje: "asc" },
     take: MAX_POR_REVISION * 5,
@@ -148,13 +154,14 @@ export async function textoDelRecordatorio({ db, candidato, ahora, minutos = MIN
 const sinPisar = (ahora) => ({ OR: [{ recordatorio_en: null }, { recordatorio_en: { lt: hace(ahora, MIN_ENTRE_RECORDATORIOS_H * 3_600_000) } }] });
 
 // Corre dentro de la cola del número: así no pisa un mensaje que está llegando. Devuelve el texto enviado o null.
-async function enviarRecordatorio({ db, candidato, ahora, minutos, anthropic, enviar, cola }) {
+async function enviarRecordatorio({ db, candidato, ahora, minutos, anthropic, enviar, cola, hayMensajesEsperando }) {
   const { sesion, clienteId, telefono, ultimo } = candidato;
   return cola(telefono, async () => {
     // El cliente pudo escribir mientras tanto: solo sigue si el último mensaje es el mismo del bot.
     const sigue = async () => {
       const actual = await ultimoMensajeDe(db, clienteId);
-      return actual && String(actual.id) === String(ultimo.id);
+      // Un mensaje que espera en la ráfaga todavía no está en el historial: también cuenta como "el cliente escribió".
+      return Boolean(actual) && String(actual.id) === String(ultimo.id) && !hayMensajesEsperando(telefono);
     };
     if (!(await sigue())) return null;
     // Reserva atómica: la consulta queda evaluada haya o no recordatorio. Si no cambia ninguna fila, otro se adelantó.
@@ -183,12 +190,12 @@ async function enviarRecordatorio({ db, candidato, ahora, minutos, anthropic, en
  * Una revisión: busca las consultas que corresponden y les manda el recordatorio. Devuelve lo enviado.
  * @returns {Promise<{ telefono: string, texto: string }[]>}
  */
-export async function revisarRecordatorios({ ahora = new Date(), minutos = MINUTOS_POR_DEFECTO, root, anthropic, enviar = crearEnvioWhatsapp().enviarTexto, cola = enCola, soloTelefono = null }) {
+export async function revisarRecordatorios({ ahora = new Date(), minutos = MINUTOS_POR_DEFECTO, root, anthropic, enviar = crearEnvioWhatsapp().enviarTexto, cola = enCola, soloTelefono = null, hayMensajesEsperando = hayMensajesEsperandoEnRafaga }) {
   const candidatas = await consultasParaRecordar({ db: root, ahora, minutos, telefono: soloTelefono });
   const enviados = [];
   for (const candidato of candidatas) {
     try {
-      const texto = await enviarRecordatorio({ db: root, candidato, ahora, minutos, anthropic, enviar, cola });
+      const texto = await enviarRecordatorio({ db: root, candidato, ahora, minutos, anthropic, enviar, cola, hayMensajesEsperando });
       if (texto) enviados.push({ telefono: candidato.telefono, texto });
     } catch (err) {
       console.error("[recordatorio] falló una consulta:", err?.message);
