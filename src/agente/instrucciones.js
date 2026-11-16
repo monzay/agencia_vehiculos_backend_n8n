@@ -72,6 +72,8 @@ Solo cuando el contexto dice "Verificación crediticia" o cuando lo que te devue
 ## El cierre: la visita
 - Preguntá cuándo puede venir a ver el auto. Puede contestarte un día, una hora, una semana o una fecha: cualquiera sirve. Si te dice solo una semana ("la semana que viene"), eso ya es la respuesta: no le insistas con el día.
 - Al volver a coordinar una visita, usá horarios_atencion y decí los días y horarios.
+- Si el cliente no pudo venir, coordiná de nuevo diciendo los días y horarios que tenés en el contexto. No digas que un auto sigue disponible si el contexto no lo dice.
+- Si el cliente no pudo venir, coordiná de nuevo diciendo los días y horarios que tenés en el contexto. No digas que un auto sigue disponible si el contexto no lo dice.
 - Antes de confirmar, mirá los horarios con horarios_atencion. Si lo que dice cae en un día u horario cerrado, ofrecele lo más cercano en que esté abierto.
 - Apenas te diga cuándo viene, o si pregunta dónde queda, pasale la dirección y el mapa del contexto. Si no hay mapa, pasá solo la dirección.
 - Guardalo con registrar_calificacion (disponibilidad y visita_propuesta, por ejemplo "sábado a la mañana" o "la semana que viene"). Avisale que lo van a estar esperando; no es un turno confirmado.
@@ -227,7 +229,73 @@ function consultaDesdeLaWeb(consultaWeb) {
 // Si ya lo dice la línea de la web, no se repite.
 function autoDeLaConsultaEnCurso(autoDeLaConsulta, consultaWeb) {
   if (!autoDeLaConsulta || consultaWeb?.ref === autoDeLaConsulta.ref) return null;
-  return `Auto de esta consulta: "${autoDeLaConsulta.descripcion}", código ${autoDeLaConsulta.ref}. Usá ese código con las herramientas.`;
+  const { descripcion, ref, disponible } = autoDeLaConsulta;
+  if (disponible === false) {
+    return `Auto de esta consulta: "${descripcion}", código ${ref} (ya no está disponible: decíselo y ofrecé parecidos con buscar_similares).`;
+  }
+  return `Auto de esta consulta: "${descripcion}", código ${ref}${disponible ? " (sigue disponible)" : ""}. Usá ese código con las herramientas.`;
+}
+
+const NOMBRES_DIAS = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
+const SEMANA = [1, 2, 3, 4, 5, 6, 0];
+
+const plural = (dia) => (dia.endsWith("o") ? `${dia}s` : dia);
+
+// "lunes a viernes", "sábado y domingo", "sábados": un tramo de días seguidos.
+function nombreDelTramo(dias) {
+  const nombres = dias.map((d) => NOMBRES_DIAS[d]);
+  if (nombres.length === 1) return plural(nombres[0]);
+  if (nombres.length === 2) return `${nombres[0]} y ${nombres[1]}`;
+  return `${nombres[0]} a ${nombres.at(-1)}`;
+}
+
+// Los horarios de la tabla escritos en palabras, para que la IA los diga sin consultarlos.
+// Agrupa los días seguidos con el mismo horario y deja como excepción el día suelto del
+// medio que solo cambia la apertura, el cierre o está cerrado. Sin filas, null.
+export function horariosEnPalabras(filas) {
+  const porDia = new Map((filas ?? []).filter((f) => Number.isInteger(f?.dia) && f.dia >= 0 && f.dia <= 6).map((f) => [f.dia, f]));
+  const dias = SEMANA.filter((d) => porDia.has(d)).map((d) => {
+    const f = porDia.get(d);
+    const abre = f.abierto ? f.apertura || null : null;
+    const cierra = f.abierto ? f.cierre || null : null;
+    return { dia: d, cerrado: !f.abierto, abre, cierra };
+  });
+  if (!dias.length) return null;
+  const clave = (d) => (d.cerrado ? "cerrado" : `${d.abre}|${d.cierra}`);
+  const tramos = [];
+  for (const d of dias) {
+    const ultimo = tramos.at(-1);
+    const seguido = ultimo && SEMANA.indexOf(d.dia) === SEMANA.indexOf(ultimo.dias.at(-1)) + 1;
+    if (ultimo && seguido && clave(ultimo.ref) === clave(d)) ultimo.dias.push(d.dia);
+    else tramos.push({ ref: d, dias: [d.dia], excepciones: [] });
+  }
+  // Un día suelto entre dos tramos iguales se pliega al tramo como excepción.
+  for (let i = 1; i < tramos.length - 1; i++) {
+    const [antes, medio, despues] = [tramos[i - 1], tramos[i], tramos[i + 1]];
+    if (medio.dias.length !== 1 || clave(antes.ref) !== clave(despues.ref) || antes.ref.cerrado) continue;
+    const m = medio.ref;
+    const texto = m.cerrado ? "cerrado" : m.cierra === antes.ref.cierra ? `desde las ${m.abre}` : m.abre === antes.ref.abre ? `hasta las ${m.cierra}` : null;
+    if (!texto) continue;
+    antes.dias.push(...medio.dias, ...despues.dias);
+    antes.excepciones.push(`${NOMBRES_DIAS[medio.dias[0]]} ${texto}`);
+    tramos.splice(i, 2);
+    i -= 1;
+  }
+  const mismoHorario = tramos.length === 1 && tramos[0].dias.length === 7;
+  return tramos
+    .map((t) => {
+      const horario = t.ref.cerrado ? "cerrado" : t.ref.abre && t.ref.cierra ? `de ${t.ref.abre} a ${t.ref.cierra}` : "abierto";
+      const nombre = mismoHorario ? "todos los días" : nombreDelTramo(t.dias);
+      return `${nombre} ${horario}${t.excepciones.length ? ` (${t.excepciones.join(", ")})` : ""}`;
+    })
+    .join(", ");
+}
+
+// La visita que quedó propuesta pudo pasar: con los horarios a mano, la IA coordina de nuevo sin consultarlos.
+function visitaPasada(horarios) {
+  return horarios
+    ? `La visita que había propuesto puede haber pasado. Si hay que coordinar de nuevo, decile los horarios: ${horarios}.`
+    : "La visita que había propuesto puede haber pasado: si hay que coordinar de nuevo, consultá horarios_atencion y decile los días y horarios.";
 }
 
 const formatoPesos = new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 2 });
@@ -269,7 +337,7 @@ function tiempoPasado(tiempo) {
   return `El mensaje anterior de esta charla fue hace ${hace} (${elDia(tiempo.cuando)}). Lo que se dijo entonces con "hoy" o "mañana" se refiere a ese día.`;
 }
 
-export function contextoDelMomento({ asesora, agencia, direccion, mapsUrl, catalogoUrl, consultaWeb, autoDeLaConsulta, cobranza, ahora = new Date(), nombreCliente, respondido, faltan, sinContestar, fotosEnviadas, tiempoDesdeElAnterior, visitaPropuesta, credito, privacidadUrl } = {}) {
+export function contextoDelMomento({ asesora, agencia, direccion, mapsUrl, catalogoUrl, consultaWeb, autoDeLaConsulta, cobranza, ahora = new Date(), nombreCliente, respondido, faltan, sinContestar, fotosEnviadas, tiempoDesdeElAnterior, visitaPropuesta, horarios, credito, privacidadUrl } = {}) {
   const nombre = nombreSeguro(nombreCliente);
   const fecha = ahora.toLocaleString("es-AR", {
     timeZone: "America/Argentina/Buenos_Aires",
@@ -290,7 +358,7 @@ export function contextoDelMomento({ asesora, agencia, direccion, mapsUrl, catal
     autoDeLaConsultaEnCurso(autoDeLaConsulta, consultaWeb),
     recordatorioDeCuota(cobranza),
     tiempoPasado(tiempoDesdeElAnterior),
-    visitaPropuesta && tiempoDesdeElAnterior ? "La visita que había propuesto puede haber pasado: si hay que coordinar de nuevo, consultá horarios_atencion y decile los días y horarios." : null,
+    visitaPropuesta && tiempoDesdeElAnterior ? visitaPasada(horarios) : null,
     fotosYaEnviadas(fotosEnviadas, ahora),
     // Con un recordatorio la charla es por la cuota: el recorrido de venta no se empuja.
     ...(cobranza ? [] : [...estadoDelRecorrido(respondido, faltan), preguntasSinContestar(sinContestar), verificacionCrediticia(credito, privacidadUrl)]),

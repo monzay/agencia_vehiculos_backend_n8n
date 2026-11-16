@@ -7,6 +7,7 @@ import { cambiarAuto } from "./consultas-por-auto.js";
 import { asesorDelLink, asesorParaConsultaNueva, cambioDeAsesor } from "./reparto.js";
 import { datosDeLaWeb, linkDelCatalogo } from "./origen-web.js";
 import { whereDisponible, descripcionDelAuto } from "./auto-publico.js";
+import { horariosEnPalabras } from "./instrucciones.js";
 import { enviosDeRespuesta, REACCION_CIERRE } from "./envios.js";
 import { debeReaccionar } from "./cierre.js";
 import { juntarRafaga, ESPERA_RAFAGA_MS } from "./rafagas.js";
@@ -306,10 +307,27 @@ async function permisoAnticipadoDelTurno({ root, cliente, sesion, ahora }) {
 // Un fallo acá no frena la respuesta.
 async function autoDeLaConsulta(root, autoId) {
   if (!autoId) return null;
-  return root.autos.findFirst({ where: { id: autoId }, select: { ref: true, marca: true, modelo: true, anio: true } }).catch((err) => {
+  const auto = await root.autos.findFirst({ where: { id: autoId }, select: { ref: true, marca: true, modelo: true, anio: true } }).catch((err) => {
     console.error("[agente] no se pudo leer el auto de la consulta:", err?.message);
     return null;
   });
+  if (!auto) return null;
+  // Si sigue a la venta (como en autoDeLaWeb). Si no se puede comprobar, la línea sale sin decirlo.
+  const disponible = await root.autos.findFirst({ where: { ...whereDisponible(), ref: auto.ref }, select: { id: true } }).then(Boolean, (err) => {
+    console.error("[agente] no se pudo comprobar si el auto de la consulta sigue disponible:", err?.message);
+    return undefined;
+  });
+  return { ...auto, disponible };
+}
+
+// Los horarios de la agencia en palabras, para la visita que pudo pasar. Sin ellos, la respuesta sigue igual.
+async function horariosDelTurno(root) {
+  try {
+    return horariosEnPalabras(await root.horarios_atencion.findMany({ orderBy: { dia: "asc" } }));
+  } catch (err) {
+    console.error("[agente] no se pudieron leer los horarios de atención:", err?.message);
+    return null;
+  }
 }
 
 const DOCE_HORAS_MS = 12 * 3_600_000;
@@ -349,6 +367,7 @@ export async function contextoDelTurno({ root, cliente, sesion, ahora, autoWeb, 
   const faltan = pendientes(sesion, usado, credito ?? (await permisoAnticipadoDelTurno({ root, cliente, sesion, ahora })));
   const sinContestar = temasSinContestar(historial, faltan);
   const fotosEnviadas = await fotosYaEnviadas(root, historial);
+  const tiempo = tiempoDesdeElAnterior(historial, ahora);
   return {
     asesora: process.env.AGENTE_NOMBRE,
     agencia: ubicacion?.nombre || process.env.AGENCIA_NOMBRE,
@@ -358,15 +377,16 @@ export async function contextoDelTurno({ root, cliente, sesion, ahora, autoWeb, 
     nombreCliente: cliente.nombre,
     catalogoUrl: linkDelCatalogo(process.env.PUBLIC_WEB_URL),
     consultaWeb: autoWeb && { descripcion: autoWeb.descripcion, ref: autoWeb.ref, disponible: autoWeb.disponible },
-    autoDeLaConsulta: auto && { ref: auto.ref, descripcion: descripcionDelAuto(auto) },
+    autoDeLaConsulta: auto && { ref: auto.ref, descripcion: descripcionDelAuto(auto), disponible: auto.disponible },
     cobranza,
     respondido: respondido(sesion, usado),
     // Lo ya preguntado en el último mensaje va marcado en la lista: no se repite si el cliente preguntó otra cosa.
     faltan: marcarPreguntados(faltan, sinContestar),
     sinContestar,
     fotosEnviadas,
-    tiempoDesdeElAnterior: tiempoDesdeElAnterior(historial, ahora),
+    tiempoDesdeElAnterior: tiempo,
     visitaPropuesta: Boolean(sesion.visita_propuesta),
+    horarios: sesion.visita_propuesta && tiempo ? await horariosDelTurno(root) : null,
     credito,
     privacidadUrl: credito && new URL("/privacidad", process.env.PUBLIC_WEB_URL).href,
   };

@@ -37,7 +37,7 @@ function enOrden(filas, orderBy = []) {
 // Base simulada con estado en memoria para lo que toca el orquestador.
 // `cliente` es la ficha del número de las pruebas (TEL), ya vinculada a su canal de WhatsApp;
 // `clientes` son fichas sueltas, sin ese vínculo.
-function baseFalsa({ cliente = null, clientes = [], sesion = null, sesiones = [], mensajesHoy = 0, historial = [], consumosHoy = 0, gastoMes = 0, gastoClienteHoy = 0, usado = null, ubicacion = null, autos = [], vendedores = [], usuarios = [], configuracion = {}, aviso = null } = {}) {
+function baseFalsa({ cliente = null, clientes = [], sesion = null, sesiones = [], mensajesHoy = 0, historial = [], consumosHoy = 0, gastoMes = 0, gastoClienteHoy = 0, usado = null, ubicacion = null, autos = [], vendedores = [], usuarios = [], configuracion = {}, aviso = null, horarios = [] } = {}) {
   const reparto = repartoFalso({ vendedores, usuarios, configuracion });
   const fichas = [...(cliente ? [{ canal: "whatsapp", ...cliente }] : []), ...clientes].map((ficha) => ({ ...FICHA_VACIA, ...ficha }));
   const canales = cliente ? [{ id: 1, cliente_id: cliente.id, canal: "whatsapp", identificador: TEL }] : [];
@@ -113,6 +113,7 @@ function baseFalsa({ cliente = null, clientes = [], sesion = null, sesiones = []
     },
     vehiculo_cliente: { findFirst: async () => usado, create: async ({ data }) => data },
     ubicacion: { findUnique: async () => ubicacion },
+    horarios_atencion: { findMany: async () => horarios },
     ia_consumos: {
       aggregate: async ({ where }) =>
         where.cliente_id
@@ -664,7 +665,7 @@ test("en cada mensaje el agente recibe el auto de la consulta con su código", a
   const anthropic = claudeFalso();
   await atenderMensaje({ telefono: TEL, texto: "Pasame las fotos", ahora }, deps(root, anthropic));
   const contexto = anthropic.pedidos[0].system.at(-1).text;
-  assert.ok(contexto.includes('Auto de esta consulta: "Peugeot 208 2021", código A12B.'));
+  assert.ok(contexto.includes('Auto de esta consulta: "Peugeot 208 2021", código A12B (sigue disponible).'));
   assert.doesNotMatch(contexto, /auto de interés/);
 });
 
@@ -1763,4 +1764,57 @@ test("con una visita propuesta y varios días sin hablar, el contexto trae la l�
   const anthropic = claudeFalso();
   await atenderMensaje({ telefono: TEL, texto: "no pude ir", ahora }, deps(root, anthropic));
   assert.match(anthropic.pedidos[0].system.at(-1).text, /La visita que había propuesto puede haber pasado/);
+});
+
+const HORARIOS_AGENCIA = [
+  { dia: 0, abierto: false, apertura: null, cierre: null },
+  ...[1, 2, 4, 5].map((dia) => ({ dia, abierto: true, apertura: "08:00", cierre: "21:00" })),
+  { dia: 3, abierto: true, apertura: "09:00", cierre: "21:00" },
+  { dia: 6, abierto: true, apertura: "08:00", cierre: "13:00" },
+];
+
+function charlaConVisitaPasada(extra = {}) {
+  const miercoles = new Date("2026-10-07T13:00:00Z");
+  return baseFalsa({
+    cliente: { id: 50 },
+    sesion: { ...consultaConCharla, sesion_inicio: miercoles, pago_tipo: "contado", visita_propuesta: "mañana a la mañana", visita_propuesta_at: miercoles },
+    historial: [mensajeDe(1, "saliente", "Te esperamos", miercoles)],
+    ...extra,
+  });
+}
+
+test("con la visita propuesta ya pasada, el contexto trae los horarios de la agencia en palabras", async () => {
+  const root = charlaConVisitaPasada({ horarios: HORARIOS_AGENCIA });
+  const anthropic = claudeFalso();
+  await atenderMensaje({ telefono: TEL, texto: "hola, al final no pude ir", ahora }, deps(root, anthropic));
+  assert.match(
+    anthropic.pedidos[0].system.at(-1).text,
+    /decile los horarios: lunes a viernes de 08:00 a 21:00 \(miércoles desde las 09:00\), sábados de 08:00 a 13:00, domingos cerrado\./,
+  );
+});
+
+test("si no se pueden leer los horarios, el contexto sale sin ellos y la respuesta no se frena", async (t) => {
+  t.mock.method(console, "error", () => {});
+  const root = charlaConVisitaPasada();
+  root.horarios_atencion = { findMany: async () => Promise.reject(new Error("base caída")) };
+  const anthropic = claudeFalso("Dale, coordinamos de nuevo.");
+  const r = await atenderMensaje({ telefono: TEL, texto: "hola, al final no pude ir", ahora }, deps(root, anthropic));
+  assert.equal(r.texto, "Dale, coordinamos de nuevo.");
+  const contexto = anthropic.pedidos[0].system.at(-1).text;
+  assert.match(contexto, /La visita que había propuesto puede haber pasado/);
+  assert.doesNotMatch(contexto, /decile los horarios:/);
+});
+
+test("la línea del auto de la consulta dice si sigue disponible", async () => {
+  const root = baseFalsa({ sesion: { id: 1, ultimo_mensaje: ahora, auto_id: peugeot.id }, autos: [peugeot] });
+  const anthropic = claudeFalso();
+  await atenderMensaje({ telefono: TEL, texto: "Pasame las fotos", ahora }, deps(root, anthropic));
+  assert.ok(anthropic.pedidos[0].system.at(-1).text.includes('código A12B (sigue disponible).'));
+});
+
+test("si el auto de la consulta ya no está a la venta, la línea lo dice", async () => {
+  const root = baseFalsa({ sesion: { id: 1, ultimo_mensaje: ahora, auto_id: peugeot.id }, autos: [{ ...peugeot, disponible: false }] });
+  const anthropic = claudeFalso();
+  await atenderMensaje({ telefono: TEL, texto: "Pasame las fotos", ahora }, deps(root, anthropic));
+  assert.match(anthropic.pedidos[0].system.at(-1).text, /código A12B \(ya no está disponible: decíselo y ofrecé parecidos con buscar_similares\)/);
 });

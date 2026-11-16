@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { contextoDelMomento } from "./instrucciones.js";
+import { contextoDelMomento, horariosEnPalabras } from "./instrucciones.js";
 
 const ahora = new Date("2026-10-11T15:00:00Z");
 
@@ -499,4 +499,49 @@ test("con una visita propuesta y 12 horas o más sin hablar, el contexto avisa q
   assert.match(c, /La visita que había propuesto puede haber pasado: si hay que coordinar de nuevo, consultá horarios_atencion y decile los días y horarios\./);
   assert.doesNotMatch(contextoDelMomento({ ahora, tiempoDesdeElAnterior }), /La visita que había propuesto/);
   assert.doesNotMatch(contextoDelMomento({ ahora, visitaPropuesta: true }), /La visita que había propuesto/);
+});
+
+// ── horarios en palabras y línea de la visita pasada ──
+
+const filaH = (dia, apertura, cierre) => ({ dia, abierto: Boolean(apertura), apertura: apertura ?? null, cierre: cierre ?? null });
+const TABLA_AGENCIA = [filaH(0), filaH(1, "08:00", "21:00"), filaH(2, "08:00", "21:00"), filaH(3, "09:00", "21:00"), filaH(4, "08:00", "21:00"), filaH(5, "08:00", "21:00"), filaH(6, "08:00", "13:00")];
+
+test("horariosEnPalabras escribe la tabla de la agencia agrupando días y marcando la excepción", () => {
+  assert.equal(
+    horariosEnPalabras(TABLA_AGENCIA),
+    "lunes a viernes de 08:00 a 21:00 (miércoles desde las 09:00), sábados de 08:00 a 13:00, domingos cerrado",
+  );
+});
+
+test("horariosEnPalabras con todos los días iguales dice todos los días", () => {
+  const filas = [0, 1, 2, 3, 4, 5, 6].map((d) => filaH(d, "10:00", "20:00"));
+  assert.equal(horariosEnPalabras(filas), "todos los días de 10:00 a 20:00");
+});
+
+test("horariosEnPalabras con un día cerrado en el medio lo marca como excepción", () => {
+  const filas = [filaH(0), filaH(1, "08:00", "21:00"), filaH(2, "08:00", "21:00"), filaH(3), filaH(4, "08:00", "21:00"), filaH(5, "08:00", "21:00"), filaH(6)];
+  assert.equal(horariosEnPalabras(filas), "lunes a viernes de 08:00 a 21:00 (miércoles cerrado), sábado y domingo cerrado");
+});
+
+test("horariosEnPalabras con la tabla vacía da null", () => {
+  assert.equal(horariosEnPalabras([]), null);
+  assert.equal(horariosEnPalabras(null), null);
+});
+
+test("con una visita pasada y horarios, el contexto los dice en esa misma línea", () => {
+  const tiempoDesdeElAnterior = { horas: 49, cuando: new Date("2026-10-09T13:00:00Z") };
+  const c = contextoDelMomento({ ahora, tiempoDesdeElAnterior, visitaPropuesta: true, horarios: "lunes a viernes de 08:00 a 21:00, domingos cerrado" });
+  assert.match(c, /La visita que había propuesto puede haber pasado\. Si hay que coordinar de nuevo, decile los horarios: lunes a viernes de 08:00 a 21:00, domingos cerrado\./);
+  assert.doesNotMatch(c, /consultá horarios_atencion/);
+});
+
+test("la línea del auto de la consulta dice si sigue disponible o ya no", () => {
+  const base = { ref: "13", descripcion: "Chevrolet Onix LTZ 2022" };
+  assert.ok(contextoDelMomento({ ahora, autoDeLaConsulta: { ...base, disponible: true } }).includes('código 13 (sigue disponible). Usá ese código con las herramientas.'));
+  assert.match(contextoDelMomento({ ahora, autoDeLaConsulta: { ...base, disponible: false } }), /código 13 \(ya no está disponible: decíselo y ofrecé parecidos con buscar_similares\)\./);
+});
+
+test("si el cliente no pudo venir, coordina de nuevo con los horarios del contexto y no afirma disponibilidad sin que el contexto lo diga", async () => {
+  const t = await instrucciones();
+  assert.match(t, /Si el cliente no pudo venir, coordiná de nuevo diciendo los días y horarios que tenés en el contexto\. No digas que un auto sigue disponible si el contexto no lo dice\./);
 });
