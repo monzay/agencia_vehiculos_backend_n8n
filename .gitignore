@@ -5,3 +5,6 @@ node_modules/
 # Backups de la base: llevan datos reales de clientes, nunca van a git.
 backup-produccion-*.sql
 *.sql.gz
+
+# Salida de las simulaciones de chats (herramienta de desarrollo)
+simulacion/

@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { AUTOS, DATOS_CATALOGO, HORARIOS, fotosDe } from "./catalogo.js";
 
-const DOC = fileURLToPath(new URL("../../../../openspec/changes/respuestas-del-bot/chats-simulados.md", import.meta.url));
+const DOC = fileURLToPath(new URL("./chats-simulados.md", import.meta.url));
 
 test("el catálogo tiene los 13 autos de la tabla del documento, con los mismos códigos y precios de lista", () => {
   const filas = readFileSync(DOC, "utf8").split("\n").filter((l) => /^\| \d+ \|/.test(l)).map((l) => l.split("|").map((c) => c.trim()));

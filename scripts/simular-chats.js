@@ -1,15 +1,15 @@
-// Chats simulados del bot (respuestas-del-bot, tarea 2). Herramienta de desarrollo: NO corre en producción.
+// Chats simulados del bot. Herramienta de desarrollo: NO corre en producción.
 //
-// Lee openspec/changes/respuestas-del-bot/chats-simulados.md, arma la base local `agencia_simulacion`
+// Lee src/agente/simulador/chats/chats-simulados.md, arma la base local `agencia_simulacion`
 // de cero con el catálogo del documento y le manda cada chat al bot por el camino real
 // (`atenderMensaje`), con Claude Haiku de verdad. Lo demás es de prueba: BCRA simulado, audios
 // transcriptos por el guion, sin WhatsApp ni Groq. Lo único que sale a la red es Anthropic.
 //
 // Uso (desde web/backend):
-//   node scripts/simular-chats.js --ronda 0 [--solo K1,E1] [--repeticiones 2] [--esfuerzo low|medium|high] [--paralelo 4]
+//   node scripts/simular-chats.js --ronda 0 [--solo K1,E1] [--repeticiones 2] [--esfuerzo low|medium|high] [--paralelo 4] [--cambio <nombre>]
 //   node scripts/simular-chats.js --salida <carpeta> --solo N5 --repeticiones 1
 //
-// Deja en openspec/changes/respuestas-del-bot/simulacion/ronda-<N>/ (o en --salida):
+// Deja en simulacion/chats/ronda-<N>/ (dentro de web/backend, ignorada por git; o en --salida):
 // transcripcion.md, resultados.json y pedido-codex.md. Gasta centavos de Claude.
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
@@ -22,9 +22,11 @@ const argumento = (nombre, porDefecto = null) => {
   const i = process.argv.indexOf(`--${nombre}`);
   return i > 0 ? process.argv[i + 1] : porDefecto;
 };
-const CAMBIO = path.join("openspec", "changes", "respuestas-del-bot");
+const DOCUMENTO = path.join("src", "agente", "simulador", "chats", "chats-simulados.md");
+// Cambio OpenSpec en curso (opcional, --cambio <nombre>): sus deltas de specs van en el pedido a Codex.
+const CAMBIO = argumento("cambio") ? path.join("openspec", "changes", argumento("cambio")) : null;
 const ronda = argumento("ronda");
-const salida = argumento("salida") ?? (ronda === null ? null : path.join(CAMBIO, "simulacion", `ronda-${ronda}`));
+const salida = argumento("salida") ?? (ronda === null ? null : path.join("simulacion", "chats", `ronda-${ronda}`));
 if (!salida) {
   console.error("Falta --ronda N (o --salida <carpeta>).");
   process.exit(1);
@@ -90,7 +92,7 @@ try {
     throw new Error("Las conexiones no apuntan a agencia_simulacion: se aborta sin correr nada.");
   }
 
-  const todos = leerChats(readFileSync(path.join(CAMBIO, "chats-simulados.md"), "utf8"));
+  const todos = leerChats(readFileSync(DOCUMENTO, "utf8"));
   const chats = todos.filter((c) => !solo || solo.includes(c.codigo));
   const desconocidos = (solo ?? []).filter((c) => !todos.some((t) => t.codigo === c));
   if (desconocidos.length) throw new Error(`No existe(n) el/los chat(s): ${desconocidos.join(", ")}.`);
@@ -167,7 +169,7 @@ try {
       .map((d) => path.join(carpeta, d.name, "spec.md"))
       .filter(existsSync)
       .sort();
-  const specs = leerCarpeta(path.join(CAMBIO, "specs")).map((ruta) => ({ ruta: path.relative(CAMBIO, ruta).replaceAll("\\", "/"), texto: readFileSync(ruta, "utf8") }));
+  const specs = (CAMBIO && existsSync(path.join(CAMBIO, "specs")) ? leerCarpeta(path.join(CAMBIO, "specs")) : []).map((ruta) => ({ ruta: path.relative(CAMBIO, ruta).replaceAll("\\", "/"), texto: readFileSync(ruta, "utf8") }));
   const requisitoVigente = readFileSync(path.join("openspec", "specs", "agente-comportamiento", "spec.md"), "utf8");
 
   mkdirSync(salida, { recursive: true });

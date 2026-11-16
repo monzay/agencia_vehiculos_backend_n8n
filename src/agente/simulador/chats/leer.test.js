@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { leerChats } from "./leer.js";
 
-const RUTA_DOCUMENTO = fileURLToPath(new URL("../../../../openspec/changes/respuestas-del-bot/chats-simulados.md", import.meta.url));
+const RUTA_DOCUMENTO = fileURLToPath(new URL("./chats-simulados.md", import.meta.url));
 
 // Arma un documento con un solo chat para probar cada línea por separado.
 const chat = (...lineas) => ["## X1 · Prueba", ...lineas].join("\n");
