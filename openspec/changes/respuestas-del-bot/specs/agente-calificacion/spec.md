@@ -47,15 +47,26 @@ momento acordado o con "no sabe".
 #### Scenario: Falta el permiso
 - **WHEN** el cliente financia, ya dijo lo del recibo o garante y todavía no respondió al permiso
 - **THEN** el permiso figura en lo que falta, después del recibo o garante y antes del usado
-<!-- test: FALTA -->
+<!-- test: src/agente/calificacion.test.js › "si espera el permiso, figura después del recibo o garante y antes del usado" -->
+<!-- test: src/agente/atender.test.js › "el estado de la verificación entra en lo que falta: el permiso va después del recibo y antes del usado" -->
+
+#### Scenario: Financia y todavía no dijo lo del recibo
+- **WHEN** el cliente financia, la verificación está activa y todavía no contestó lo del recibo o garante
+- **THEN** el permiso ya figura en lo que falta, justo después del recibo o garante, sin habilitar pedirlo antes de tiempo
+<!-- test: src/agente/calificacion.test.js › "con el permiso anticipado, figura justo después del recibo o garante (que todavía falta) y antes del usado" -->
+<!-- test: src/credito/verificacion.test.js › "permisoAnticipado: si financia y todavía no dijo lo del recibo, avisa que el permiso va justo después (sin habilitar pedirlo ahora)" -->
+<!-- test: src/credito/verificacion.test.js › "permisoAnticipado: no aplica si paga de contado, ya dijo lo del recibo, ya respondió al permiso, ya se consultó o no hay términos" -->
+<!-- test: src/agente/atender.test.js › "antes de que conteste lo del recibo, el permiso del BCRA ya figura en lo que falta (después del recibo) sin pedirse todavía" -->
+<!-- eval: chats simulados › P10, E1 -->
 
 #### Scenario: Autorizó y falta el CUIL
 - **WHEN** el cliente autorizó la consulta y todavía no dio el CUIL
 - **THEN** el CUIL figura en lo que falta, antes del usado
-<!-- test: FALTA -->
+<!-- test: src/agente/calificacion.test.js › "si autorizó y falta el CUIL, el CUIL figura antes del usado" -->
 <!-- eval: chats simulados › P10 -->
 
 #### Scenario: Dijo que no, o paga de contado
 - **WHEN** el cliente no autorizó, ya se consultó, o paga de contado
 - **THEN** ni el permiso ni el CUIL figuran en lo que falta
-<!-- test: FALTA -->
+<!-- test: src/agente/calificacion.test.js › "si dijo que no, ya se consultó o paga de contado (credito nulo), ni el permiso ni el CUIL figuran" -->
+<!-- test: src/agente/calificacion.test.js › "sin el tercer parámetro, pendientes es igual que antes" -->
