@@ -91,7 +91,7 @@ Control automático:
 Regla: agente-comportamiento › Kilómetros sin cargar, Entrega quiere decir anticipo
 
 Cliente: Hola ORTEGA AUTOMOTORES! Estoy interesado en el Volkswagen Gol Trend 2015. ¿Podrían darme más información? (REF #64)
-Cliente: Hola Agustina
+Cliente: Hola José
 Cliente: Quisiera saber el km de esta unidad??
 Cliente: Km del auto?
 Cliente (seguido): tengo 8 millones para entregar

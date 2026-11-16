@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { contextoDelMomento, horariosEnPalabras } from "./instrucciones.js";
+import { INSTRUCCIONES, contextoDelMomento, horariosEnPalabras } from "./instrucciones.js";
 
 const ahora = new Date("2026-10-11T15:00:00Z");
 
@@ -10,9 +10,16 @@ test("da la hora en Argentina; el nombre de la agencia es solo para cuando lo pr
   assert.match(c, /12:00/);
 });
 
-test("se presenta como Agustina, asesora, salvo que se configure otro nombre", () => {
-  assert.match(contextoDelMomento({ ahora }), /Tu nombre: Agustina, asesora de ventas\./);
-  assert.match(contextoDelMomento({ ahora, asesora: "Carla" }), /Tu nombre: Carla, asesora de ventas\./);
+test("se presenta como José, asesor de ventas, salvo que se configure otro nombre", () => {
+  assert.match(contextoDelMomento({ ahora }), /Tu nombre: José, asesor de ventas\./);
+  assert.match(contextoDelMomento({ ahora, asesora: "Martín" }), /Tu nombre: Martín, asesor de ventas\./);
+});
+
+test("las instrucciones hablan en masculino: no queda Agustina, asesora, vendedora ni la asistente", () => {
+  assert.doesNotMatch(INSTRUCCIONES, /Agustina|asesora|vendedora|la asistente/i);
+  assert.doesNotMatch(contextoDelMomento({ ahora }), /Agustina|asesora|vendedora|la asistente/i);
+  assert.match(INSTRUCCIONES, /Sos un asesor de ventas/);
+  assert.match(INSTRUCCIONES, /Soy José, asesor de ventas/);
 });
 
 test("nunca se presenta con el nombre de la agencia", async () => {

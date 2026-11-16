@@ -521,7 +521,7 @@ test("en cada mensaje el agente recibe lo que ya respondió, lo que falta y la d
   const anthropic = claudeFalso();
   await atenderMensaje({ telefono: "5493885550101", texto: "Hola", ahora }, deps(root, anthropic));
   const contexto = anthropic.pedidos[0].system.at(-1).text;
-  assert.match(contexto, /Tu nombre: Agustina, asesora de ventas\./);
+  assert.match(contexto, /Tu nombre: José, asesor de ventas\./);
   assert.match(contexto, /Nombre de la agencia \(solo si el cliente lo pregunta\): SEA Automotores\./);
   assert.match(contexto, /Av\. Siempreviva 742/);
   assert.match(contexto, /Tenés anotado \(corregilo con registrar_calificacion si el cliente lo desmiente\): paga contado; entrega un usado: "Volkswagen Gol 2015"/);

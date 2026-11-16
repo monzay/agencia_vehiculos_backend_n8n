@@ -209,7 +209,7 @@ test("el recordatorio lo escribe la IA con las instrucciones de la asesora, reto
   assert.equal(pedido.model, "claude-haiku-5-5");
   assert.ok(!pedido.tools || pedido.tool_choice?.type === "none", "sin herramientas");
   const sistema = pedido.system.map((b) => b.text).join("\n");
-  assert.match(sistema, /Sos una asesora de ventas/);
+  assert.match(sistema, /Sos un asesor de ventas/);
   assert.match(sistema, /RECORDATORIO: el cliente no respondió tu último mensaje hace 10 minutos/);
   assert.match(sistema, /NO_CORRESPONDE/);
   assert.equal(pedido.messages.at(-1).role, "user", "la conversación termina con el cliente");
