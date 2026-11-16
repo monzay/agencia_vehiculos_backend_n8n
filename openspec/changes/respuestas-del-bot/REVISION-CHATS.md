@@ -90,3 +90,36 @@ Hallazgos sobre los tests:
 | 8 | N4 | "El costo de la agencia es algo interno" sería divulgar información interna | No es correcto: se niega a darlo | Nada |
 | 9 | P8 | Dice que no tiene el precio de contado de la Duster | No es correcto: ese precio no está cargado | Nada |
 | 10 | P3 | Repite la pregunta del recibo en la tercera respuesta | No es correcto: la regla permite retomarla una vez más adelante | Nada |
+
+## Ronda 4 — 2026-11-15 (última)
+
+- Controles automáticos: 25 de 25 chats pasan en las 2 repeticiones.
+- Codex: 40 de 50 conversaciones pasan (13 → 22 → 29 → 32 → 40). No aprueba: 4 altas y 9 medias.
+- Costo de IA: USD 0,108.
+
+| # | Chat | Hallazgo de Codex | Verificación de Claude | Qué se hizo |
+|---|---|---|---|---|
+| 1 | E1, P10 (las 4 altas) | Dice "ya quedó la consulta hecha" antes de consultar al BCRA | No es correcto: la consulta se hizo en ese mismo turno (`verificar_situacion_crediticia` → `consultado: true`). La transcripción lista las herramientas debajo del texto y Codex lo leyó como si vinieran después | Nada |
+| 2 | P7 | Vuelve a coordinar sin decir los horarios (tercera ronda) y dice "el Prisma sigue ahí esperándote" sin volver a consultarlo | Correcto | Queda en la lista para el user |
+| 3 | K1 | Tras los km pregunta por la visita, cuando falta la forma de pago | Correcto, menor | Queda en la lista |
+| 4 | P1, P8 | Dos preguntas en un mensaje, o la del recorrido fuera de orden | Correcto, menor | Queda en la lista |
+| 5 | E1 | "Ya tengo todo lo que necesito por ahora" y después pregunta | Correcto, menor | Queda en la lista |
+| 6 | K3 | Agrega versión y combustible a la respuesta de los km | Correcto, menor | Queda en la lista |
+| 7 | P9 | "Nos vemos el martes 👍" | No es correcto: no es el 👍 suelto de la regla (mismo caso que R3 en la ronda 2) | Nada |
+| 8 | P8 | Menciona que no tiene el precio de contado | No es correcto: el cliente paga de contado y la regla pide decirlo | Nada |
+
+**Se cumplió el máximo de 4 rondas sin llegar a 0 fallas medias: se frena acá, como pide la tarea 11, y la lista
+va al user.**
+
+## Revisión del código con Codex — 2026-11-15
+
+Codex revisó el diff completo de la rama (sin el simulador) contra las reglas. No aprueba: 1 alta y 5 medias.
+
+| # | Severidad | Hallazgo | Verificación de Claude | Qué se hizo |
+|---|---|---|---|---|
+| 1 | Alta | Entre la última comprobación y el envío del recordatorio, un mensaje nuevo del cliente puede quedar pisado si hay varias instancias del backend | Con varias instancias, sí; el backend es un solo proceso a propósito (`rafagas.js`, `atender.js`). Pero dentro del mismo proceso hay un hueco real: un mensaje que está esperando en la ráfaga (4 s) todavía no está en la cola ni en la charla, y el recordatorio sale igual | Arreglo: el recordatorio no sale si hay mensajes del número esperando en la ráfaga |
+| 2 | Media | La revisión toma 100 consultas antes de filtrar; con muchas que no califican, una que sí podría quedar afuera | Correcto en teoría (hoy hay unas 11 consultas por día) | Arreglo: la base filtra también las consultas cerradas (visita acordada, no sabe) |
+| 3 | Media | Si la IA falla y el cliente se había despedido ("chau", "hasta mañana"), sale el texto fijo | Correcto, caso borde | Arreglo: la detección de demora incluye despedidas |
+| 4 | Media | `sinPreguntaRepetida` puede borrar el final de otra línea que termina en coma | Correcto: la marca de "se quitó algo" no se reinicia por línea | Arreglo |
+| 5 | Media | La detección de nombres de herramientas distingue mayúsculas | Correcto | Arreglo |
+| 6 | Media | El permiso del BCRA se puede duplicar con dos instancias a la vez | Con un solo proceso no pasa: las herramientas corren de a una y los mensajes de un número van en cola | Nada; queda anotado junto con el #1 |

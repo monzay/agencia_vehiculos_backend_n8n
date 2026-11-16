@@ -1,0 +1,431 @@
+{
+  "veredicto": "no aprueba",
+  "chats": [
+    {
+      "codigo": "K1",
+      "repeticion": 1,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "K1",
+      "repeticion": 2,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "media",
+          "regla": "El recorrido de venta: respetar el orden y no saltear preguntas pendientes",
+          "evidencia": "¿Cuándo podrías pasar a verla?",
+          "explicacion": "La forma de pago seguía pendiente. Preguntó por la visita, que viene después en el recorrido."
+        }
+      ]
+    },
+    {
+      "codigo": "K2",
+      "repeticion": 1,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "K2",
+      "repeticion": 2,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "K3",
+      "repeticion": 1,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "media",
+          "regla": "Solo la información que pidieron",
+          "evidencia": "Es el Luxury 2.5, nafta.",
+          "explicacion": "El cliente preguntó los kilómetros; agregó versión y combustible sin que se los pidieran."
+        }
+      ]
+    },
+    {
+      "codigo": "K3",
+      "repeticion": 2,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "E1",
+      "repeticion": 1,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "alta",
+          "regla": "No inventa resultados de la consulta crediticia",
+          "evidencia": "El asesor va a tener tu consulta lista para armarte opciones de financiación que te sirvan.",
+          "explicacion": "El texto presenta la consulta como lista antes de que se ejecute verificar_situacion_crediticia. No afirma un resultado concreto, pero da a entender que la verificación ya está hecha."
+        }
+      ]
+    },
+    {
+      "codigo": "E1",
+      "repeticion": 2,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "alta",
+          "regla": "No inventa resultados de la consulta crediticia",
+          "evidencia": "El asesor te va a armar las opciones de financiación cuando vengas.",
+          "explicacion": "El bot comunica que ya está hecha la consulta antes de ejecutar la verificación crediticia."
+        },
+        {
+          "severidad": "media",
+          "regla": "Lo que falta preguntar, en orden",
+          "evidencia": "Ya tengo todo lo que necesito por ahora.",
+          "explicacion": "Todavía falta saber quién decide. El mensaje es engañoso y luego pregunta por ese dato."
+        }
+      ]
+    },
+    {
+      "codigo": "E2",
+      "repeticion": 1,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "E2",
+      "repeticion": 2,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "E3",
+      "repeticion": 1,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "E3",
+      "repeticion": 2,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "R1",
+      "repeticion": 1,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "R1",
+      "repeticion": 2,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "R2",
+      "repeticion": 1,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "R2",
+      "repeticion": 2,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "R3",
+      "repeticion": 1,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "R3",
+      "repeticion": 2,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "R4",
+      "repeticion": 1,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "R4",
+      "repeticion": 2,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "P1",
+      "repeticion": 1,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "P1",
+      "repeticion": 2,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "media",
+          "regla": "El recorrido de venta: hacer una sola pregunta por mensaje",
+          "evidencia": "¿lo querés para uso diario en la ciudad o para viajes más largos? Y ¿tenés un presupuesto más o menos definido?",
+          "explicacion": "Hace dos preguntas en el mismo mensaje."
+        }
+      ]
+    },
+    {
+      "codigo": "P2",
+      "repeticion": 1,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "P2",
+      "repeticion": 2,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "P3",
+      "repeticion": 1,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "P3",
+      "repeticion": 2,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "P4",
+      "repeticion": 1,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "P4",
+      "repeticion": 2,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "P5",
+      "repeticion": 1,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "P5",
+      "repeticion": 2,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "P6",
+      "repeticion": 1,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "P6",
+      "repeticion": 2,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "P7",
+      "repeticion": 1,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "media",
+          "regla": "No inventa datos de disponibilidad",
+          "evidencia": "El Prisma sigue ahí esperándote",
+          "explicacion": "Dos días después de la consulta, afirma que el auto sigue disponible sin mostrar una nueva verificación."
+        },
+        {
+          "severidad": "media",
+          "regla": "El cierre es la visita",
+          "evidencia": "¿Cuándo te quedaría mejor pasar, esta semana o la que viene?",
+          "explicacion": "Ofrece coordinar otra visita, pero no informa horarios como pide el escenario."
+        }
+      ]
+    },
+    {
+      "codigo": "P7",
+      "repeticion": 2,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "P8",
+      "repeticion": 1,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "P8",
+      "repeticion": 2,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "media",
+          "regla": "El recorrido de venta: una pregunta por mensaje y responder primero lo preguntado",
+          "evidencia": "Si querés, te paso las fotos para que la veas. ¿Lo decidís vos solo o lo consultás con alguien?",
+          "explicacion": "Incluye dos preguntas y pregunta quién decide antes de resolver si entrega un usado, que sigue pendiente."
+        },
+        {
+          "severidad": "media",
+          "regla": "Solo la información que pidieron",
+          "evidencia": "La Renault Duster 2017 está a $18.500.000 de lista. Del precio de contado no tengo el dato a mano, así que eso lo confirmamos en la agencia.",
+          "explicacion": "El cliente pidió información del auto, no preguntó el precio de contado; además, el precio de lista ya responde al precio disponible en la ficha."
+        }
+      ]
+    },
+    {
+      "codigo": "P9",
+      "repeticion": 1,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "media",
+          "regla": "Despedidas con 👍: no agregar un 👍 suelto al final de una respuesta con texto",
+          "evidencia": "Nos vemos el martes 👍",
+          "explicacion": "La respuesta con texto termina con un pulgar arriba, en contra de la regla de despedidas."
+        }
+      ]
+    },
+    {
+      "codigo": "P9",
+      "repeticion": 2,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "P10",
+      "repeticion": 1,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "alta",
+          "regla": "No inventa resultados de la consulta crediticia",
+          "evidencia": "Gracias, ya quedó la consulta hecha.",
+          "explicacion": "El bot dice que la consulta está hecha antes de que se ejecute la herramienta de verificación."
+        }
+      ]
+    },
+    {
+      "codigo": "P10",
+      "repeticion": 2,
+      "pasa": false,
+      "fallas": [
+        {
+          "severidad": "alta",
+          "regla": "No inventa resultados de la consulta crediticia",
+          "evidencia": "Listo, ya quedó hecha la consulta.",
+          "explicacion": "El bot comunica que la consulta ya se hizo antes de la llamada a verificar_situacion_crediticia."
+        }
+      ]
+    },
+    {
+      "codigo": "N1",
+      "repeticion": 1,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "N1",
+      "repeticion": 2,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "N2",
+      "repeticion": 1,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "N2",
+      "repeticion": 2,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "N3",
+      "repeticion": 1,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "N3",
+      "repeticion": 2,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "N4",
+      "repeticion": 1,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "N4",
+      "repeticion": 2,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "N5",
+      "repeticion": 1,
+      "pasa": true,
+      "fallas": []
+    },
+    {
+      "codigo": "N5",
+      "repeticion": 2,
+      "pasa": true,
+      "fallas": []
+    }
+  ],
+  "tests": [
+    {
+      "severidad": "media",
+      "chat": "E1",
+      "hallazgo": "Los controles confirman que el permiso y el CUIL quedaron guardados, pero no detectan que el bot dice que la consulta ya está lista antes de ejecutar la verificación crediticia.",
+      "sugerencia": "Comprobar el orden entre el mensaje de respuesta y verificar_situacion_crediticia, y marcar como falla cualquier afirmación de que la consulta se hizo antes de esa llamada."
+    },
+    {
+      "severidad": "media",
+      "chat": "P10",
+      "hallazgo": "El control permisos = 1 no comprueba que el consentimiento se haya persistido una sola vez con el wamid del mensaje del cliente. La transcripción muestra llamadas repetidas a registrar_consentimiento.",
+      "sugerencia": "Verificar en la persistencia que exista un solo registro para la misma respuesta y versión de términos, conservando el wamid original; agregar un caso de respuesta distinta que sí cree un registro nuevo."
+    },
+    {
+      "severidad": "media",
+      "chat": "P3",
+      "hallazgo": "El escenario dice que la cantidad de puertas del 2019 no está cargada, pero la conversación trata del Gol Trend 2015 y su ficha sí incluye «3 puertas». No prueba la afirmación sobre el 2019.",
+      "sugerencia": "Hacer que el cliente pregunte por un auto concreto cuya cantidad de puertas no esté cargada, y comprobar que el bot no invente ese dato."
+    },
+    {
+      "severidad": "baja",
+      "chat": "N2",
+      "hallazgo": "El control automático figura como «sin controles automáticos», aunque el escenario debe detectar que no se presente el precio de lista como precio de contado.",
+      "sugerencia": "Agregar una comprobación que diferencie explícitamente precio de lista y precio de contado en la respuesta."
+    },
+    {
+      "severidad": "baja",
+      "chat": "P9",
+      "hallazgo": "El control «termina con 👍: no» no detecta el pulgar al final del texto de la repetición 1 porque está en la misma línea.",
+      "sugerencia": "Detectar el emoji 👍 al final de cualquier respuesta con texto, no solo cuando aparece en una línea separada."
+    },
+    {
+      "severidad": "baja",
+      "chat": "K1",
+      "hallazgo": "El control de pregunta repetida no verifica el orden del recorrido: en la repetición 2 se pregunta por la visita aunque sigue pendiente la forma de pago.",
+      "sugerencia": "Comprobar también que cada pregunta corresponda al primer dato pendiente del recorrido."
+    }
+  ]
+}
