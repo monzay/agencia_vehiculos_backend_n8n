@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { temasPreguntados, temasSinContestar, marcarPreguntados, sinPreguntaRepetida, temasSinGuardar } from "./temas-preguntados.js";
+import { temasPreguntados, temasSinContestar, marcarPreguntados, sinPreguntaRepetida, temasSinGuardar, esAvisoDelCuil } from "./temas-preguntados.js";
 
 const salida = (mensaje, extra = {}) => ({ direccion: "saliente", mensaje, ...extra });
 const entrada = (mensaje) => ({ direccion: "entrante", mensaje });
@@ -134,4 +134,19 @@ test("temasPreguntados: usado_datos también con la marca o el modelo por separa
   // El recordatorio que salió en producción el 16/11 (C49) con el permiso pendiente.
   assert.ok(temasPreguntados("¿Me confirmás si te queda bien que consultemos tu situación en el BCRA?").includes("permiso"));
   assert.ok(temasPreguntados("¿Me autorizás la consulta en la Central de Deudores?").includes("permiso"));
+});
+
+// ── El aviso del CUIL (cuil-directo) ──
+
+test("esAvisoDelCuil reconoce el pedido del dueño, aunque la Central de Deudores esté en la oración afirmativa", () => {
+  assert.equal(esAvisoDelCuil("¿Me pasás tu CUIL? Así el asesor puede consultar tu situación en la Central de Deudores del BCRA."), true);
+  assert.equal(esAvisoDelCuil("¡Genial! 🙌\n\nCon tu CUIL el asesor puede consultar tu situación en el BCRA. Si estás de acuerdo, mandámelo de nuevo."), true);
+});
+
+test("esAvisoDelCuil exige las dos cosas: el CUIL y la Central de Deudores o el BCRA", () => {
+  assert.equal(esAvisoDelCuil("¿Me pasás tu CUIL?"), false, "solo el CUIL");
+  assert.equal(esAvisoDelCuil("El asesor puede consultar tu situación en la Central de Deudores del BCRA."), false, "solo el BCRA");
+  assert.equal(esAvisoDelCuil("Para armarte opciones vemos tu situación crediticia. ¿Me autorizás?"), false, "solo situación crediticia");
+  assert.equal(esAvisoDelCuil(""), false);
+  assert.equal(esAvisoDelCuil(null), false);
 });

@@ -173,20 +173,22 @@ test("con la visita acordada alcanza, aunque no haya guardado la disponibilidad"
   assert.deepEqual(pendientes({ ...completa, disponibilidad: null, visita_propuesta: "jueves a la tarde" }, null), []);
 });
 
-// ── El permiso del BCRA y el CUIL entran en lo que falta ──
+// ── El CUIL entra en lo que falta (cuil-directo: sin permiso aparte) ──
 
 const FINANCIA_CON_RECIBO = { auto_id: 5, pago_tipo: "financiado", anticipo: "4 millones", credito_ok: 1 };
 
-test("si espera el permiso, figura después del recibo o garante y antes del usado", () => {
-  const faltan = pendientes({ ...FINANCIA_CON_RECIBO }, null, "pedir_consentimiento");
-  assert.deepEqual(faltan.slice(0, 3), ["permiso para consultar su situación en el BCRA (pedilo como dice Verificación crediticia)", "si entrega un usado", "quién decide"]);
-  const sinRecibo = pendientes({ auto_id: 5, pago_tipo: "financiado", anticipo: "4 millones" }, null, "pedir_consentimiento");
-  assert.ok(sinRecibo.indexOf("recibo o garante") < sinRecibo.findIndex((f) => f.startsWith("permiso")));
+const PEDIR_CUIL = "su CUIL, para que el asesor consulte su situación en el BCRA (pedilo como dice Verificación crediticia)";
+
+test("si falta el CUIL, figura con para qué es, después del recibo o garante y antes del usado, sin un permiso aparte", () => {
+  const faltan = pendientes({ ...FINANCIA_CON_RECIBO }, null, "pedir_cuil");
+  assert.deepEqual(faltan.slice(0, 3), [PEDIR_CUIL, "si entrega un usado", "quién decide"]);
+  assert.equal(faltan.some((f) => /permiso/i.test(f)), false, "ya no hay un paso de permiso");
 });
 
 test("si autorizó y falta el CUIL, el CUIL figura antes del usado", () => {
+  // Un sí al permiso anterior al cambio: estadoCredito da "pedir_cuil", igual que sin respuesta.
   const faltan = pendientes({ ...FINANCIA_CON_RECIBO }, null, "pedir_cuil");
-  assert.deepEqual(faltan.slice(0, 2), ["su CUIL (ya autorizó la consulta)", "si entrega un usado"]);
+  assert.deepEqual(faltan.slice(0, 2), [PEDIR_CUIL, "si entrega un usado"]);
 });
 
 test("si dijo que no, ya se consultó o paga de contado (credito nulo), ni el permiso ni el CUIL figuran", () => {
@@ -207,9 +209,13 @@ test("la visita propuesta lleva el día en que el cliente la dijo", () => {
   assert.ok(respondido({ visita_propuesta: "el sábado" }).includes('visita propuesta: "el sábado"'));
 });
 
-test("con el permiso anticipado, figura justo después del recibo o garante (que todavía falta) y antes del usado", () => {
-  const faltan = pendientes({ auto_id: 5, pago_tipo: "financiado", anticipo: "4 millones" }, null, "pedir_consentimiento_tras_el_recibo");
-  assert.deepEqual(faltan.slice(0, 3), ["recibo o garante", "permiso para consultar su situación en el BCRA (apenas responda lo del recibo o garante)", "si entrega un usado"]);
+test("con el CUIL anticipado, figura justo después del recibo o garante (que todavía falta) y antes del usado", () => {
+  const faltan = pendientes({ auto_id: 5, pago_tipo: "financiado", anticipo: "4 millones" }, null, "pedir_cuil_tras_el_recibo");
+  assert.deepEqual(faltan.slice(0, 3), [
+    "recibo o garante",
+    "su CUIL, para que el asesor consulte su situación en el BCRA (apenas responda lo del recibo o garante)",
+    "si entrega un usado",
+  ]);
 });
 
 // ── ajustes-por-chats-reales: el nombre lo dice el cliente ──

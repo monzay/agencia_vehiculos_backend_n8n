@@ -808,8 +808,9 @@ const CUIL_DE_PRUEBA = "20123456786"; // DNI 12345678
 function baseParaVerificar() {
   return baseFalsa({
     "terminos_versiones.findFirst": { id: 3 },
-    "chat_estado.findUnique": { pago_tipo: "financiado", credito_ok: 1 },
+    "chat_estado.findUnique": { pago_tipo: "financiado", credito_ok: 1, sesion_inicio: new Date("2026-11-01T00:00:00Z") },
     "consentimientos.findFirst": { id: 1, acepta: true },
+    "historial_mensajes.findMany": [],
     "clientes.findUnique": { dni: "12345678", cuil: null },
     "clientes.findFirst": null,
     "consultas_crediticias.findFirst": null,
@@ -830,15 +831,30 @@ test("verificar_situacion_crediticia no le devuelve el semáforo a la IA ni toca
   assert.deepEqual(ultima(root, "chat_estado", "update").args.data, { cuil_informado: "20123456786" }, "guarda el CUIL; no cambia puntaje ni temperatura");
 });
 
-test("registrar_consentimiento pasa el sí o el no del cliente", async () => {
+test("registrar_consentimiento pasa el no del cliente tal cual; un sí no queda registrado y vuelve con el motivo", async () => {
   const respuestas = [];
-  const credito = { registrarConsentimiento: async (acepta) => (respuestas.push(acepta), { registrado: true }) };
-  for (const acepta of [true, false]) {
-    const r = await ejecutarHerramienta("registrar_consentimiento", { acepta }, ctx(baseFalsa(), { credito }));
-    assert.equal(r.esError, false);
-    assert.equal(r.resultado.registrado, true);
-  }
-  assert.deepEqual(respuestas, [true, false]);
+  const credito = {
+    registrarConsentimiento: async (acepta) => (respuestas.push(acepta), acepta ? { registrado: false, motivo: "El sí es el CUIL que manda el cliente después del aviso." } : { registrado: true }),
+  };
+  const no = await ejecutarHerramienta("registrar_consentimiento", { acepta: false }, ctx(baseFalsa(), { credito }));
+  assert.equal(no.esError, false);
+  assert.equal(no.resultado.registrado, true);
+  const si = await ejecutarHerramienta("registrar_consentimiento", { acepta: true }, ctx(baseFalsa(), { credito }));
+  assert.equal(si.resultado.registrado, false);
+  assert.match(si.resultado.motivo, /CUIL/);
+  assert.equal(si.resultado.sigue, undefined);
+  assert.deepEqual(respuestas, [false, true]);
+});
+
+test("las herramientas de crédito se describen como el pedido directo: el no claro con registrar_consentimiento y el CUIL como autorización", () => {
+  const defs = Object.fromEntries(definicionesParaClaude().map((d) => [d.name, d]));
+  const consentimiento = defs.registrar_consentimiento;
+  assert.match(consentimiento.description, /no quiere pasar(le)? el CUIL/);
+  assert.doesNotMatch(consentimiento.description, /pedirle permiso|true solo si dijo que sí/);
+  assert.doesNotMatch(consentimiento.input_schema.properties.acepta.description ?? "", /no quedó claro/);
+  assert.match(defs.verificar_situacion_crediticia.description, /pasar el CUIL es (la|su) autorización/i);
+  assert.doesNotMatch(defs.verificar_situacion_crediticia.description, /solo si ya autorizó/);
+  assert.match(defs.verificar_situacion_crediticia.description, /apenas el cliente (te )?lo manda/);
 });
 
 test("sin la verificación conectada, las herramientas de crédito no hacen nada", async () => {
@@ -994,13 +1010,6 @@ test("buscar_autos sin auto en la consulta mantiene el orden de siempre: los úl
 
 // ── El permiso y el CUIL en el recorrido ──
 
-test("registrar_consentimiento: si autorizó, la herramienta dice que lo que sigue es pedir el CUIL", async () => {
-  const credito = { registrarConsentimiento: async () => ({ registrado: true }) };
-  const r = await ejecutarHerramienta("registrar_consentimiento", { acepta: true }, ctx(baseFalsa(), { credito }));
-  assert.equal(r.resultado.registrado, true);
-  assert.match(r.resultado.sigue, /Pedile ahora su CUIL \(11 números\) y usá verificar_situacion_crediticia/);
-});
-
 test("registrar_consentimiento: si no autorizó, la herramienta dice que siga con el recorrido sin pedir el CUIL", async () => {
   const credito = { registrarConsentimiento: async () => ({ registrado: true }) };
   const r = await ejecutarHerramienta("registrar_consentimiento", { acepta: false }, ctx(baseFalsa(), { credito }));
@@ -1019,13 +1028,12 @@ const dbDeCalificacion = () =>
     "chat_estado.update": (a) => a,
   });
 
-test("registrar_calificacion devuelve en faltan el permiso o el CUIL según el estado de la verificación", async () => {
-  for (const [estado, texto] of [["pedir_consentimiento", /permiso para consultar su situación en el BCRA/], ["pedir_cuil", /su CUIL/]]) {
-    const credito = { estado: async () => estado };
-    const r = await ejecutarHerramienta("registrar_calificacion", { ...calificacionVacia, tiene_recibo_o_garante: true }, ctx(dbDeCalificacion(), { credito }));
-    assert.match(r.resultado.faltan[0], texto);
-    assert.equal(r.resultado.faltan[1], "si entrega un usado");
-  }
+test("registrar_calificacion devuelve en faltan el CUIL, con para qué es, según el estado de la verificación", async () => {
+  const credito = { estado: async () => "pedir_cuil" };
+  const r = await ejecutarHerramienta("registrar_calificacion", { ...calificacionVacia, tiene_recibo_o_garante: true }, ctx(dbDeCalificacion(), { credito }));
+  assert.match(r.resultado.faltan[0], /^su CUIL, para que el asesor consulte su situación en el BCRA/);
+  assert.equal(r.resultado.faltan[1], "si entrega un usado");
+  assert.equal(r.resultado.faltan.some((f) => /permiso/i.test(f)), false);
 });
 
 test("registrar_calificacion sigue funcionando si no se puede leer el estado de la verificación", async () => {
@@ -1035,20 +1043,15 @@ test("registrar_calificacion sigue funcionando si no se puede leer el estado de 
   assert.equal(r.resultado.faltan.some((f) => /BCRA|CUIL/.test(f)), false);
 });
 
-test("registrar_calificacion, cuando lo que sigue es el permiso, devuelve también el link de privacidad para pedirlo en ese mismo mensaje", async () => {
-  const credito = { estado: async () => "pedir_consentimiento" };
-  const r = await ejecutarHerramienta("registrar_calificacion", { ...calificacionVacia, tiene_recibo_o_garante: true }, ctx(dbDeCalificacion(), { credito }));
-  assert.equal(r.resultado.privacidad, "https://agencia.com/privacidad");
-  const cuil = await ejecutarHerramienta("registrar_calificacion", { ...calificacionVacia }, ctx(dbDeCalificacion(), { credito: { estado: async () => "pedir_cuil" } }));
-  assert.equal(cuil.resultado.privacidad, undefined);
-  const nada = await ejecutarHerramienta("registrar_calificacion", { ...calificacionVacia }, ctx(dbDeCalificacion()));
-  assert.equal(nada.resultado.privacidad, undefined);
+test("registrar_calificacion no devuelve el link de privacidad: el CUIL se pide sin link", async () => {
+  for (const credito of [{ estado: async () => "pedir_cuil" }, { estado: async () => "pedir_cuil_tras_el_recibo" }, undefined]) {
+    const r = await ejecutarHerramienta("registrar_calificacion", { ...calificacionVacia, tiene_recibo_o_garante: true }, ctx(dbDeCalificacion(), { credito }));
+    assert.equal(r.resultado.privacidad, undefined);
+  }
 });
 
-test("registrar_consentimiento repetido: dice que ya estaba registrado y que, si ya pasó el CUIL, use verificar_situacion_crediticia ahora", async () => {
+test("registrar_consentimiento repetido: con el no, dice que ya estaba registrado y que siga sin pedir el CUIL", async () => {
   const credito = { registrarConsentimiento: async () => ({ registrado: true, repetido: true }) };
-  const r = await ejecutarHerramienta("registrar_consentimiento", { acepta: true }, ctx(baseFalsa(), { credito }));
-  assert.match(r.resultado.sigue, /Ya estaba registrado: si el cliente ya te pasó el CUIL, usá verificar_situacion_crediticia ahora/);
   const no = await ejecutarHerramienta("registrar_consentimiento", { acepta: false }, ctx(baseFalsa(), { credito }));
   assert.match(no.resultado.sigue, /Ya estaba registrado: seguí con el recorrido, sin pedir el CUIL/);
 });

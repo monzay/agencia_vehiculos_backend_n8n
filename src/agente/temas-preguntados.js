@@ -21,6 +21,13 @@ export const TEMAS = [
   ["cuil", /\bcuil\b|\bcuit\b/i],
 ];
 
+// El mensaje avisa del CUIL: lo nombra y dice que es para la Central de Deudores o el BCRA (no mira solo preguntas).
+export function esAvisoDelCuil(texto) {
+  const t = String(texto ?? "");
+  const cuil = TEMAS.find(([tema]) => tema === "cuil")[1];
+  return cuil.test(t) && /central de deudores|\bBCRA\b/i.test(t);
+}
+
 // Temas de las preguntas del mensaje (las afirmaciones no cuentan).
 export function temasPreguntados(texto) {
   const preguntas = String(texto ?? "").match(/¿?[^.!?¿]*\?/g) ?? [];

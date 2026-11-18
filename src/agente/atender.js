@@ -489,7 +489,10 @@ async function responderConAgente(turno, imagenes, deps) {
           // El wamid del mensaje en que respondió queda como prueba del consentimiento.
           registrarConsentimiento: (acepta) => registrarConsentimiento({ db: root, clienteId: cliente.id, ahora, wamid }, acepta),
           verificar: (cuil, sesionId) =>
-            verificarSituacion({ db: root, clienteId: cliente.id, sesionId, ahora, bcra: deps.bcra ?? bcraPorDefecto }, cuil),
+            verificarSituacion(
+              { db: root, clienteId: cliente.id, sesionId, ahora, bcra: deps.bcra ?? bcraPorDefecto, entrantes: turno.entrantes.map((e) => ({ texto: e.mensaje, wamid: e.wamid })) },
+              cuil
+            ),
         },
       },
       registrarConsumo: ({ modelo, usage }) =>

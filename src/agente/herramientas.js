@@ -207,9 +207,7 @@ async function autoDeLaConsulta(db, sesionId) {
   return (await db.autos.findUnique({ where: { id: sesion.auto_id }, select: { id: true, precio: true } })) ?? null;
 }
 
-const SIGUE_TRAS_AUTORIZAR = "Pedile ahora su CUIL (11 números) y usá verificar_situacion_crediticia.";
 const SIGUE_TRAS_NEGAR = "Seguí con el recorrido, sin pedir el CUIL.";
-const SIGUE_SI_YA_ESTABA_AUTORIZADO = "Ya estaba registrado: si el cliente ya te pasó el CUIL, usá verificar_situacion_crediticia ahora; si no, pedíselo (11 números).";
 const SIGUE_SI_YA_ESTABA_NEGADO = "Ya estaba registrado: seguí con el recorrido, sin pedir el CUIL.";
 
 const HERRAMIENTAS = [
@@ -431,32 +429,30 @@ const HERRAMIENTAS = [
       if (pedirFotosUsado) await Promise.resolve(ctx.marcarFotosPedidas?.(sesionId)).catch((err) => console.error("[agente] no se pudo marcar el pedido de fotos del usado:", err?.message));
       // En qué va la verificación crediticia con lo recién anotado; si no se puede leer, sigue sin eso.
       const credito = await ctx.credito?.estado?.(sesionId).catch(() => null);
-      // Para pedir el permiso en este mismo mensaje hace falta el link; el contexto se armó antes de guardar.
-      const privacidad = credito === "pedir_consentimiento" && ctx.urlPublica ? new URL("/privacidad", ctx.urlPublica).href : null;
-      return { resultado: { registrado: true, faltan: pendientes(vigente, usado, credito, { pedirNombre }), ...(pedirFotosUsado && { pedir_fotos_usado: true }), ...(privacidad && { privacidad }), ...(aviso && { aviso }) }, sesionId };
+      return { resultado: { registrado: true, faltan: pendientes(vigente, usado, credito, { pedirNombre }), ...(pedirFotosUsado && { pedir_fotos_usado: true }), ...(aviso && { aviso }) }, sesionId };
     },
   },
   {
     nombre: "registrar_consentimiento",
     descripcion:
-      "Guarda si el cliente autoriza consultar su situación crediticia en el BCRA. Usala solo después de pedirle permiso como dice 'Verificación crediticia', con su respuesta: true solo si dijo que sí claramente.",
+      "Guarda que el cliente no quiere pasarle el CUIL para consultar su situación en el BCRA. Usala solo si dice claramente que no quiere pasar el CUIL, con acepta false. Si esquiva la pregunta o no queda claro, no la uses. El sí no se guarda acá: es el CUIL que manda el cliente.",
     // Lo que falla acá puede traer el CUIL en el mensaje: el log lleva solo el código.
     datosPersonales: true,
     esquema: z.strictObject({
-      acepta: z.boolean().describe("true si autorizó la consulta; false si dijo que no o no quedó claro."),
+      acepta: z.boolean().describe("false: el cliente dijo claramente que no quiere pasar el CUIL."),
     }),
     async ejecutar({ acepta }, { credito }) {
       if (!credito) return { registrado: false, motivo: SIN_VERIFICACION };
       const r = await credito.registrarConsentimiento(acepta);
       if (!r.registrado) return r;
-      if (r.repetido) return { ...r, sigue: acepta ? SIGUE_SI_YA_ESTABA_AUTORIZADO : SIGUE_SI_YA_ESTABA_NEGADO };
-      return { ...r, sigue: acepta ? SIGUE_TRAS_AUTORIZAR : SIGUE_TRAS_NEGAR };
+      if (r.repetido) return { ...r, sigue: SIGUE_SI_YA_ESTABA_NEGADO };
+      return { ...r, sigue: SIGUE_TRAS_NEGAR };
     },
   },
   {
     nombre: "verificar_situacion_crediticia",
     descripcion:
-      "Consulta la situación crediticia del cliente en el BCRA con su CUIL, solo si ya autorizó. El resultado lo ve el asesor: a vos solo te dice si se hizo. Nunca le digas al cliente si califica o no.",
+      "Consulta la situación crediticia del cliente en el BCRA con el CUIL que te pasó. Pasar el CUIL es su autorización: usala apenas el cliente te lo manda. El resultado lo ve el asesor: a vos solo te dice si se hizo. Nunca le digas al cliente si califica o no.",
     datosPersonales: true,
     esquema: z.strictObject({
       cuil: z.string().trim().min(11).max(15).regex(/^[\d\s.-]+$/).describe("El CUIL que dio el cliente: 11 números."),

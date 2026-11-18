@@ -169,23 +169,21 @@ test("ante un recordatorio: agencia o transferencia, y por transferencia el gere
   assert.match(INSTRUCCIONES, /avisar_administracion con numero_equivocado/);
 });
 
-test("con la verificación activa el contexto lo dice con el link de privacidad", () => {
+test("con la verificación activa, el contexto pide el CUIL con para qué es y deja el link de privacidad solo para si pregunta", () => {
   const privacidadUrl = "https://agencia.com/privacidad";
-  const permiso = contextoDelMomento({ ahora, credito: "pedir_consentimiento", privacidadUrl });
-  assert.match(permiso, /Verificación crediticia: pedile permiso/);
-  assert.ok(permiso.includes(privacidadUrl));
-
   const cuil = contextoDelMomento({ ahora, credito: "pedir_cuil", privacidadUrl });
-  assert.match(cuil, /pedile su CUIL/);
+  assert.match(cuil, /Verificación crediticia: pedile su CUIL diciendo para qué es/);
   assert.match(cuil, /verificar_situacion_crediticia/);
+  assert.match(cuil, /Si pregunta qué se hace con sus datos: https:\/\/agencia\.com\/privacidad/);
+  assert.doesNotMatch(cuil, /permiso/);
 
   assert.doesNotMatch(contextoDelMomento({ ahora, credito: null, privacidadUrl }), /Verificación crediticia/);
   // Con un recordatorio de cuota la charla es por la cuota: no se pide nada del BCRA.
   const cobranza = { numero: 3, cuotasTotal: 12, vencimiento: "2026-10-15", importe: 150000 };
-  assert.doesNotMatch(contextoDelMomento({ ahora, credito: "pedir_consentimiento", privacidadUrl, cobranza }), /Verificación crediticia/);
+  assert.doesNotMatch(contextoDelMomento({ ahora, credito: "pedir_cuil", privacidadUrl, cobranza }), /Verificación crediticia/);
 });
 
-test("la verificación crediticia: nunca le dice el resultado ni insiste si dice que no", async () => {
+test("la verificación crediticia: pide el CUIL diciendo para qué es, nunca dice el resultado y no insiste si no quiere pasarlo", async () => {
   const { INSTRUCCIONES } = await import("./instrucciones.js");
   assert.match(INSTRUCCIONES, /## Verificación crediticia/);
   assert.match(INSTRUCCIONES, /Nunca le digas el resultado ni si califica/);
@@ -306,7 +304,8 @@ test("el ejemplo de la entrega mínima sin dato usa la respuesta A", async () =>
 test("la entrega mínima sigue con el recorrido: guarda que financia y pregunta una sola cosa, sin cuotas", async () => {
   const t = await instrucciones();
   assert.match(t, /guardá pago_tipo financiado y preguntá una sola cosa: lo primero que falte del recorrido/);
-  assert.match(t, /El CUIL se pide solo cuando el contexto lo indica, primero el permiso con el link de privacidad/);
+  assert.match(t, /El CUIL se pide solo cuando el contexto lo indica, como dice Verificación crediticia/);
+  assert.doesNotMatch(t, /primero el permiso con el link de privacidad/);
   assert.match(t, /Nunca hables de cuotas ni digas si su anticipo alcanza/);
 });
 
@@ -394,17 +393,37 @@ test("un mensaje que empieza con [audio] es una nota de voz transcripta: se resp
   assert.match(t, /Un mensaje del cliente que empieza con \[audio\] es la transcripción de una nota de voz: respondé a lo que dice y nunca digas que no podés escuchar audios/);
 });
 
-test("apenas el cliente autoriza, pide el CUIL en ese mismo mensaje y guarda el permiso una sola vez por respuesta", async () => {
+test("pide el CUIL directo con el ejemplo del dueño, sin permiso aparte, sin sí o no y sin el link", async () => {
   const t = await instrucciones();
-  assert.match(t, /Apenas el cliente autoriza, pedile el CUIL en ESE mismo mensaje, sin pasar a otra pregunta/);
-  assert.match(t, /Usá registrar_consentimiento una sola vez por cada respuesta del cliente/);
+  assert.ok(t.includes('"¿Me pasás tu CUIL? Así el asesor puede consultar tu situación en la Central de Deudores del BCRA."'));
+  assert.match(t, /No pidas permiso aparte, no preguntes "sí o no", no digas "tus datos se usan solo para eso" ni pases el link de privacidad/);
+  assert.doesNotMatch(t, /Para pedir permiso, con tus palabras/);
+  assert.doesNotMatch(t, /Apenas el cliente autoriza/);
+  assert.doesNotMatch(t, /usá el link de privacidad que trae el resultado/);
 });
 
-test("la verificación también se pide cuando registrar_calificacion devuelve el permiso o el CUIL primero en faltan (el contexto se armó antes de guardar)", async () => {
+test("si pregunta para qué es o qué hacen con sus datos, contesta en una línea y pasa el link de privacidad", async () => {
   const t = await instrucciones();
-  assert.match(t, /Solo cuando el contexto dice "Verificación crediticia" o cuando lo que te devuelve registrar_calificacion en faltan empieza con el permiso o el CUIL/);
-  assert.match(t, /Después de guardar una respuesta, la próxima pregunta es la primera de faltan en lo que devuelve registrar_calificacion: puede haber cambiado respecto del contexto/);
-  assert.match(t, /usá el link de privacidad que trae el resultado/);
+  assert.match(t, /Si pregunta para qué es o qué se hace con sus datos, contestá en una línea \(lo ve solo el asesor, para armarle la financiación\) y pasale el link de privacidad del contexto/);
+});
+
+test("si no quiere pasarlo guarda el no claro con registrar_consentimiento; si esquiva la pregunta no guarda nada", async () => {
+  const t = await instrucciones();
+  assert.match(t, /Si dice claramente que no quiere pasarlo, guardá el no con registrar_consentimiento \(acepta false\), no insistas ni le preguntes por qué y seguí con el recorrido/);
+  assert.match(t, /Si esquiva la pregunta o no queda claro, no guardes nada/);
+});
+
+test("si la herramienta pide decir para qué es, lo dice y le pide que lo vuelva a mandar; no consulta un CUIL de mensajes anteriores", async () => {
+  const t = await instrucciones();
+  assert.match(t, /Si la herramienta te dice que primero le digas para qué es, decíselo con la frase de arriba y pedile que te lo vuelva a mandar si está de acuerdo/);
+  assert.match(t, /No consultes un CUIL que sacaste de mensajes anteriores/);
+});
+
+test("el CUIL también se pide cuando registrar_calificacion lo devuelve primero en faltan (el contexto se armó antes de guardar)", async () => {
+  const t = await instrucciones();
+  assert.match(t, /Solo cuando el contexto dice "Verificación crediticia" o cuando lo que te devuelve registrar_calificacion en faltan empieza con el CUIL/);
+  assert.match(t, /Después de guardar una respuesta, la próxima pregunta es la primera de faltan en lo que devuelve registrar_calificacion: puede haber cambiado respecto del contexto \(por ejemplo, el CUIL va antes que el usado\)/);
+  assert.doesNotMatch(t, /el permiso del BCRA va antes que el usado/);
 });
 
 test("con los km sin cargar, después de decirlo cierra con la invitación a verlo y no repite la pregunta del recorrido", async () => {
@@ -414,7 +433,7 @@ test("con los km sin cargar, después de decirlo cierra con la invitación a ver
 
 test("con el CUIL: usa SIEMPRE verificar_situacion_crediticia, no inventa que no coincide ni que falló, y después solo dice que el asesor arma las opciones", async () => {
   const t = await instrucciones();
-  assert.match(t, /Cuando el cliente te manda 11 números después de autorizar, usá SIEMPRE verificar_situacion_crediticia antes de contestar/);
+  assert.match(t, /Cuando el cliente te manda su CUIL, usá SIEMPRE verificar_situacion_crediticia antes de contestar, aunque el contexto no lo pida/);
   assert.match(t, /Nunca digas que un CUIL no coincide o que la consulta falló si la herramienta no lo dijo/);
   assert.match(t, /Después de consultar, decile solo que el asesor le arma las opciones: nunca el resultado ni palabras como "cargado" o "sistema"/);
 });

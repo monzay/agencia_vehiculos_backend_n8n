@@ -9,7 +9,7 @@ const TEL = "5493885550101"; // el número de WhatsApp de casi todas las pruebas
 
 // Las tablas de clientes son las de la migración 074: sin clientes.canal_id y con un único
 // vínculo por canal + identificador en cliente_canales. Un campo que no existe revienta, como en Prisma.
-const COLUMNAS_CLIENTE = ["id", "canal", "nombre", "telefono", "dni", "email", "deleted_at", "fusionado_en_id"];
+const COLUMNAS_CLIENTE = ["id", "canal", "nombre", "telefono", "dni", "cuil", "email", "deleted_at", "fusionado_en_id"];
 const COLUMNAS_CANAL = ["id", "cliente_id", "canal", "identificador"];
 const FICHA_VACIA = { nombre: null, telefono: null, dni: null, email: null, deleted_at: null, fusionado_en_id: null };
 
@@ -897,14 +897,15 @@ async function conWebPublica(fn) {
 
 const financiaConRecibo = { id: 900, cliente_id: 50, pago_tipo: "financiado", credito_ok: 1, ultimo_mensaje: new Date(ahora.getTime() - 60_000) };
 
-test("con la verificación activa y el cliente financiando, el agente recibe el pedido de permiso con el link de privacidad", async () => {
+test("con la verificación activa y el cliente financiando, el agente recibe el pedido del CUIL con para qué es, y el link de privacidad solo para si pregunta", async () => {
   await conWebPublica(async () => {
     const root = conVerificacionActiva(baseFalsa({ cliente: { id: 50 }, sesion: financiaConRecibo }));
     const anthropic = claudeFalso("Dale");
     await atenderMensaje({ telefono: TEL, texto: "tengo recibo de sueldo", ahora }, deps(root, anthropic));
     const contexto = anthropic.pedidos[0].system[1].text;
-    assert.match(contexto, /Verificación crediticia: pedile permiso/);
-    assert.ok(contexto.includes("https://agencia.com/privacidad"));
+    assert.match(contexto, /Verificación crediticia: pedile su CUIL diciendo para qué es/);
+    assert.doesNotMatch(contexto, /pedile permiso/);
+    assert.match(contexto, /Si pregunta qué se hace con sus datos: https:\/\/agencia\.com\/privacidad/);
   });
 });
 
@@ -918,20 +919,60 @@ test("si falla averiguar en qué va la verificación crediticia, la respuesta sa
   });
 });
 
-test("el consentimiento guarda el wamid del mensaje en que el cliente respondió", async () => {
+test("el sí guarda el wamid del mensaje que trae el CUIL: el orquestador le pasa a verificar los mensajes del turno", async () => {
+  await conWebPublica(async () => {
+    const guardados = [];
+    const aviso = mensajeDe(1, "saliente", "¿Me pasás tu CUIL? Así el asesor puede consultar tu situación en la Central de Deudores del BCRA.", hace(0.2));
+    const root = conVerificacionActiva(baseFalsa({ cliente: { id: 50 }, sesion: { ...financiaConRecibo, sesion_inicio: hace(2) }, historial: [aviso] }));
+    root.consentimientos.create = async ({ data }) => (guardados.push(data), { id: 1, ...data });
+    root.consultas_crediticias.create = async ({ data }) => data;
+    const respuestas = [
+      { stop_reason: "tool_use", usage: { input_tokens: 10, output_tokens: 5 }, content: [{ type: "tool_use", id: "t1", name: "verificar_situacion_crediticia", input: { cuil: "20-12345678-6" } }] },
+      { stop_reason: "end_turn", usage: { input_tokens: 10, output_tokens: 5 }, content: [{ type: "text", text: "Gracias, el asesor te arma las opciones." }] },
+    ];
+    const anthropic = { messages: { create: async () => respuestas.shift() } };
+    const bcra = { consultar: async () => ({ estado: "ok", deudas: null, cheques: null }) };
+    await atenderMensaje({ telefono: TEL, wamid: "wamid.DEL_CUIL", texto: "20-12345678-6", ahora }, { ...deps(root, anthropic), bcra });
+    assert.equal(guardados.length, 1);
+    assert.equal(guardados[0].acepta, true);
+    assert.equal(guardados[0].wamid, "wamid.DEL_CUIL");
+  });
+});
+
+test("en una ráfaga de dos mensajes con el CUIL en el primero, el sí guarda el wamid del primero", async () => {
+  await conWebPublica(async () => {
+    const guardados = [];
+    const aviso = mensajeDe(1, "saliente", "¿Me pasás tu CUIL? Así el asesor puede consultar tu situación en la Central de Deudores del BCRA.", hace(0.2));
+    const root = conVerificacionActiva(baseFalsa({ cliente: { id: 50 }, sesion: { ...financiaConRecibo, sesion_inicio: hace(2) }, historial: [aviso] }));
+    root.consentimientos.create = async ({ data }) => (guardados.push(data), { id: 1, ...data });
+    root.consultas_crediticias.create = async ({ data }) => data;
+    const respuestas = [
+      { stop_reason: "tool_use", usage: { input_tokens: 10, output_tokens: 5 }, content: [{ type: "tool_use", id: "t1", name: "verificar_situacion_crediticia", input: { cuil: "20123456786" } }] },
+      { stop_reason: "end_turn", usage: { input_tokens: 10, output_tokens: 5 }, content: [{ type: "text", text: "Gracias" }] },
+    ];
+    const anthropic = { messages: { create: async () => respuestas.shift() } };
+    const d = { ...deps(root, anthropic), bcra: { consultar: async () => ({ estado: "ok", deudas: null, cheques: null }) }, esperaRafagaMs: 30 };
+    await Promise.all([
+      atenderMensaje({ telefono: TEL, wamid: "wamid.CON_CUIL", texto: "20123456786", ahora }, d),
+      pausa(5).then(() => atenderMensaje({ telefono: TEL, wamid: "wamid.DESPUES", texto: "y cuándo puedo ir?", ahora }, d)),
+    ]);
+    assert.equal(guardados.length, 1);
+    assert.equal(guardados[0].wamid, "wamid.CON_CUIL");
+  });
+});
+
+test("un sí pedido con registrar_consentimiento no se guarda: el sí es el CUIL", async () => {
   await conWebPublica(async () => {
     const guardados = [];
     const root = conVerificacionActiva(baseFalsa({ cliente: { id: 50 }, sesion: financiaConRecibo }));
     root.consentimientos.create = async ({ data }) => (guardados.push(data), data);
     const respuestas = [
       { stop_reason: "tool_use", usage: { input_tokens: 10, output_tokens: 5 }, content: [{ type: "tool_use", id: "t1", name: "registrar_consentimiento", input: { acepta: true } }] },
-      { stop_reason: "end_turn", usage: { input_tokens: 10, output_tokens: 5 }, content: [{ type: "text", text: "Gracias" }] },
+      { stop_reason: "end_turn", usage: { input_tokens: 10, output_tokens: 5 }, content: [{ type: "text", text: "¿Me pasás tu CUIL?" }] },
     ];
     const anthropic = { messages: { create: async () => respuestas.shift() } };
-    await atenderMensaje({ telefono: TEL, wamid: "wamid.DEL_SI", texto: "sí, autorizo", ahora }, deps(root, anthropic));
-    assert.equal(guardados.length, 1);
-    assert.equal(guardados[0].acepta, true);
-    assert.equal(guardados[0].wamid, "wamid.DEL_SI");
+    await atenderMensaje({ telefono: TEL, wamid: "wamid.DEL_SI", texto: "sí, dale", ahora }, deps(root, anthropic));
+    assert.equal(guardados.length, 0);
   });
 });
 
@@ -1638,7 +1679,7 @@ test("si el mensaje anterior es de hace unos minutos, el contexto no agrega la l
   assert.doesNotMatch(anthropic.pedidos[0].system.at(-1).text, /El mensaje anterior de esta charla/);
 });
 
-test("el estado de la verificación entra en lo que falta: el permiso va después del recibo y antes del usado", async () => {
+test("el estado de la verificación entra en lo que falta: el CUIL va después del recibo y antes del usado", async () => {
   const root = baseFalsa({
     cliente: { id: 50 },
     sesion: { ...consultaConCharla, pago_tipo: "financiado", anticipo: "4 millones", credito_ok: 1 },
@@ -1655,7 +1696,8 @@ test("el estado de la verificación entra en lo que falta: el permiso va despué
     delete process.env.PUBLIC_WEB_URL;
   }
   const faltan = anthropic.pedidos[0].system.at(-1).text.match(/Falta averiguar[^\n]*/)?.[0] ?? "";
-  assert.match(faltan, /1\) permiso para consultar su situación en el BCRA.*2\) si entrega un usado/);
+  assert.match(faltan, /1\) su CUIL, para que el asesor consulte su situación en el BCRA.*2\) si entrega un usado/);
+  assert.doesNotMatch(faltan, /permiso/);
 });
 
 test("en lo que falta, la pregunta del último mensaje de la asesora llega marcada para no repetirla", async () => {
@@ -1711,7 +1753,7 @@ test("si la respuesta no repite la pregunta del último mensaje, no se toca", as
   assert.equal(r.texto, "Sí, tiene aire.\n\n¿Cuándo podrías pasar a verlo?");
 });
 
-test("antes de que conteste lo del recibo, el permiso del BCRA ya figura en lo que falta (después del recibo) sin pedirse todavía", async () => {
+test("antes de que conteste lo del recibo, el CUIL ya figura en lo que falta (después del recibo) sin pedirse todavía", async () => {
   const root = baseFalsa({
     cliente: { id: 50 },
     sesion: { ...consultaConCharla, pago_tipo: "financiado", anticipo: "4 millones" },
@@ -1728,8 +1770,8 @@ test("antes de que conteste lo del recibo, el permiso del BCRA ya figura en lo q
     delete process.env.PUBLIC_WEB_URL;
   }
   const contexto = anthropic.pedidos[0].system.at(-1).text;
-  assert.match(contexto.match(/Falta averiguar[^\n]*/)?.[0] ?? "", /1\) recibo o garante[^;]*; 2\) permiso para consultar su situación en el BCRA \(apenas responda lo del recibo o garante\); 3\) si entrega un usado/);
-  assert.doesNotMatch(contexto, /Verificación crediticia: pedile permiso/, "todavía no se pide");
+  assert.match(contexto.match(/Falta averiguar[^\n]*/)?.[0] ?? "", /1\) recibo o garante[^;]*; 2\) su CUIL, para que el asesor consulte su situación en el BCRA \(apenas responda lo del recibo o garante\); 3\) si entrega un usado/);
+  assert.doesNotMatch(contexto, /Verificación crediticia: pedile su CUIL/, "todavía no se pide");
 });
 
 test("si las deps traen alUsarHerramienta, el orquestador se lo pasa a las herramientas del turno", async () => {
