@@ -282,11 +282,25 @@ test("el resto de los datos sin cargar mantiene 'no contás con esa información
   assert.match(t, /Si un dato viene en null, decí que no contás con esa información: no lo supongas, salvo los km y el anticipo/);
 });
 
-test("entrega mínima sin cargar: explica que depende de cada caso y nombra las tres cosas, sin decir que falta el dato", async () => {
+// ajustes-por-chats-reales: la respuesta de las "tres cosas" era circular ("para decírtela necesito saber cuánto
+// tenés de anticipo"). La reemplaza la respuesta A que eligió el user el 18/11.
+test("entrega mínima sin cargar: no hay un monto fijo, depende de cada cliente y el asesor lo calcula en la agencia, sin decir que falta el dato", async () => {
   const t = await instrucciones();
   assert.match(t, /cuánto anticipo piden, dale el anticipo de la ficha/);
-  assert.match(t, /Si el anticipo viene en null, NUNCA digas que falta el dato: explicale que la entrega depende de la situación de cada cliente/);
-  assert.match(t, /tres cosas: cuánto tiene de anticipo, si entrega un vehículo como parte de pago y su CUIL/);
+  assert.match(t, /Si el anticipo viene en null, NUNCA digas que falta el dato/);
+  assert.match(t, /No hay un monto fijo: depende de la situación de cada cliente, y el asesor te lo calcula en la agencia con tus datos/);
+});
+
+test("entrega mínima sin cargar: sin respuesta circular (nada de 'para decírtela necesito' ni las 'tres cosas')", async () => {
+  const t = await instrucciones();
+  assert.doesNotMatch(t, /para decírtela necesito/i);
+  assert.doesNotMatch(t, /tres cosas: cuánto tiene de anticipo/);
+  assert.match(t, /Nunca respondas en círculo: no digas que para darle la entrega necesitás saber cuánto anticipo tiene/);
+});
+
+test("el ejemplo de la entrega mínima sin dato usa la respuesta A", async () => {
+  const t = await instrucciones();
+  assert.match(t, /Cliente: cual es la entrega minima\?\n\(el auto viene con anticipo en null\)\nVos: No hay un monto fijo: depende de la situación de cada cliente, y el asesor te lo calcula en la agencia con tus datos\./);
 });
 
 test("la entrega mínima sigue con el recorrido: guarda que financia y pregunta una sola cosa, sin cuotas", async () => {
@@ -551,4 +565,33 @@ test("la línea del auto de la consulta dice si sigue disponible o ya no", () =>
 test("si el cliente no pudo venir, coordina de nuevo con los horarios del contexto y no afirma disponibilidad sin que el contexto lo diga", async () => {
   const t = await instrucciones();
   assert.match(t, /Si el cliente no pudo venir, coordiná de nuevo diciendo los días y horarios que tenés en el contexto\. No digas que un auto sigue disponible si el contexto no lo dice\./);
+});
+
+// ── ajustes-por-chats-reales: otro auto de la web, frases que se leían mal y no opinar sobre el crédito ──
+
+test("otro auto de la web en la misma charla: no se vuelve a presentar, da el precio del nuevo y sigue con la pregunta que faltaba", async () => {
+  const t = await instrucciones();
+  assert.match(t, /Si ya escribiste en esta charla y llega el mensaje de la web por otro auto, no te vuelvas a presentar: dale el precio del auto nuevo y, en el mismo mensaje, seguí con la pregunta del recorrido que faltaba/);
+  assert.match(t, /Si después pregunta "¿y esta\?" o "¿y este\?", es la misma pregunta que venía haciendo, por el auto nuevo/);
+});
+
+test("'Cómo hablan los clientes' suma las frases reales que se leían mal", async () => {
+  const t = await instrucciones();
+  assert.match(t, /"Sinanciado", "financido" o "finaciado" quieren decir financiado/);
+  assert.match(t, /"Recién" en "recién moto también\?" quiere decir "reciben"/);
+  assert.match(t, /"¿Me lo pueden enviar \(o pasar\) por este medio\?" es por WhatsApp y se refiere a lo que venía preguntando, no a fotos/);
+  assert.match(t, /"¿Cómo sería el resto\?" o "¿cómo podría ser el resto\?" después de decir su anticipo es una pregunta por la financiación: respondé que la financiación se arma en la agencia a la medida de su caso y después seguí con lo que falta/);
+  assert.match(t, /Si a la pregunta de si entrega un vehículo contesta con plata \("tengo los 7 millones"\), no entrega: guardá entrega_usado: false y no cambies el anticipo/);
+});
+
+test("contesta la pregunta que trae el mensaje antes de seguir con el recorrido", async () => {
+  const t = await instrucciones();
+  assert.match(t, /Si el mensaje trae una pregunta, aunque sea corta o con errores, contestala antes de seguir con el recorrido/);
+});
+
+test("no opina sobre si el cliente puede financiar: monotributo, Uber, independiente o garante, acusa recibo y sigue", async () => {
+  const t = await instrucciones();
+  assert.match(t, /Nunca opines sobre si el cliente puede financiar o si califica/);
+  assert.match(t, /"monotributo no es impedimento", "con Uber también sirve", "con el garante queda cubierto", "lo podemos trabajar"/);
+  assert.match(t, /Si cuenta su situación laboral o su garante, acusá recibo en pocas palabras y seguí: lo evalúa el asesor/);
 });

@@ -1818,3 +1818,26 @@ test("si el auto de la consulta ya no está a la venta, la línea lo dice", asyn
   await atenderMensaje({ telefono: TEL, texto: "Pasame las fotos", ahora }, deps(root, anthropic));
   assert.match(anthropic.pedidos[0].system.at(-1).text, /código A12B \(ya no está disponible: decíselo y ofrecé parecidos con buscar_similares\)/);
 });
+
+// ── ajustes-por-chats-reales: una sola presentación por consulta ──
+
+test("si la asesora ya escribió en la consulta, la presentación de la respuesta se quita antes de enviar", async () => {
+  const root = baseFalsa({ cliente: { id: 50 }, sesion: consultaConCharla, historial: [mensajeDe(1, "saliente", "¡Hola! Soy José, asesor de ventas 🙌 El Logan está a $13.900.000.", haceHoras(0.1))] });
+  const anthropic = claudeFalso("¡Hola! Soy José, asesor de ventas 🙌 El Renault Stepway 2017 está a $15.900.000.");
+  const r = await atenderMensaje({ telefono: TEL, texto: "Hola ORTEGA AUTOMOTORES! Estoy interesado en el Renault Stepway 2017.", ahora }, deps(root, anthropic));
+  assert.equal(r.texto, "¡Hola! El Renault Stepway 2017 está a $15.900.000.");
+});
+
+test("en el primer mensaje de la asesora en la consulta, la presentación sale como la escribió la IA", async () => {
+  const root = baseFalsa({ cliente: { id: 50 }, sesion: consultaConCharla, historial: [] });
+  const anthropic = claudeFalso("¡Hola! Soy José, asesor de ventas 🙌 El Logan está a $13.900.000.");
+  const r = await atenderMensaje({ telefono: TEL, texto: "hola", ahora }, deps(root, anthropic));
+  assert.equal(r.texto, "¡Hola! Soy José, asesor de ventas 🙌 El Logan está a $13.900.000.");
+});
+
+test("un mensaje de un asesor humano no cuenta como que la asesora virtual ya se presentó", async () => {
+  const root = baseFalsa({ cliente: { id: 50 }, sesion: consultaConCharla, historial: [mensajeDe(1, "saliente", "hola, soy Adriana", haceHoras(0.1), "humano")] });
+  const anthropic = claudeFalso("¡Hola! Soy José, asesor de ventas 🙌 ¿Qué auto buscás?");
+  const r = await atenderMensaje({ telefono: TEL, texto: "hola", ahora }, deps(root, anthropic));
+  assert.equal(r.texto, "¡Hola! Soy José, asesor de ventas 🙌 ¿Qué auto buscás?");
+});

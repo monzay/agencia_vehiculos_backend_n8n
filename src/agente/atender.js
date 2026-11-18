@@ -385,6 +385,8 @@ export async function contextoDelTurno({ root, cliente, sesion, ahora, autoWeb, 
     sinContestar,
     fotosEnviadas,
     tiempoDesdeElAnterior: tiempo,
+    // Si la asesora virtual ya le escribió en esta consulta, no se vuelve a presentar (un asesor humano o una reacción no cuentan).
+    yaEscribio: (historial ?? []).some((h) => h.direccion === "saliente" && h.paso_nodo === PASO_AGENTE),
     visitaPropuesta: Boolean(sesion.visita_propuesta),
     horarios: sesion.visita_propuesta && tiempo ? await horariosDelTurno(root) : null,
     credito,

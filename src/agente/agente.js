@@ -93,23 +93,51 @@ export function sinCodigoDeAuto(texto) {
     .trim();
 }
 
-// Quita las oraciones que cumplen `sale`; si no queda texto, deja el original.
+// Quita las oraciones que cumplen `sale`. Si la oración a quitar trae una pregunta que empieza con "¿"
+// ("Perfecto, anotado 👍 ¿Tenés recibo?"), se quita solo lo de antes y queda la pregunta.
+// Si no queda texto, deja el original.
 function sinOraciones(texto, sale) {
   const lineas = texto.split(/\r?\n/).map((linea) => {
     const oraciones = linea.split(/(?<=[.!?…])\s+/).filter(Boolean);
-    return { quedan: oraciones.filter((o) => !sale(o)), habia: oraciones.length };
+    const quedan = oraciones.flatMap((o) => {
+      if (!sale(o)) return [o];
+      const pregunta = o.indexOf("¿");
+      return pregunta > 0 ? [o.slice(pregunta)] : [];
+    });
+    return { quedan, habia: oraciones.length };
   });
   const limpio = lineas.filter((l) => l.quedan.length || !l.habia).map((l) => l.quedan.join(" ")).join("\n").replace(/\n{3,}/g, "\n\n").trim();
   return limpio || texto;
 }
 
-// Valorar el anticipo o los datos del cliente ("buena base", "muy buen anticipo", "arrancás bien", "sumás puntos").
-const VALORACION = /(?:muy buen[ao]? anticipo|buen anticipo|buena base(?! de datos)|arranc[aá]s bien|sum[aá]s puntos|vamos muy bien|buen punto de partida)/i;
+// Valorar el anticipo o los datos del cliente ("buena base", "muy buen anticipo", "arrancás bien", "sumás puntos"),
+// u opinar sobre si puede financiar ("no es impedimento", "sirve para financiar", "queda cubierto", "lo podemos trabajar").
+const VALORACION = /(?:muy buen[ao]? anticipo|buen anticipo|buena base(?! de datos)|arranc[aá]s bien|sum[aá]s puntos|vamos muy bien|buen punto de partida|no es (?:un )?impedimento|sirve para financiar|queda cubierto|lo podemos trabajar|est[aá]s en (?:una )?buena posici[oó]n)/i;
 export const sinValoraciones = (texto) => sinOraciones(texto, (o) => VALORACION.test(o));
 
 // Anunciar que se guardaron datos.
 const ANUNCIO_DE_GUARDADO = /(?:\banotad[oa]|\blo anoto|dej[eé] registrad[oa]|dejo anotad[oa]|qued[oó] registrad[oa])/i;
 export const sinAnuncioDeGuardado = (texto) => sinOraciones(texto, (o) => ANUNCIO_DE_GUARDADO.test(o));
+
+// Solo se quita si termina ahí (terminador, fin de línea o fin del texto): si sigue texto ("y te cuento…", "de Ortega"), queda igual.
+// La presentación ("Soy José, asesor de ventas 🙌") va una sola vez por consulta: si ya escribió, se quita.
+export function sinPresentacionRepetida(texto, nombre) {
+  const nombreEscapado = String(nombre ?? "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  if (!nombreEscapado) return texto;
+  const presentacion = new RegExp(
+    `(?<!\\p{L})soy[ \\t]+${nombreEscapado}[ \\t]*,?[ \\t]*asesor(?:a)?[ \\t]+de[ \\t]+ventas(?:(?:[ \\t]*(?:[.!]|\\p{Extended_Pictographic}|[\\uFE0F\\u200D\\u{1F3FB}-\\u{1F3FF}]))+|(?=[ \\t]*(?:\\r?\\n|$)))`,
+    "iu"
+  );
+  if (!presentacion.test(texto)) return texto;
+  const limpio = texto
+    .replace(presentacion, "")
+    .split(/\r?\n/)
+    .map((linea) => linea.replace(/[ \t]{2,}/g, " ").trim())
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  return limpio || texto;
+}
 
 // "$19.800.£000" -> "$19.800.000": dentro de un monto que empieza con $ solo van dígitos y puntos.
 export const precioNormalizado = (texto) =>
@@ -224,7 +252,9 @@ export async function responderConIA({ mensajes, contexto, ctx, registrarConsumo
     }
 
     const crudo = textoDe(respuesta) || textos.filter(Boolean).join("\n");
-    const texto = crudo ? sinPulgarSuelto(precioNormalizado(sinAnuncioDeGuardado(sinValoraciones(sinCodigoDeAuto(await sinNombresInternos(crudo, { anthropic, system, tools, conversacion, registrarConsumo })))))) : "";
+    const limpio = crudo ? sinCodigoDeAuto(await sinNombresInternos(crudo, { anthropic, system, tools, conversacion, registrarConsumo })) : "";
+    const sinPresentar = contexto?.yaEscribio ? sinPresentacionRepetida(limpio, contexto.asesora || "José") : limpio;
+    const texto = crudo ? sinPulgarSuelto(precioNormalizado(sinAnuncioDeGuardado(sinValoraciones(sinPresentar)))) : "";
     // Si el turno pasó a la consulta de otro auto, el orquestador lo cierra en esa.
     const otraConsulta = ctxTurno.sesionId !== ctx.sesionId && { sesionId: ctxTurno.sesionId };
     return texto ? { ok: true, texto, fotos, ficha, fotosRef: fotos.length ? fotosRef : null, guardados, ...otraConsulta } : respaldo("sin_texto");

@@ -102,3 +102,45 @@ Queda en `simulacion/ronda-0/`, que no se sube a git, igual que en los cambios a
   - X14, recordatorio del permiso del BCRA: tarea 8.
 - **Pasan 6:** X1, X2, X7, X8, X11 y X13. Son reglas que dependen solo del texto del modelo, y con el
   modelo simulado ese texto lo pone el guion, así que no se pueden medir (límite ya anotado en el plan).
+
+## Tareas 2, 3 y 4. Entrega mínima, limpiezas e instrucciones (2026-11-18)
+
+Se hicieron en un solo ciclo, porque tocan los mismos archivos (`instrucciones.js`, `agente.js` y `atender.js`).
+
+**Tests primero (Claude):**
+- `instrucciones.test.js`:
+  - el test viejo de las "tres cosas" se reemplazó por 3 de la respuesta A (con la frase, sin círculo y con el
+    ejemplo);
+  - 4 tests nuevos: otro auto de la web, frases que se leían mal, contestar la pregunta y no opinar sobre el
+    crédito.
+- `agente.test.js`: opiniones de crédito con frases reales, frase en la misma oración que la pregunta, y
+  `sinPresentacionRepetida` (casos, nombre configurado, no deja el texto vacío, `yaEscribio`).
+- `atender.test.js`: una sola presentación por consulta. El mensaje de un asesor humano no cuenta.
+- **Codex:** 2 hallazgos medios, los dos aplicaron (la frase exacta "estás en buena posición" y el ejemplo de
+  "¿cómo podría ser el resto?"). Tests congelados.
+
+**Código (Sonnet 5.5):**
+- **Instrucciones:** la respuesta A va en "Precios y datos del auto" y en el ejemplo. No opinar sobre el
+  crédito, contestar la pregunta y otro auto de la web van en "Cómo llevar la charla". Las 5 frases van en "Cómo
+  hablan los clientes".
+- **`agente.js`:** `VALORACION` ampliada; `sinOraciones` conserva la pregunta que empieza con "¿";
+  `sinPresentacionRepetida`, aplicada si `contexto.yaEscribio`.
+- **`atender.js`:** `yaEscribio` en el contexto, calculado sobre el historial de la consulta en curso.
+
+**Revisión de Codex del diff:** 5 hallazgos medios.
+- **Aplicó 1:** el filtro de presentación cortaba oraciones que seguían ("Soy José, asesor de ventas y te
+  cuento…" y "…asesor de ventas de Ortega."). Claude agregó un test con esos casos y Sonnet lo arregló: la
+  presentación se quita solo si termina ahí (emoji, punto, "!" o fin de línea).
+- **No aplicaron 4:**
+  - Quedarse con lo que sigue al "¿": la oración termina en el "?", así que no arrastra texto posterior.
+  - Falsos positivos de "lo podemos trabajar" y "queda cubierto": el bot no tiene usos neutrales de esas
+    frases. Riesgo aceptado.
+  - `yaEscribio` sobre consultas viejas: el historial ya se filtra desde `sesion_inicio`.
+  - El ejemplo A pregunta el anticipo: la regla general manda preguntar lo primero que falte.
+
+**Verificación:**
+- 277 de 277 en los tres archivos, con la barrera de red.
+- Ronda 1 con el modelo simulado y 0 intentos de red: X3, X4, X5 y X6 pasan a verde. Siguen fallando X9 y X10
+  (tarea 6), X12 (tarea 7) y X14 (tarea 8).
+- Sonnet informó la suite completa con 9 fallas: las 8 de los tests de la migración 086, que ya estaban escritos
+  y la migración todavía no existe, más la vieja de anclas.

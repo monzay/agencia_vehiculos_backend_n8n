@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { responderConIA, sinOracionesInternas, MODELO, ESFUERZO, esfuerzoEfectivo, sinValoraciones, sinAnuncioDeGuardado, precioNormalizado } from "./agente.js";
+import { responderConIA, sinOracionesInternas, MODELO, ESFUERZO, esfuerzoEfectivo, sinValoraciones, sinAnuncioDeGuardado, precioNormalizado, sinPresentacionRepetida } from "./agente.js";
 import { maxTokensPara } from "./limites.js";
 import { MENSAJES_FIJOS } from "./limites.js";
 
@@ -415,4 +415,72 @@ test("la respuesta que sale pasa por las tres limpiezas", async () => {
 test("sinOracionesInternas detecta los nombres de herramientas sin distinguir mayúsculas", () => {
   assert.equal(sinOracionesInternas("Uso Buscar_Similares para ver. Tengo opciones."), "Tengo opciones.");
   assert.equal(sinOracionesInternas("Consulto BUSCAR_AUTOS ahora. Dale."), "Dale.");
+});
+
+// ── ajustes-por-chats-reales: opiniones de crédito, frases en la misma oración que la pregunta, presentación repetida ──
+
+test("sinValoraciones quita las opiniones sobre si el cliente puede financiar (frases reales de producción)", () => {
+  assert.equal(
+    sinValoraciones("Monotributo no es impedimento para armarte opciones. Cada caso se revisa en la agencia.\n\n¿Tenés algún auto para dejar como parte de pago?"),
+    "Cada caso se revisa en la agencia.\n\n¿Tenés algún auto para dejar como parte de pago?"
+  );
+  assert.equal(sinValoraciones("Entiendo, trabajar con Uber también sirve para financiar. ¿Tenés algún vehículo para entregar como parte de pago?"), "¿Tenés algún vehículo para entregar como parte de pago?");
+  assert.equal(sinValoraciones("El crédito BNA Auto+ lo podemos trabajar desde la agencia. ¿Con cuánto de anticipo contás?"), "¿Con cuánto de anticipo contás?");
+  assert.equal(sinValoraciones("¡Muy bien, con recibo de sueldo estás en una buena posición! ¿Entregás un usado?"), "¿Entregás un usado?");
+  assert.equal(sinValoraciones("Perfecto, estás en buena posición. ¿Entregás un usado?"), "¿Entregás un usado?");
+});
+
+test("una frase a quitar en la misma oración que la pregunta: se quita la frase y queda la pregunta", () => {
+  assert.equal(sinAnuncioDeGuardado("Perfecto, anotado 👍 ¿Tenés recibo de sueldo o contás con un garante?"), "¿Tenés recibo de sueldo o contás con un garante?");
+  assert.equal(
+    sinAnuncioDeGuardado("Perfecto, anotado el anticipo de $3.000.000 para el Siena 😊 ¿Tenés recibo de sueldo o contás con un garante?"),
+    "¿Tenés recibo de sueldo o contás con un garante?"
+  );
+  assert.equal(sinValoraciones("Genial, con el garante de tu padre queda cubierto 👍 ¿Tenés algún vehículo para dejar como parte de pago?"), "¿Tenés algún vehículo para dejar como parte de pago?");
+});
+
+test("sin pregunta en la misma oración, se quita la oración entera; si quedaría vacío, queda el original", () => {
+  assert.equal(sinAnuncioDeGuardado("¡Anotado!"), "¡Anotado!");
+  assert.equal(sinValoraciones("Monotributo no es impedimento."), "Monotributo no es impedimento.");
+  assert.equal(sinValoraciones("Con el garante queda cubierto. Te esperamos el martes."), "Te esperamos el martes.");
+});
+
+test("sinPresentacionRepetida quita 'Soy José, asesor de ventas' con su emoji y deja el saludo y el resto", () => {
+  assert.equal(sinPresentacionRepetida("¡Hola! Soy José, asesor de ventas 🙌 El Fiat Siena 2016 está a $13.500.000.", "José"), "¡Hola! El Fiat Siena 2016 está a $13.500.000.");
+  assert.equal(
+    sinPresentacionRepetida("¡Hola Rodrigo! Soy José, asesor de ventas 🙌 El Renault Stepway 2017 está a $15.900.000.", "José"),
+    "¡Hola Rodrigo! El Renault Stepway 2017 está a $15.900.000."
+  );
+  assert.equal(
+    sinPresentacionRepetida("Soy José, asesor de ventas 🙌 ¡Qué bueno que te interese el Prisma 2018! Está a $11.900.000.", "José"),
+    "¡Qué bueno que te interese el Prisma 2018! Está a $11.900.000."
+  );
+  assert.equal(sinPresentacionRepetida("¡Hola! Soy José, asesor de ventas 🙌\n\n¿Qué auto estás buscando?", "José"), "¡Hola!\n\n¿Qué auto estás buscando?");
+});
+
+test("sinPresentacionRepetida usa el nombre configurado, no toca otras menciones y no deja el texto vacío", () => {
+  assert.equal(sinPresentacionRepetida("¡Hola! Soy Pedro, asesor de ventas. El Vento está a $19.800.000.", "Pedro"), "¡Hola! El Vento está a $19.800.000.");
+  assert.equal(sinPresentacionRepetida("Cualquier cosa, preguntá por José en la agencia.", "José"), "Cualquier cosa, preguntá por José en la agencia.");
+  assert.equal(sinPresentacionRepetida("Soy José, asesor de ventas 🙌", "José"), "Soy José, asesor de ventas 🙌");
+  assert.equal(sinPresentacionRepetida("El Vento está a $19.800.000.", "José"), "El Vento está a $19.800.000.");
+});
+
+test("responderConIA quita la presentación solo si la asesora ya escribió en la consulta", async () => {
+  const dicho = "¡Hola! Soy José, asesor de ventas 🙌 El Stepway está a $15.900.000.";
+  const ya = await responderConIA({ ...entrada(), contexto: { agencia: "SEA Automotores", asesora: "José", yaEscribio: true } }, { anthropic: claudeFalso([texto(dicho)]) });
+  assert.equal(ya.texto, "¡Hola! El Stepway está a $15.900.000.");
+  const primera = await responderConIA({ ...entrada(), contexto: { agencia: "SEA Automotores", asesora: "José", yaEscribio: false } }, { anthropic: claudeFalso([texto(dicho)]) });
+  assert.equal(primera.texto, dicho);
+});
+
+test("responderConIA sin nombre configurado usa José para reconocer la presentación", async () => {
+  const r = await responderConIA({ ...entrada(), contexto: { agencia: "SEA Automotores", yaEscribio: true } }, { anthropic: claudeFalso([texto("¡Hola! Soy José, asesor de ventas 🙌 Está a $1.000.000.")]) });
+  assert.equal(r.texto, "¡Hola! Está a $1.000.000.");
+});
+
+test("sinPresentacionRepetida solo quita la presentación si termina ahí (emoji, punto, signo o fin de línea): nunca corta una oración que sigue", () => {
+  assert.equal(sinPresentacionRepetida("Soy José, asesor de ventas y te cuento que el Vento está a $19.800.000.", "José"), "Soy José, asesor de ventas y te cuento que el Vento está a $19.800.000.");
+  assert.equal(sinPresentacionRepetida("¡Hola! Soy José, asesor de ventas de Ortega. El Vento está a $19.800.000.", "José"), "¡Hola! Soy José, asesor de ventas de Ortega. El Vento está a $19.800.000.");
+  assert.equal(sinPresentacionRepetida("¡Hola! Soy José, asesor de ventas\n¿Qué auto buscás?", "José"), "¡Hola!\n¿Qué auto buscás?");
+  assert.equal(sinPresentacionRepetida("¡Hola! Soy José, asesor de ventas. ¿Qué auto buscás?", "José"), "¡Hola! ¿Qué auto buscás?");
 });
