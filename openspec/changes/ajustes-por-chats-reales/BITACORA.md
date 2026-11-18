@@ -297,3 +297,28 @@ Ver la sección siguiente.
   - Las fotos del mismo mensaje en que se piden no se guardan, como dice la spec ("después del pedido").
   - Los enlaces simbólicos en la carpeta simulada: es local, de desarrollo, y la maneja la app.
   - Los temas ya se clasifican pregunta por pregunta, y el bot hace una sola pregunta por mensaje.
+
+## Tarea 9. Fotos del usado en el panel (2026-11-18, `sea_automotores` commit `568644a`)
+
+- **Test primero (Claude):** `lib/fotos-usado.test.js`. Solo URLs http(s) de `fotosUsado`, en orden; nada de
+  `javascript:`, `data:` ni vacíos. Sin fotos, una lista vacía.
+- **Código (Sonnet):**
+  - `lib/fotos-usado.js`;
+  - `chat-consulta.jsx`: "Fotos del usado (N)" dentro de "Datos de la consulta", miniaturas de 64 px que se
+    abren en otra pestaña, y un recuadro "Foto N no disponible" si la URL venció.
+  - No había un visor reutilizable: `papel-vista.jsx` está atado a los ingresos y no hay un `Dialog` de shadcn.
+- **Verificación en el navegador:** backend local con la barrera de red, sin claves, `BLOB_SIMULADO=1` y
+  `RECORDATORIO_MINUTOS=0`; panel con `next dev`; capturas con Edge sin ventana por CDP.
+  - Datos de prueba en la base local: cliente 2336 y consulta 2415, sin nombre y con 2 fotos. Se borraron al
+    terminar, solo esos ids, igual que las fotos de `tmp/blob-simulado`.
+  - **Encontrado:** las miniaturas no cargaban en desarrollo porque la CSP del panel tiene
+    `img-src 'self' data: blob: https:` y las fotos simuladas vienen de `http://localhost:4000`. Se agregó el
+    backend local a `img-src` solo fuera de producción; en producción la CSP queda igual. Con eso cargan las
+    dos.
+  - "Sin nombre" en la lista y en el detalle ✅. Las fotos aparecen junto a los datos del usado ✅.
+  - El aviso "1 Issue" de Next es el de React sobre `eval` en desarrollo, que ya estaba antes: no es de este
+    cambio.
+  - El log del backend no tuvo ningún intento de conexión a APIs externas.
+- **Codex:** aprobable, sin hallazgos.
+- **Pruebas:** 3 de 3 en `fotos-usado.test.js`. Sonnet informó la suite del front en 29 de 29, `npm run build`
+  sin errores y ESLint sin errores nuevos (`chat-consulta.jsx` ya tenía uno, `react-hooks/set-state-in-effect`).
