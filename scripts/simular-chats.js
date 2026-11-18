@@ -69,6 +69,14 @@ try {
   console.error("Se aborta sin correr nada:", err.message);
   process.exit(1);
 }
+// Las fotos del usado se guardan en disco local (Blob simulado): sin BLOB_SIMULADO=1 o con token real, no corre.
+try {
+  const { exigirBlobSimulado } = await import("../src/lib/blob-privado.js");
+  exigirBlobSimulado(process.env);
+} catch (err) {
+  console.error("Se aborta sin correr nada:", err.message);
+  process.exit(1);
+}
 const guardaDeRed = limitarFetch();
 
 // Las líneas "[agente] herramienta ..." del backend, para anotarlas en cada turno.

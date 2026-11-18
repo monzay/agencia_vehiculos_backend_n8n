@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { randomUUID } from "node:crypto";
+import * as blobPrivado from "../lib/blob-privado.js";
 import { responderConIA } from "./agente.js";
 import { duracionOgg, transcribirConGroq, MODELO_GROQ } from "./audio.js";
 import { LIMITES, MENSAJES_FIJOS, decidirAtencion, audioPermitido, historialParaClaude, recortar } from "./limites.js";
@@ -11,7 +13,7 @@ import { whereDisponible, descripcionDelAuto } from "./auto-publico.js";
 import { horariosEnPalabras } from "./instrucciones.js";
 import { enviosDeRespuesta, REACCION_CIERRE } from "./envios.js";
 import { debeReaccionar } from "./cierre.js";
-import { juntarRafaga, ESPERA_RAFAGA_MS } from "./rafagas.js";
+import { juntarRafaga, imagenesDeLaParte, ESPERA_RAFAGA_MS } from "./rafagas.js";
 import { PASO_AGENTE, PASO_REACCION, PASO_HUMANO } from "./pasos.js";
 import { gastoDelMes, topeConfigurado, registrarConsumoClaude, registrarConsumoGroq } from "../services/ia-consumos.service.js";
 import { avisoReciente, darDeBaja, esBaja, BAJA_CONFIRMADA } from "../services/avisos-cuotas.service.js";
@@ -33,6 +35,10 @@ const SESION_VIGENTE_MS = 30 * 24 * 3_600_000;
 const MAX_TEXTO_WHATSAPP = 4096;
 const MAX_ARCHIVO_BASE64 = 7_000_000; // ~5 MB, el máximo que acepta Claude por imagen
 const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
+const MAX_FOTOS_AL_MODELO = 3; // al modelo le llegan como máximo las últimas 3 fotos del lote
+const MAX_FOTOS_USADO = 10; // por consulta
+const VENTANA_FOTOS_USADO_MS = 24 * 3_600_000; // desde que se pidieron
+const EXTENSION_DE_FOTO = { "image/jpeg": "jpg", "image/png": "png", "image/gif": "gif", "image/webp": "webp" };
 const BYTES_AUDIO_MIN = 100; // menos que esto no es un audio: no se manda a Groq
 
 // Uno para todo el proceso: el límite de consultas del BCRA es por IP.
@@ -404,6 +410,37 @@ export async function contextoDelTurno({ root, cliente, sesion, ahora, autoWeb, 
   };
 }
 
+// Las fotos que manda el cliente del usado que entrega: en las 24 h siguientes al pedido se suben al Blob privado
+// (hasta 10 por consulta) y después se anotan los pathnames en la consulta, con el usuario del backend.
+// Una subida fallida no cuenta para el tope. Nada de esto frena la respuesta: no rechaza nunca, y el log
+// lleva solo el motivo técnico (ni teléfono, ni texto, ni nombre, ni el contenido de la foto).
+async function guardarFotosUsado({ root, sesion, ahora }, imagenes, blob = blobPrivado) {
+  try {
+    if (!imagenes.length || !sesion.fotos_usado_pedidas_at) return;
+    if (ahora - new Date(sesion.fotos_usado_pedidas_at) > VENTANA_FOTOS_USADO_MS) return;
+    const previas = Array.isArray(sesion.fotos_usado_json) ? sesion.fotos_usado_json : [];
+    const lugar = MAX_FOTOS_USADO - previas.length;
+    const nuevas = [];
+    for (const foto of imagenes) {
+      if (nuevas.length >= lugar) break;
+      const pathname = `consultas/${sesion.id}/usado/${randomUUID()}.${EXTENSION_DE_FOTO[foto.media_type]}`;
+      try {
+        await blob.subirImagenPrivada(Buffer.from(foto.data, "base64"), foto.media_type, pathname);
+        nuevas.push(pathname);
+      } catch (err) {
+        console.error("[agente] no se pudo subir una foto del usado al Blob:", err?.message);
+      }
+    }
+    if (!nuevas.length) return;
+    // Si la anotación falla, el archivo queda suelto en el store privado: solo se deja constancia.
+    await root.chat_estado.update({ where: { id: sesion.id }, data: { fotos_usado_json: [...previas, ...nuevas] } }).catch((err) =>
+      console.error("[agente] no se pudieron anotar las fotos del usado en la consulta:", err?.message)
+    );
+  } catch (err) {
+    console.error("[agente] no se pudieron guardar las fotos del usado:", err?.message);
+  }
+}
+
 async function responderConAgente(turno, imagenes, deps) {
   const { root, cliente, sesion, ahora, entrante, texto, wamid } = turno;
   // La charla de la consulta en curso: nada anterior a su inicio (el filtro va en la consulta, antes del take).
@@ -418,7 +455,9 @@ async function responderConAgente(turno, imagenes, deps) {
   });
   // Se guarda antes de llamar a Claude: el mensaje ya cuenta para el límite del día.
   await guardarEntrantes(turno);
-  const nuevo = contenidoNuevo({ texto, imagenes });
+  // Las fotos se guardan mientras la IA responde; al modelo le llegan solo las últimas 3 del lote.
+  const guardandoFotos = guardarFotosUsado(turno, imagenes, deps.blob);
+  const nuevo = contenidoNuevo({ texto, imagenes: imagenes.slice(-MAX_FOTOS_AL_MODELO) });
   const contexto = await contextoDelTurno({ ...turno, historial });
   const r = await responderConIA(
     {
@@ -435,6 +474,8 @@ async function responderConAgente(turno, imagenes, deps) {
         cambiarAuto: (sesionId, autoId) => cambiarAuto({ db: root, sesionId, ahora }, autoId),
         // El nombre que dijo el cliente: con el usuario del backend (agente_ia no escribe `nombre_declarado` ni la ficha).
         guardarNombre: (nombre, sesionDestino) => guardarNombreDicho({ db: root, clienteId: cliente.id, sesionId: sesionDestino ?? sesion.id }, nombre),
+        // El pedido de fotos del usado queda marcado en la consulta: también con el usuario del backend.
+        marcarFotosPedidas: (sesionDestino) => root.chat_estado.update({ where: { id: sesionDestino ?? sesion.id }, data: { fotos_usado_pedidas_at: ahora } }),
         nombreDicho: turno.nombreDicho,
         cobranza: turno.cobranza && { financiacionId: turno.cobranza.financiacionId, avisoId: turno.cobranza.avisoId },
         // Verificación con el BCRA: con el usuario del backend, solo para este cliente.
@@ -455,7 +496,7 @@ async function responderConAgente(turno, imagenes, deps) {
         registrarConsumoClaude({ sesionId: sesion.id, clienteId: cliente.id, modelo, usage }, root),
     },
     { anthropic: deps.anthropic }
-  );
+  ).finally(() => guardandoFotos);
   // Si el cliente no contestó lo que se le preguntó (la IA no guardó ese dato) y la respuesta lo vuelve a preguntar, se quita.
   if (r.ok && r.texto) r.texto = sinPreguntaRepetida(r.texto, temasSinGuardar(contexto.sinContestar, r.guardados));
   // Si Agustina solo contesta 👍 (el cliente agradeció), sale como reacción: gratis.
@@ -550,7 +591,7 @@ async function atender(datos, deps) {
   const entrante = texto || marcaArchivo;
   const partes = datos.partes ?? [{ texto: datos.texto ?? null, wamid: datos.wamid ?? null }];
   const entrantes = partes.map((p, i) => ({
-    mensaje: recortar(datosDeLaWeb(p.texto).texto) || (i === partes.length - 1 ? marcaArchivo : "[mensaje sin texto]"),
+    mensaje: recortar(datosDeLaWeb(p.texto).texto) || (imagenesDeLaParte(p).length ? "[foto]" : i === partes.length - 1 ? marcaArchivo : "[mensaje sin texto]"),
     wamid: p.wamid,
   }));
   const base = { root, cliente, sesion, ahora, wamid: datos.wamid ?? null, paso: PASO_AGENTE, autoWeb, entrantes, nombreDicho, pedirNombre: correspondePedirNombre({ sesion, nombreDicho }) };
@@ -594,7 +635,9 @@ async function sinRepetidos(lote, root) {
     partes,
     texto: partes.map((p) => p.texto).filter(Boolean).join("\n") || null,
     wamid: partes.at(-1).wamid,
-    ...(!sigueElUltimo && { imagenes: [], audio: null }),
+    // Las fotos van con su mensaje: se quitan las de los repetidos. El audio es solo del último.
+    imagenes: partes.flatMap(imagenesDeLaParte),
+    ...(!sigueElUltimo && { audio: null }),
   };
 }
 

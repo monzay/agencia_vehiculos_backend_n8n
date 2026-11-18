@@ -8,3 +8,6 @@ backup-produccion-*.sql
 
 # Salida de las simulaciones de chats (herramienta de desarrollo)
 simulacion/
+
+# Blob simulado de desarrollo (fotos de prueba)
+tmp/

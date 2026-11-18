@@ -19,6 +19,8 @@ export function prepararEntorno(env) {
   env.DATABASE_URL = urlRoot;
   env.AGENTE_DATABASE_URL = urlAgente;
   for (const clave of CLAVES_REALES) env[clave] = "";
+  // Las fotos del usado se guardan en una carpeta local, nunca en el Blob real.
+  env.BLOB_SIMULADO = "1";
   env.PUBLIC_WEB_URL = PUBLIC_WEB_URL_SIMULACION;
   return { urlRoot, urlAgente, prohibidas };
 }

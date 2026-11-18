@@ -517,3 +517,88 @@ test("el recordatorio que sale no empieza con un saludo aunque la IA lo escriba"
   await revisar(baseFalsa(), { anthropic: claudeFalso("Hola, ¿con cuánto de anticipo contás?"), envio });
   assert.equal(envio.enviados[0].texto, "¿Con cuánto de anticipo contás?");
 });
+
+// ── ajustes-por-chats-reales: el recordatorio solo en las preguntas elegidas ──
+
+// La charla donde lo último que dijo la asesora es `pregunta`, hace 10 minutos y sin respuesta del cliente.
+const conPregunta = (pregunta, primerMensaje = "Financiado") =>
+  baseFalsa({
+    historial: [
+      { id: 1, cliente_id: 50, direccion: "entrante", mensaje: primerMensaje, paso_nodo: "agente_ia", created_at: hace(11) },
+      { id: 2, cliente_id: 50, direccion: "saliente", mensaje: pregunta, paso_nodo: "agente_ia", created_at: hace(10) },
+    ],
+  });
+
+const PREGUNTAS_QUE_SE_RECUERDAN = [
+  "¿Qué auto estás buscando?",
+  "¿Lo pensás pagar de contado o financiado?",
+  "¿Con cuánto de anticipo contás?",
+  "¿Tenés recibo de sueldo o un garante?",
+  "¿Tenés algún vehículo para entregar como parte de pago?",
+  "Si podés, pasame unas fotos de la moto. ¿Qué marca, modelo y año es?",
+  "¿Lo decidís por tu cuenta o lo consultás con alguien?",
+  "¿Cuándo podrías pasar por la agencia?",
+];
+
+const PREGUNTAS_QUE_NO_SE_RECUERDAN = [
+  "¿Me autorizás a hacer esa consulta? Respondeme sí o no.",
+  "¿Me pasás tu CUIL?",
+  "¿Cuánto pedís por el Fox?",
+  "¿Te quedás con el Voyage o con el Gol Trend?",
+  "¿Querés que te pase las fotos?",
+  "¿Algo más?",
+];
+
+test("consultasParaRecordar incluye la consulta cuando la pregunta sin contestar es de un tema permitido (auto, pago, anticipo, recibo, usado, marca y año, decisor, visita)", async () => {
+  for (const pregunta of PREGUNTAS_QUE_SE_RECUERDAN) {
+    const candidatas = await consultasParaRecordar({ db: conPregunta(pregunta), ahora: AHORA, minutos: 10 });
+    assert.equal(candidatas.length, 1, pregunta);
+  }
+});
+
+test("consultasParaRecordar deja afuera el permiso del BCRA, el CUIL, cuánto pide por el usado, las ofertas, el ofrecimiento de fotos y las preguntas que no se reconocen", async () => {
+  for (const pregunta of PREGUNTAS_QUE_NO_SE_RECUERDAN) {
+    const candidatas = await consultasParaRecordar({ db: conPregunta(pregunta), ahora: AHORA, minutos: 10 });
+    assert.deepEqual(candidatas, [], pregunta);
+  }
+});
+
+test("el cliente escribió 'quería hacer una consulta', la asesora preguntó qué auto busca y a los 10 minutos sale el recordatorio", async () => {
+  const envio = envioFalso();
+  const r = await revisar(conPregunta("¿Qué auto estás buscando?", "Hola, quería hacer una consulta"), { envio });
+  assert.equal(envio.enviados.length, 1);
+  assert.equal(r.length, 1);
+});
+
+test("con una pregunta que no se recuerda, la revisión no manda nada, no llama a Claude y no reserva la consulta", async () => {
+  for (const pregunta of PREGUNTAS_QUE_NO_SE_RECUERDAN) {
+    const db = conPregunta(pregunta);
+    const envio = envioFalso();
+    const anthropic = claudeFalso();
+    assert.deepEqual(await revisar(db, { envio, anthropic }), [], pregunta);
+    assert.equal(envio.enviados.length, 0, pregunta);
+    assert.equal(anthropic.llamadas.length, 0, pregunta);
+    assert.equal(db.estado.sesiones[0].recordatorio_en, null, `${pregunta}: sin reserva, la consulta no queda evaluada`);
+  }
+});
+
+test("si la pregunta es de un tema permitido pero también trae uno excluido en el mismo mensaje, no sale (el excluido gana)", async () => {
+  const candidatas = await consultasParaRecordar({ db: conPregunta("¿Con cuánto de anticipo contás? ¿Me pasás tu CUIL?"), ahora: AHORA, minutos: 10 });
+  assert.deepEqual(candidatas, []);
+});
+
+test("lo demás no cambia con la lista: una pregunta permitida con 9 minutos, o ya con visita acordada, sigue sin salir", async () => {
+  const nueve = baseFalsa({ historial: [{ id: 1, cliente_id: 50, direccion: "saliente", mensaje: "¿Qué auto estás buscando?", paso_nodo: "agente_ia", created_at: hace(9) }], sesion: { ultimo_mensaje: hace(9) } });
+  assert.deepEqual(await consultasParaRecordar({ db: nueve, ahora: AHORA, minutos: 10 }), []);
+  const cerrada = conPregunta("¿Cuándo podrías pasar por la agencia?");
+  cerrada.estado.sesiones[0].visita_propuesta = "martes 10hs";
+  assert.deepEqual(await consultasParaRecordar({ db: cerrada, ahora: AHORA, minutos: 10 }), []);
+});
+
+test("la línea de sistema del recordatorio pide no volver a pedir fotos: retoma solo la pregunta", async () => {
+  const anthropic = claudeFalso();
+  await revisar(conPregunta("Si podés, pasame unas fotos de la moto. ¿Qué marca, modelo y año es?"), { anthropic });
+  const sistema = anthropic.llamadas[0].system.map((b) => b.text).join("\n");
+  assert.match(sistema, /no vuelvas a pedir fotos/i);
+  assert.match(sistema, /retomá solo la pregunta/i);
+});

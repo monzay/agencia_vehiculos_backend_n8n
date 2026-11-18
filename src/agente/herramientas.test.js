@@ -931,7 +931,7 @@ test("el log nunca muestra DNI, CUIL ni lo que dicta el cliente", async () => {
   assert.doesNotMatch(escrito, /1222|30111222|12345678|150000|1800000|3 millones|Peugeot|choque|sábado/);
   assert.match(lineas[0], /\{"otros":\["dni_ultimos"\]\} → \{"verificado":true\}/);
   assert.match(lineas[1], /\{"otros":\["cuil"\]\} → \{\}/);
-  assert.match(lineas[2], /"otros":\["anticipo","entrega_usado","usado_marca","usado_detalles","visita_propuesta"\]\} → \{"registrado":true\}/);
+  assert.match(lineas[2], /"otros":\["anticipo","entrega_usado","usado_marca","usado_detalles","visita_propuesta"\]\} → \{"registrado":true[,}]/);
 });
 
 test("si escribir el log falla, la herramienta responde igual", async (t) => {
@@ -1179,4 +1179,45 @@ test("el log no muestra el nombre que dictó el cliente", async () => {
   const { lineas, log } = espiaDeLog();
   await ejecutarHerramienta("registrar_calificacion", { ...calificacionVacia, nombre: "Claudia Espinosa" }, ctx(dbConConsulta({}), { log, guardarNombre: async () => {} }));
   assert.doesNotMatch(lineas.join("\n"), /Claudia|Espinosa/);
+});
+
+// ── ajustes-por-chats-reales: el pedido de fotos del usado ──
+
+const espiaDeFotos = () => {
+  const llamadas = [];
+  return { llamadas, marcarFotosPedidas: async (sesionId) => void llamadas.push(sesionId) };
+};
+
+test("registrar_calificacion: la primera vez que guarda entrega_usado true avisa que hay que pedir fotos y marca la consulta con ctx.marcarFotosPedidas", async () => {
+  const { llamadas, marcarFotosPedidas } = espiaDeFotos();
+  const db = dbConConsulta({ entrega_usado: null, fotos_usado_pedidas_at: null });
+  const r = await ejecutarHerramienta("registrar_calificacion", { ...calificacionVacia, entrega_usado: true }, ctx(db, { marcarFotosPedidas }));
+  assert.equal(r.esError, false);
+  assert.equal(r.resultado.pedir_fotos_usado, true);
+  assert.deepEqual(llamadas, [900], "se marca la consulta una sola vez");
+  assert.equal("fotos_usado_pedidas_at" in ultima(db, "chat_estado", "update").args.data, false, "el usuario del agente no escribe la marca: lo hace el callback");
+});
+
+test("registrar_calificacion: con fotos_usado_pedidas_at ya puesto no vuelve a avisar ni a marcar, aunque el cliente repita que entrega", async () => {
+  const { llamadas, marcarFotosPedidas } = espiaDeFotos();
+  const db = dbConConsulta({ entrega_usado: 1, fotos_usado_pedidas_at: new Date("2026-10-11T14:00:00Z") });
+  const r = await ejecutarHerramienta("registrar_calificacion", { ...calificacionVacia, entrega_usado: true, usado_marca: "Volkswagen" }, ctx(db, { marcarFotosPedidas }));
+  assert.equal(r.esError, false);
+  assert.equal("pedir_fotos_usado" in r.resultado, false);
+  assert.deepEqual(llamadas, []);
+});
+
+test("registrar_calificacion: con entrega_usado false (o sin tocar el usado) no pide fotos ni marca nada", async () => {
+  const { llamadas, marcarFotosPedidas } = espiaDeFotos();
+  const noEntrega = await ejecutarHerramienta("registrar_calificacion", { ...calificacionVacia, entrega_usado: false }, ctx(dbConConsulta({ fotos_usado_pedidas_at: null }), { marcarFotosPedidas }));
+  const otroDato = await ejecutarHerramienta("registrar_calificacion", { ...calificacionVacia, pago_tipo: "contado" }, ctx(dbConConsulta({ fotos_usado_pedidas_at: null }), { marcarFotosPedidas }));
+  assert.equal("pedir_fotos_usado" in noEntrega.resultado, false);
+  assert.equal("pedir_fotos_usado" in otroDato.resultado, false);
+  assert.deepEqual(llamadas, []);
+});
+
+test("registrar_calificacion: pide las fotos aunque no haya callback (los tests viejos no lo pasan) y no revienta", async () => {
+  const r = await ejecutarHerramienta("registrar_calificacion", { ...calificacionVacia, entrega_usado: true }, ctx(dbConConsulta({ entrega_usado: null, fotos_usado_pedidas_at: null })));
+  assert.equal(r.esError, false);
+  assert.equal(r.resultado.pedir_fotos_usado, true);
 });

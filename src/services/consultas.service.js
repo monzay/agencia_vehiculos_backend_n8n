@@ -8,6 +8,7 @@ import { ULTIMA_CONSULTA_CREDITICIA } from "./leads.service.js";
 import { PASO_HUMANO } from "../agente/pasos.js";
 import { crearEnvioWhatsapp } from "../agente/whatsapp-envio.js";
 import { telefonoWhatsApp } from "./avisos-cuotas.service.js";
+import { firmarImagenes as firmarImagenesPrivadas } from "../lib/blob-privado.js";
 
 // WhatsApp solo deja enviar texto libre dentro de las 24 h desde el último mensaje del cliente.
 const VENTANA_ATENCION_MS = 24 * 60 * 60 * 1000;
@@ -194,7 +195,7 @@ export async function listarConsultasVenta({ limite = 10, offset = 0, q = "", mo
 // del bot y de una persona). Como `historial_mensajes` guarda por cliente, se
 // acota a la ventana de tiempo de esa sesión: desde su inicio hasta el inicio de
 // la sesión siguiente del mismo cliente (la primera sesión toma también lo anterior a ella).
-export async function obtenerConsulta(sesionId, alcance = NINGUNA) {
+export async function obtenerConsulta(sesionId, alcance = NINGUNA, { firmarImagenes = firmarImagenesPrivadas } = {}) {
   // `sesionId` viene de la URL: un id no numérico debe dar 404, no reventar Prisma.
   const id = Number(sesionId);
   if (!Number.isInteger(id) || id <= 0) return null;
@@ -234,6 +235,8 @@ export async function obtenerConsulta(sesionId, alcance = NINGUNA) {
 
   return {
     sesionId: sesion.id,
+    // Fotos que mandó el cliente del usado que entrega: se guardan como pathnames y se firman al armar el detalle.
+    fotosUsado: await fotosUsadoFirmadas(sesion.fotos_usado_json, firmarImagenes),
     // Preguntas→respuestas identificadas desde lo que el bot guardó estructurado.
     respuestas: construirRespuestas(sesion, sesion.vehiculo_cliente ?? [], sesion.clientes),
     // El chat completo, en orden: cada mensaje con su `autor` (cliente | bot | humano).
@@ -244,6 +247,18 @@ export async function obtenerConsulta(sesionId, alcance = NINGUNA) {
     botPausado: Boolean(sesion.bot_pausado),
     ventanaAbierta: dentroDeVentana(ultimoEntrante?.created_at),
   };
+}
+
+// Las URLs firmadas vencen: por eso en la base queda el pathname. Si la firma falla, el detalle se abre sin las fotos.
+async function fotosUsadoFirmadas(pathnames, firmarImagenes) {
+  if (!Array.isArray(pathnames) || !pathnames.length) return [];
+  try {
+    const urls = await firmarImagenes(pathnames);
+    return urls.map((url) => ({ url }));
+  } catch (err) {
+    console.error("[consultas] no se pudieron firmar las fotos del usado:", err?.message);
+    return [];
+  }
 }
 
 // Marca/desmarca una consulta como ATENDIDA. Guarda cuándo y quién la marcó.

@@ -25,6 +25,7 @@ import iaRoutes from "./routes/ia.routes.js";
 import agenteRoutes from "./routes/agente.routes.js";
 import avisosCuotasRoutes from "./routes/avisos-cuotas.routes.js";
 import terminosRoutes from "./routes/terminos.routes.js";
+import { crearRutaBlobSimulado } from "./routes/blob-simulado.routes.js";
 import { notFound, errorHandler } from "./middlewares/error.js";
 import { opcionesCors } from "./lib/cors.js";
 import { urlSinDatosPersonales } from "./lib/log-seguro.js";
@@ -57,6 +58,10 @@ export function crearApp() {
   app.use("/api/agente/cuotas", avisosCuotasRoutes);
   app.use("/api/agente", agenteRoutes);
   app.use(express.json());
+
+  // Solo en desarrollo con BLOB_SIMULADO=1: sirve las fotos que el Blob simulado guarda en disco. En producción es null.
+  const blobSimulado = crearRutaBlobSimulado();
+  if (blobSimulado) app.use("/api/dev/blob-simulado", blobSimulado);
 
   // Healthcheck
   app.get("/health", (req, res) => res.json({ ok: true, service: "agencia-api" }));

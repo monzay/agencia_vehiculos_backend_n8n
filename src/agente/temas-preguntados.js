@@ -3,15 +3,22 @@
 
 // Temas de calificación, en el orden del recorrido.
 export const TEMAS = [
+  // Qué auto busca ("¿Qué auto estás buscando?", "¿Ya tenés algún auto en mente?").
+  ["auto", /qu[eé] (?:auto|modelo|veh[ií]culo|coche)\b[^?]*(?:busc|interes)|en mente/i],
   ["pago", /contado|financ|forma de pago|c[oó]mo (lo |la )?pag/i],
   ["anticipo", /anticipo|entrega inicial/i],
   ["recibo", /recibo|garante/i],
   ["usado", /\busado\b|parte de pago/i],
+  // Marca, modelo o año del vehículo que entrega ("¿Qué marca, modelo y año es?", "¿De qué año es el Fox?").
+  ["usado_datos", /\bmarca\b|\bmodelo\b|\ba[nñ]o\b/i],
   ["usado_kms", /kil[oó]metr|\bkms?\b/i],
   ["usado_detalles", /\bestado\b|detalle|choque|service/i],
   ["usado_precio", /cu[aá]nto ped[ií]s|precio ped|cu[aá]nto quer[eé]s por/i],
   ["decisor", /decid|consult[aá]s|con alguien|vos sol[oa]/i],
   ["visita", /venir|vuelta|pas(ar|ás|arte|es)\b|acerc|visit/i],
+  // Fuera del recorrido (sin palabras para la IA ni dato pendiente): existen para que el recordatorio los deje afuera.
+  ["permiso", /autoriz|\bBCRA\b|central de deudores|situaci[oó]n crediticia/i],
+  ["cuil", /\bcuil\b|\bcuit\b/i],
 ];
 
 // Temas de las preguntas del mensaje (las afirmaciones no cuentan).

@@ -5,6 +5,7 @@ import { MODELO, esfuerzoEfectivo, sinOracionesInternas, sinPulgarSuelto } from 
 import { enCola, contextoDelTurno } from "./atender.js";
 import { hayMensajesEsperando as hayMensajesEsperandoEnRafaga } from "./rafagas.js";
 import { conversacionCerrada, pregunta } from "./cierre.js";
+import { temasPreguntados } from "./temas-preguntados.js";
 import { INSTRUCCIONES, contextoDelMomento } from "./instrucciones.js";
 import { LIMITES, historialParaClaude, maxTokensPara } from "./limites.js";
 import { PASO_AGENTE, PASO_HUMANO } from "./pasos.js";
@@ -68,9 +69,20 @@ export async function consultasParaRecordar({ db, ahora, minutos = MINUTOS_POR_D
   return candidatas;
 }
 
-// El último mensaje es del bot (no de un asesor ni una reacción), pregunta o pide algo y tiene entre `minutos` y 60.
+// Los recordatorios salen solo si el último mensaje pregunta por alguno de estos temas y por ninguno de los excluidos.
+// Todo lo demás (permiso del BCRA, CUIL, cuánto pide, ofertas, preguntas que no se reconocen) no se recuerda.
+const TEMAS_QUE_SE_RECUERDAN = ["auto", "pago", "anticipo", "recibo", "usado", "usado_datos", "decisor", "visita"];
+const TEMAS_EXCLUIDOS = ["permiso", "cuil", "usado_precio"];
+
+function preguntaQueSeRecuerda(mensaje) {
+  const temas = temasPreguntados(mensaje);
+  return temas.some((t) => TEMAS_QUE_SE_RECUERDAN.includes(t)) && !temas.some((t) => TEMAS_EXCLUIDOS.includes(t));
+}
+
+// El último mensaje es del bot (no de un asesor ni una reacción), pregunta por un tema que se recuerda y tiene entre `minutos` y 60.
 function esPreguntaSinContestar(ultimo, ahora, minutos) {
   if (!ultimo || ultimo.direccion !== "saliente" || ultimo.paso_nodo !== PASO_AGENTE || !pregunta(ultimo.mensaje)) return false;
+  if (!preguntaQueSeRecuerda(ultimo.mensaje)) return false;
   const edad = ahora.getTime() - new Date(ultimo.created_at).getTime();
   return edad >= minutos * MIN && edad < VENTANA_MAX_MIN * MIN;
 }
@@ -87,7 +99,7 @@ export function sinSaludoInicial(texto) {
 }
 
 const lineaDelRecordatorio = (minutos) =>
-  `RECORDATORIO: el cliente no respondió tu último mensaje hace ${minutos} minutos. Escribí un único mensaje de una oración que retome tu última pregunta con otras palabras: sin "hola", sin "perdón por escribir de nuevo", sin "no hay apuro", sin explicar para qué sirve el dato, sin presionar y sin datos nuevos. Respondé únicamente ${NO_CORRESPONDE} solo si el último mensaje del cliente dice expresamente que está ocupado, que escribe más tarde o que se despide. Si simplemente no contestó tu pregunta, escribí el recordatorio: es lo normal.`;
+  `RECORDATORIO: el cliente no respondió tu último mensaje hace ${minutos} minutos. Escribí un único mensaje de una oración que retome tu última pregunta con otras palabras: sin "hola", sin "perdón por escribir de nuevo", sin "no hay apuro", sin explicar para qué sirve el dato, sin presionar y sin datos nuevos. Si tu último mensaje pedía fotos, no vuelvas a pedir fotos: retomá solo la pregunta. Respondé únicamente ${NO_CORRESPONDE} solo si el último mensaje del cliente dice expresamente que está ocupado, que escribe más tarde o que se despide. Si simplemente no contestó tu pregunta, escribí el recordatorio: es lo normal.`;
 
 const textoDeClaude = (respuesta) =>
   respuesta.content

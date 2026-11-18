@@ -644,3 +644,34 @@ test("la pregunta de quién decide no lleva género: '¿Lo decidís por tu cuent
   assert.match(t, /¿Lo decidís por tu cuenta o lo consultás con alguien\?/);
   assert.doesNotMatch(t, /vos solo|decidís solo/i, "ni en los ejemplos ni en las reglas");
 });
+
+// ── ajustes-por-chats-reales: las fotos del usado ──
+
+test("cuando registrar_calificacion trae pedir_fotos_usado, pide fotos del vehículo en ese mismo mensaje, como pedido y no como pregunta", async () => {
+  const t = await instrucciones();
+  assert.match(t, /Cuando lo que devuelve registrar_calificacion trae pedir_fotos_usado, en ese mismo mensaje pedile fotos del vehículo/);
+  assert.match(t, /como pedido y no como pregunta/);
+  assert.match(t, /Si podés, pasame unas fotos del Fox/);
+});
+
+test("el pedido de fotos va seguido de la pregunta que corresponde: sigue siendo una sola pregunta", async () => {
+  const t = await instrucciones();
+  assert.match(t, /seguí con la pregunta que corresponda/);
+  assert.match(t, /el pedido de fotos no es una segunda pregunta/);
+});
+
+test("nunca vuelve a pedir las fotos del usado, aunque el cliente no las mande", async () => {
+  const t = await instrucciones();
+  assert.match(t, /Nunca vuelvas a pedir las fotos del usado/);
+});
+
+test("cuando llegan las fotos del usado, agradece en pocas palabras y sigue, sin opinar del estado ni del valor", async () => {
+  const t = await instrucciones();
+  assert.match(t, /Cuando lleguen las fotos, agradecé en pocas palabras y seguí, sin opinar del estado ni del valor/);
+});
+
+test("la regla del usado aclara que pedir fotos no es preguntar el estado", async () => {
+  const t = await instrucciones();
+  assert.match(t, /Pedir fotos del vehículo no es preguntar el estado/);
+  assert.match(t, /No preguntes kilómetros, estado ni detalles/, "la regla vieja sigue");
+});

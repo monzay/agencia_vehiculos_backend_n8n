@@ -83,3 +83,26 @@ test("codigoDeSalida: sin el contador de intentos de red, la corrida falla (no s
   assert.equal(codigoDeSalida({ error: null }), 1);
   assert.equal(codigoDeSalida({ error: null, intentosDeRed: "0" }), 1);
 });
+
+// ── ajustes-por-chats-reales: el blob de las fotos, simulado ──
+
+test("prepararEntorno deja BLOB_SIMULADO en '1' y el Blob real sin token", () => {
+  const env = { ...LOCAL, BLOB_DOCUMENTOS_TOKEN: "vercel_blob_rw_real" };
+  prepararEntorno(env);
+  assert.equal(env.BLOB_SIMULADO, "1");
+  assert.equal(env.BLOB_DOCUMENTOS_TOKEN, "");
+});
+
+test("prepararEntorno pisa un BLOB_SIMULADO distinto de 1 y deja un entorno que exigirBlobSimulado acepta", async () => {
+  const { exigirBlobSimulado } = await import("../../../lib/blob-privado.js");
+  const env = { ...LOCAL, BLOB_SIMULADO: "0", BLOB_DOCUMENTOS_TOKEN: "vercel_blob_rw_real" };
+  prepararEntorno(env);
+  assert.equal(env.BLOB_SIMULADO, "1");
+  assert.doesNotThrow(() => exigirBlobSimulado(env));
+});
+
+test("si la conexión no es local, prepararEntorno aborta y no deja BLOB_SIMULADO a medias", () => {
+  const env = { ...LOCAL, DATABASE_URL: "mysql://avnadmin:x@mysql-313d9fe5.aivencloud.com:26884/defaultdb" };
+  assert.throws(() => prepararEntorno(env));
+  assert.equal("BLOB_SIMULADO" in env, false);
+});

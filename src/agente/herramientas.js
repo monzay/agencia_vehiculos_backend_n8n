@@ -410,7 +410,7 @@ const HERRAMIENTAS = [
       const sesionId = await consultaDelAuto(ctx, autoId);
       const actual = await db.chat_estado.findUnique({
         where: { id: sesionId },
-        select: { auto_id: true, pago_tipo: true, anticipo: true, credito_ok: true, entrega_usado: true, decisor: true, disponibilidad: true, visita_propuesta: true, requiere_vendedor: true, nombre_declarado: true, nombre_pedido_at: true },
+        select: { auto_id: true, pago_tipo: true, anticipo: true, credito_ok: true, entrega_usado: true, decisor: true, disponibilidad: true, visita_propuesta: true, requiere_vendedor: true, nombre_declarado: true, nombre_pedido_at: true, fotos_usado_pedidas_at: true },
       });
       // El nombre lo guarda el callback con el usuario del backend (agente_ia no puede escribirlo); va a la consulta donde quedó.
       const nombre = nombreSeguro(input.nombre);
@@ -425,11 +425,15 @@ const HERRAMIENTAS = [
         data: { ...cambios, score: puntaje(vigente), clasificacion: clasificar(vigente), updated_at: momento },
       });
       const usado = await guardarUsado(db, sesionId, input, momento);
+      // Las fotos del usado se piden una sola vez por consulta: la primera vez que dice que entrega uno.
+      // La marca la escribe el callback con el usuario del backend (agente_ia no escribe `fotos_usado_pedidas_at`).
+      const pedirFotosUsado = input.entrega_usado === true && !actual?.fotos_usado_pedidas_at;
+      if (pedirFotosUsado) await Promise.resolve(ctx.marcarFotosPedidas?.(sesionId)).catch((err) => console.error("[agente] no se pudo marcar el pedido de fotos del usado:", err?.message));
       // En qué va la verificación crediticia con lo recién anotado; si no se puede leer, sigue sin eso.
       const credito = await ctx.credito?.estado?.(sesionId).catch(() => null);
       // Para pedir el permiso en este mismo mensaje hace falta el link; el contexto se armó antes de guardar.
       const privacidad = credito === "pedir_consentimiento" && ctx.urlPublica ? new URL("/privacidad", ctx.urlPublica).href : null;
-      return { resultado: { registrado: true, faltan: pendientes(vigente, usado, credito, { pedirNombre }), ...(privacidad && { privacidad }), ...(aviso && { aviso }) }, sesionId };
+      return { resultado: { registrado: true, faltan: pendientes(vigente, usado, credito, { pedirNombre }), ...(pedirFotosUsado && { pedir_fotos_usado: true }), ...(privacidad && { privacidad }), ...(aviso && { aviso }) }, sesionId };
     },
   },
   {

@@ -221,3 +221,79 @@ darlo, se reacciona con 👍 sin IA. Es lo que decidió el user: no insistir y n
 - 492 de 492 en los 9 archivos de tests, con la barrera de red y el test real de la 086 con `--env-file=.env`.
 - Sonnet informó la suite completa en 1877 de 1879: falla solo el de anclas viejo.
 - Ronda 3 con 0 intentos de red: pasan 12 de 14, con X9 y X10 nuevas. Faltan X12 (tarea 7) y X14 (tarea 8).
+
+## Tareas 7 y 8. Fotos del usado y recordatorio solo en las preguntas elegidas (2026-11-18)
+
+### Tests primero (Sonnet, con la especificación de Claude)
+
+**Tests nuevos:**
+- En `herramientas`, `rafagas`, `atender`, `entorno`, `instrucciones`, `recordatorio`, `temas-preguntados` y
+  `consultas.service`.
+- `blob-privado.test.js` (nuevo): el modo simulado no toca el SDK; producción ignora `BLOB_SIMULADO`;
+  `exigirBlobSimulado`.
+
+**Tests viejos modificados:**
+- "un mensaje con foto o audio no espera" pasa a ser solo de audio, porque la foto ahora espera.
+- El regex del log de `registrar_calificacion` acepta campos extra en el resultado (`pedir_fotos_usado`).
+
+**Revisión de Codex:** 11 hallazgos.
+- **No aplicaron 4:**
+  - el test "se subió pero falla la anotación" ya existía;
+  - el reloj del recordatorio ya es fijo (`AHORA`);
+  - los tiempos de la ráfaga siguen el mismo patrón estable de `rafagas.test.js`;
+  - el test de compatibilidad sin callback es a propósito.
+- **Aplicaron 5, agregados por Claude:**
+  - log sin ningún dato del cliente (texto, nombre dicho, usado);
+  - integración con las fotos ya pedidas, que no avisa ni marca de nuevo;
+  - frases reales de marca, modelo y del BCRA ("¿Me confirmás si te queda bien que consultemos tu situación en
+    el BCRA?", que salió como recordatorio en C49);
+  - `exigirBlobSimulado` antes de `prepararBase` en el script;
+  - `src/routes/blob-simulado.routes.test.js` (nuevo): la ruta local de las fotos simuladas existe solo fuera
+    de producción y con `BLOB_SIMULADO=1`, nunca sale de su carpeta (también con `..` codificado) y da 404 si
+    el archivo no existe.
+- **Quedaron cubiertos indirectamente 2:** el tope de 3 fotos al modelo (test de `atender`) y el contexto
+  aislado de `consultas.service`.
+
+Tests congelados. Sin segunda ronda de Codex: lo agregado son casos puntuales de sus propios hallazgos.
+
+### Código (Sonnet 5.5)
+
+Ver la sección siguiente.
+
+**Lo que hizo Sonnet:**
+- **`herramientas.js`:** `pedir_fotos_usado` y `ctx.marcarFotosPedidas`, solo la primera vez.
+- **`atender.js`:** `marcarFotosPedidas` y `guardarFotosUsado`, con la base raíz.
+  - La subida corre a la par de la llamada a Claude y se espera dentro del turno.
+  - Al modelo le llegan `imagenes.slice(-3)`.
+- **`rafagas.js`:** la foto espera como un texto y `combinar` junta las fotos del lote. Las fotos de cada parte
+  van en un `WeakMap`, para no perderlas si se descarta un repetido.
+- **`blob-privado.js`:** `subirImagenPrivada`, `exigirBlobSimulado` y el modo simulado en
+  `tmp/blob-simulado`. Producción ignora `BLOB_SIMULADO`, y la firma de papeles no cambió.
+- **Archivos nuevos o tocados para el entorno local:**
+  - `routes/blob-simulado.routes.js` (nuevo), montado en `app.js` en `/api/dev/blob-simulado` solo fuera de
+    producción;
+  - `.gitignore` suma `tmp/`.
+- **Otros archivos:**
+  - `temas-preguntados.js`: temas `auto`, `usado_datos`, `permiso` y `cuil`, fuera de `DEL_RECORRIDO`;
+  - `recordatorio.js`: lista de permitidos y excluidos en `esPreguntaSinContestar`, y la línea "no vuelvas a
+    pedir fotos";
+  - `consultas.service.js`: `fotosUsado` firmadas en el detalle;
+  - instrucciones de fotos;
+  - el entorno y el script del simulador exigen el Blob simulado.
+
+**Verificación de Claude:**
+- Los tests no se tocaron: Claude los cambió por última vez a las 09:39 y el código es de las 09:42 en adelante.
+- No hay caracteres de control en los 23 archivos tocados. Sonnet avisó que su herramienta los había metido en
+  unas regex y que después lo corrigió; se revisaron a ojo.
+- 547 de 547 en los 11 archivos.
+- Ronda 4: 14 de 14 con 0 intentos de red. Las fotos simuladas quedan en `tmp/blob-simulado`, ignorado por git.
+
+**Revisión de Codex del diff:** 6 hallazgos.
+- **Aplicó 1:** `exigirBlobSimulado` también rechaza `NODE_ENV=production`. Claude escribió el test y Sonnet
+  hizo el arreglo.
+- **No aplicaron 5:**
+  - Las dos carreras entre turnos de la misma consulta: los mensajes de un número se atienden de a uno y el
+    guardado se espera dentro del turno.
+  - Las fotos del mismo mensaje en que se piden no se guardan, como dice la spec ("después del pedido").
+  - Los enlaces simbólicos en la carpeta simulada: es local, de desarrollo, y la maneja la app.
+  - Los temas ya se clasifican pregunta por pregunta, y el bot hace una sola pregunta por mensaje.

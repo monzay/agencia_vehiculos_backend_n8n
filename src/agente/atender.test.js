@@ -2054,3 +2054,242 @@ test("si 'su nombre' estaba en lo que falta pero la IA no lo pidió, no se marca
   assert.equal(anthropic.pedidos.length, 1, "responde la IA (faltaba pedir el nombre)");
   assert.equal(root.estado.updates.some((u) => u.data?.nombre_pedido_at), false, "no se marca: la respuesta no pidió el nombre");
 });
+
+// ── ajustes-por-chats-reales: las fotos del usado ──
+// Interfaz que fijan estos tests: `deps.blob = { subirImagenPrivada(buffer, tipo, pathname) }` (por defecto,
+// el de src/lib/blob-privado.js). Las fotos se guardan con la base raíz (`root`), nunca con `dbAgente`.
+
+const SESION_USADO = (extra = {}) => ({ id: 1, cliente_id: 50, sesion_inicio: hace(3), ultimo_mensaje: hace(1), entrega_usado: 1, fotos_usado_pedidas_at: hace(1), fotos_usado_json: null, ...extra });
+const foto = (data, media_type = "image/jpeg") => ({ media_type, data });
+const FOTO_1 = foto("QUFBQQ==");
+const FOTO_2 = foto("QkJCQg==", "image/png");
+const FOTO_3 = foto("Q0NDQw==", "image/webp");
+const FOTO_4 = foto("REREREQ=", "image/gif");
+const PATHNAME_USADO = /^consultas\/1\/usado\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(jpg|png|gif|webp)$/;
+const guardadas = (n) => Array.from({ length: n }, (_, i) => `consultas/1/usado/previa-${i}.jpg`);
+
+// Blob de mentira: anota cada intento y cada archivo subido. `fallan` son los intentos (desde 0) que revientan.
+function blobFalso({ fallan = [] } = {}) {
+  const subidas = [];
+  let intentos = 0;
+  return {
+    subidas,
+    intentos: () => intentos,
+    subirImagenPrivada: async (buffer, tipo, pathname) => {
+      const intento = intentos++;
+      if (fallan.includes(intento)) throw new Error("el Blob privado no responde");
+      subidas.push({ buffer, tipo, pathname });
+      return { pathname };
+    },
+  };
+}
+
+const sinLogs = (t) => {
+  const original = [console.error, console.warn];
+  console.error = () => {};
+  console.warn = () => {};
+  t.after(() => ([console.error, console.warn] = original));
+};
+const conBlob = (root, blob, anthropic = claudeFalso()) => ({ ...deps(root, anthropic), blob });
+const baseDelUsado = (sesion) => conUpdatesQueGuardan(baseFalsa({ cliente: { id: 50 }, sesion }));
+const fotosGuardadas = (root) => root.estado.sesiones[0].fotos_usado_json;
+
+test("con las fotos pedidas hace menos de 24 horas, cada foto se sube al Blob privado con su pathname y queda anotada en la consulta", async () => {
+  const root = baseDelUsado(SESION_USADO());
+  const blob = blobFalso();
+  const r = await atenderMensaje({ telefono: TEL, wamid: "w1", imagenes: [FOTO_1, FOTO_2], ahora }, conBlob(root, blob, claudeFalso("¡Gracias! ¿Cuánto pedís por él?")));
+
+  assert.equal(r.texto, "¡Gracias! ¿Cuánto pedís por él?");
+  assert.equal(blob.subidas.length, 2);
+  assert.deepEqual(blob.subidas.map((s) => s.tipo), ["image/jpeg", "image/png"]);
+  assert.deepEqual(blob.subidas.map((s) => s.buffer), [Buffer.from("AAAA"), Buffer.from("BBBB")], "se sube el contenido de cada foto");
+  for (const { pathname } of blob.subidas) assert.match(pathname, PATHNAME_USADO);
+  assert.match(blob.subidas[0].pathname, /\.jpg$/);
+  assert.match(blob.subidas[1].pathname, /\.png$/);
+  assert.notEqual(blob.subidas[0].pathname, blob.subidas[1].pathname);
+  assert.deepEqual(fotosGuardadas(root), blob.subidas.map((s) => s.pathname), "en la consulta queda solo el pathname, nunca una URL");
+});
+
+test("la extensión sale del tipo de la foto: jpg, png, gif o webp", async () => {
+  const root = baseDelUsado(SESION_USADO());
+  const blob = blobFalso();
+  await atenderMensaje({ telefono: TEL, imagenes: [FOTO_1, FOTO_2, FOTO_3], ahora }, conBlob(root, blob));
+  await atenderMensaje({ telefono: TEL, imagenes: [FOTO_4], ahora }, conBlob(root, blob));
+  assert.deepEqual(blob.subidas.map((s) => s.pathname.split(".").pop()), ["jpg", "png", "webp", "gif"]);
+});
+
+test("las fotos nuevas se suman a las que ya había: fotos_usado_json queda con los pathnames anteriores y los nuevos", async () => {
+  const previas = guardadas(2);
+  const root = baseDelUsado(SESION_USADO({ fotos_usado_json: previas }));
+  const blob = blobFalso();
+  await atenderMensaje({ telefono: TEL, imagenes: [FOTO_1], ahora }, conBlob(root, blob));
+  assert.deepEqual(fotosGuardadas(root), [...previas, blob.subidas[0].pathname]);
+});
+
+test("la anotación en la consulta se hace con la base raíz: el usuario del agente (dbAgente) no se toca", async () => {
+  const root = baseDelUsado(SESION_USADO());
+  const dbAgente = new Proxy({}, { get: () => { throw new Error("dbAgente no puede escribir las fotos del usado"); } });
+  await atenderMensaje({ telefono: TEL, imagenes: [FOTO_1], ahora }, { ...conBlob(root, blobFalso()), dbAgente });
+  assert.equal(fotosGuardadas(root).length, 1);
+  assert.ok(root.estado.updates.some((u) => u.where.id === 1 && "fotos_usado_json" in u.data));
+});
+
+test("sin fotos_usado_pedidas_at (todavía no se pidieron las fotos) no se sube ni se guarda nada, y el cliente recibe su respuesta", async () => {
+  const root = baseDelUsado(SESION_USADO({ fotos_usado_pedidas_at: null }));
+  const blob = blobFalso();
+  const r = await atenderMensaje({ telefono: TEL, imagenes: [FOTO_1], ahora }, conBlob(root, blob, claudeFalso("¡Qué lindo auto!")));
+  assert.equal(r.texto, "¡Qué lindo auto!");
+  assert.equal(blob.intentos(), 0);
+  assert.equal(fotosGuardadas(root) ?? null, null);
+  assert.equal(root.estado.updates.some((u) => "fotos_usado_json" in u.data), false);
+});
+
+test("pasadas las 24 horas del pedido (lunes 10 hs, martes 11 hs) la foto no se guarda; a las 23 horas todavía sí", async () => {
+  const tarde = baseDelUsado(SESION_USADO({ fotos_usado_pedidas_at: hace(25) }));
+  const blobTarde = blobFalso();
+  const r = await atenderMensaje({ telefono: TEL, imagenes: [FOTO_1], ahora }, conBlob(tarde, blobTarde));
+  assert.equal(r.conIA, true, "igual se atiende");
+  assert.equal(blobTarde.intentos(), 0);
+  assert.equal(fotosGuardadas(tarde) ?? null, null);
+
+  const aTiempo = baseDelUsado(SESION_USADO({ fotos_usado_pedidas_at: hace(23) }));
+  const blobATiempo = blobFalso();
+  await atenderMensaje({ telefono: TEL, imagenes: [FOTO_1], ahora }, conBlob(aTiempo, blobATiempo));
+  assert.equal(blobATiempo.subidas.length, 1);
+});
+
+test("con 9 fotos guardadas y 3 en el lote se sube 1 (tope de 10 por consulta); con 10 no se sube ninguna", async () => {
+  const nueve = baseDelUsado(SESION_USADO({ fotos_usado_json: guardadas(9) }));
+  const blob = blobFalso();
+  await atenderMensaje({ telefono: TEL, imagenes: [FOTO_1, FOTO_2, FOTO_3], ahora }, conBlob(nueve, blob));
+  assert.equal(blob.subidas.length, 1);
+  assert.equal(fotosGuardadas(nueve).length, 10);
+  assert.deepEqual(fotosGuardadas(nueve).slice(0, 9), guardadas(9), "las anteriores no se tocan");
+
+  const diez = baseDelUsado(SESION_USADO({ fotos_usado_json: guardadas(10) }));
+  const blobLleno = blobFalso();
+  await atenderMensaje({ telefono: TEL, imagenes: [FOTO_1], ahora }, conBlob(diez, blobLleno));
+  assert.equal(blobLleno.intentos(), 0);
+  assert.deepEqual(fotosGuardadas(diez), guardadas(10));
+});
+
+test("si falla la subida el cliente recibe la respuesta igual, en la consulta no queda ningún pathname nuevo y el log no lleva datos del cliente", async (t) => {
+  const lineas = [];
+  const original = [console.error, console.warn];
+  console.error = (...a) => void lineas.push(a.join(" "));
+  console.warn = (...a) => void lineas.push(a.join(" "));
+  t.after(() => ([console.error, console.warn] = original));
+  const previas = guardadas(2);
+  const root = baseDelUsado(SESION_USADO({ fotos_usado_json: previas }));
+  const r = await atenderMensaje({ telefono: TEL, imagenes: [FOTO_1, FOTO_2], ahora }, conBlob(root, blobFalso({ fallan: [0, 1] }), claudeFalso("¡Gracias!")));
+  assert.equal(r.texto, "¡Gracias!");
+  assert.deepEqual(fotosGuardadas(root), previas, "nada a medias");
+  assert.ok(lineas.some((l) => /foto|blob/i.test(l)), "el fallo queda en el log");
+  assert.doesNotMatch(lineas.join("\n"), new RegExp(`${TEL}|QUFBQQ|AAAA`), "sin el teléfono ni el contenido de la foto");
+});
+
+test("una subida que falló no cuenta para el tope: con 8 guardadas y 3 en el lote, falla la primera y se suben las otras dos (quedan 10)", async (t) => {
+  sinLogs(t);
+  const root = baseDelUsado(SESION_USADO({ fotos_usado_json: guardadas(8) }));
+  const blob = blobFalso({ fallan: [0] });
+  await atenderMensaje({ telefono: TEL, imagenes: [FOTO_1, FOTO_2, FOTO_3], ahora }, conBlob(root, blob));
+  assert.equal(blob.intentos(), 3, "intenta con las tres");
+  assert.equal(blob.subidas.length, 2);
+  assert.equal(fotosGuardadas(root).length, 10);
+  assert.deepEqual(fotosGuardadas(root).slice(8), blob.subidas.map((s) => s.pathname));
+});
+
+test("si la foto se subió pero falla la anotación en la consulta, la respuesta sale igual y el fallo queda en el log", async (t) => {
+  const lineas = [];
+  const original = console.error;
+  console.error = (...a) => void lineas.push(a.join(" "));
+  t.after(() => (console.error = original));
+  const root = baseDelUsado(SESION_USADO());
+  const anotar = root.chat_estado.update;
+  root.chat_estado.update = async (args) => {
+    if ("fotos_usado_json" in args.data) throw new Error("db caída");
+    return anotar(args);
+  };
+  const blob = blobFalso();
+  const r = await atenderMensaje({ telefono: TEL, imagenes: [FOTO_1], ahora }, conBlob(root, blob, claudeFalso("¡Gracias!")));
+  assert.equal(r.texto, "¡Gracias!");
+  assert.equal(blob.subidas.length, 1, "el archivo suelto en el Blob se tolera");
+  assert.equal(fotosGuardadas(root) ?? null, null);
+  assert.ok(lineas.some((l) => /foto|usado/i.test(l)), "el fallo queda en el log");
+  assert.doesNotMatch(lineas.join("\n"), new RegExp(TEL));
+});
+
+test("dos mensajes con fotos dentro de la espera se responden una sola vez: se guardan las cuatro y al modelo le llegan las últimas tres", async () => {
+  const root = baseDelUsado(SESION_USADO());
+  const blob = blobFalso();
+  const anthropic = claudeFalso("¡Gracias por las fotos!");
+  const conEspera = { ...conBlob(root, blob, anthropic), esperaRafagaMs: 40 };
+  const [primero, segundo] = await Promise.all([
+    atenderMensaje({ telefono: TEL, wamid: "wf1", imagenes: [FOTO_1, FOTO_2], ahora }, conEspera),
+    new Promise((r) => setTimeout(r, 5)).then(() => atenderMensaje({ telefono: TEL, wamid: "wf2", imagenes: [FOTO_3, FOTO_4], ahora }, conEspera)),
+  ]);
+  assert.equal(primero.juntado, true, "el primero lo junta el último");
+  assert.equal(segundo.texto, "¡Gracias por las fotos!");
+  assert.equal(anthropic.pedidos.length, 1, "una sola respuesta");
+  assert.deepEqual(blob.subidas.map((s) => s.tipo), ["image/jpeg", "image/png", "image/webp", "image/gif"], "para guardar, todas y en orden");
+  const alModelo = JSON.stringify(anthropic.pedidos[0].messages);
+  assert.equal(alModelo.includes("QUFBQQ=="), false, "la primera ya no entra a Claude");
+  for (const f of [FOTO_2, FOTO_3, FOTO_4]) assert.ok(alModelo.includes(f.data), f.media_type);
+  assert.equal((alModelo.match(/"type":"image"/g) ?? []).length, 3);
+});
+
+test("el historial sigue guardando '[foto]' del mensaje con foto, haya o no pedido de fotos", async () => {
+  for (const sesion of [SESION_USADO(), SESION_USADO({ fotos_usado_pedidas_at: null })]) {
+    const root = baseDelUsado(sesion);
+    await atenderMensaje({ telefono: TEL, imagenes: [FOTO_1], ahora }, conBlob(root, blobFalso()));
+    assert.equal(root.estado.historial[0].mensaje, "[foto]");
+    assert.equal(root.estado.historial[0].direccion, "entrante");
+  }
+});
+
+test("al decir registrar_calificacion que entrega un usado, la consulta queda marcada con fotos_usado_pedidas_at (base raíz) y la IA recibe el aviso de pedir fotos", async () => {
+  const root = baseDelUsado(SESION_USADO({ fotos_usado_pedidas_at: null, entrega_usado: null }));
+  const dbAgente = {
+    chat_estado: { findUnique: async () => ({ id: 1, auto_id: 5, pago_tipo: "contado", entrega_usado: null, fotos_usado_pedidas_at: null }), update: async (a) => a },
+    vehiculo_cliente: { findFirst: async () => null, create: async (a) => a },
+  };
+  const guardaUsado = { stop_reason: "tool_use", usage: usoFalso, content: [{ type: "tool_use", id: "t7", name: "registrar_calificacion", input: { entrega_usado: true, usado_modelo: "Fox" } }] };
+  const anthropic = claudeGuionado(guardaUsado, respondeTexto("Dale. Si podés, pasame unas fotos del Fox. ¿Cuánto pedís por él?"));
+  await atenderMensaje({ telefono: TEL, texto: "tengo un Fox para entregar", ahora }, { ...deps(root, anthropic), dbAgente });
+  const marcas = root.estado.updates.filter((u) => u.where.id === 1 && "fotos_usado_pedidas_at" in u.data);
+  assert.equal(marcas.length, 1, "se marca una sola vez, con la base raíz");
+  assert.deepEqual(marcas[0].data.fotos_usado_pedidas_at, ahora);
+  assert.match(JSON.stringify(anthropic.pedidos[1].messages), /pedir_fotos_usado/, "el resultado de la herramienta le avisa a la IA");
+});
+
+// ── ajustes-por-chats-reales: fotos del usado (revisión de Codex de los tests) ──
+
+test("si falla la subida, el log tampoco lleva el texto del mensaje, el nombre dicho ni el usado del cliente", async (t) => {
+  const lineas = [];
+  const original = [console.error, console.warn, console.log, console.info];
+  for (const m of ["error", "warn", "log", "info"]) console[m] = (...a) => void lineas.push(a.join(" "));
+  t.after(() => ([console.error, console.warn, console.log, console.info] = original));
+  const root = baseDelUsado(SESION_USADO({ nombre_declarado: "Claudia Espinosa" }));
+  await atenderMensaje(
+    { telefono: TEL, texto: "acá van las del Fox rojo, patente AB123CD", imagenes: [FOTO_1], ahora },
+    conBlob(root, blobFalso({ fallan: [0] }), claudeFalso("¡Gracias!"))
+  );
+  const log = lineas.join("\n");
+  assert.ok(/foto|blob/i.test(log), "el fallo queda en el log");
+  assert.doesNotMatch(log, /Claudia|Espinosa|Fox rojo|AB123CD|acá van/i, "sin datos del cliente en el log");
+});
+
+test("con las fotos ya pedidas, volver a guardar entrega_usado true no avisa de nuevo ni vuelve a marcar la consulta", async () => {
+  const marca = hace(2);
+  const root = conUpdatesQueGuardan(baseFalsa({ cliente: { id: 50 }, sesion: { id: 1, cliente_id: 50, ultimo_mensaje: hace(1), entrega_usado: 1, fotos_usado_pedidas_at: marca } }));
+  const respuestas = [
+    { stop_reason: "tool_use", usage: {}, content: [{ type: "tool_use", id: "t1", name: "registrar_calificacion", input: { entrega_usado: true } }] },
+    { stop_reason: "end_turn", usage: {}, content: [{ type: "text", text: "¿Cuánto pedís por él?" }] },
+  ];
+  const pedidos = [];
+  const anthropic = { messages: { create: async (p) => (pedidos.push(p), respuestas.shift()) } };
+  await atenderMensaje({ telefono: TEL, texto: "sí, el Fox lo entrego", ahora }, { ...deps(root, anthropic), dbAgente: root });
+  const resultado = JSON.stringify(pedidos.at(-1).messages.at(-1));
+  assert.doesNotMatch(resultado, /pedir_fotos_usado/, "la IA no recibe el aviso de pedir fotos otra vez");
+  assert.deepEqual(root.estado.sesiones[0].fotos_usado_pedidas_at, marca, "la marca no cambia");
+});

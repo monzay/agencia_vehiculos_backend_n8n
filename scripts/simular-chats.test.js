@@ -35,3 +35,10 @@ test("el script verifica las claves antes de preparar la base", () => {
 test("el código de salida del script sale de codigoDeSalida", () => {
   assert.match(fuente, /codigoDeSalida\(/);
 });
+
+test("el script exige el Blob simulado (exigirBlobSimulado) antes de preparar la base: sin eso no corre", () => {
+  const exige = fuente.indexOf("exigirBlobSimulado(");
+  const base = fuente.indexOf("prepararBase(");
+  assert.ok(exige > -1, "el script llama a exigirBlobSimulado");
+  assert.ok(exige < base, "exigirBlobSimulado va antes que prepararBase");
+});

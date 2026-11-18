@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { temasSinContestar, marcarPreguntados, sinPreguntaRepetida, temasSinGuardar } from "./temas-preguntados.js";
+import { temasPreguntados, temasSinContestar, marcarPreguntados, sinPreguntaRepetida, temasSinGuardar } from "./temas-preguntados.js";
 
 const salida = (mensaje, extra = {}) => ({ direccion: "saliente", mensaje, ...extra });
 const entrada = (mensaje) => ({ direccion: "entrante", mensaje });
@@ -80,4 +80,58 @@ test("sinPreguntaRepetida quita la pregunta que va en la misma línea después d
 test("sinPreguntaRepetida no toca una línea anterior ni posterior terminada en coma, solo el fragmento colgando de la misma línea", () => {
   const texto = "Mirá estos datos,\n\nY contame, ¿la pensás pagar de contado o financiada?\n\nTe cuento más,";
   assert.equal(sinPreguntaRepetida(texto, ["forma de pago"]), "Mirá estos datos,\n\nTe cuento más,");
+});
+
+// ── ajustes-por-chats-reales: los temas que el recordatorio reconoce ──
+
+test("temasPreguntados reconoce qué auto busca (auto), con los textos de los chats reales", () => {
+  for (const texto of ["¿Qué auto estás buscando?", "¿Qué auto buscás?", "¿Ya tenés algún auto en mente?"]) {
+    assert.ok(temasPreguntados(texto).includes("auto"), texto);
+  }
+});
+
+test("temasPreguntados reconoce marca, modelo o año del usado que entrega (usado_datos)", () => {
+  for (const texto of ["¿Qué marca, modelo y año es?", "¿De qué año es el Fox?"]) {
+    assert.ok(temasPreguntados(texto).includes("usado_datos"), texto);
+  }
+});
+
+test("temasPreguntados reconoce el permiso para consultar el BCRA (permiso) y el pedido del CUIL (cuil)", () => {
+  for (const texto of ["¿Me autorizás a hacer esa consulta? Respondeme sí o no.", "¿Me autorizás la consulta en el BCRA?"]) {
+    assert.ok(temasPreguntados(texto).includes("permiso"), texto);
+  }
+  assert.ok(temasPreguntados("¿Me pasás tu CUIL?").includes("cuil"));
+});
+
+test("temasPreguntados: los temas nuevos no se confunden entre sí ni con el decisor o el precio del usado", () => {
+  assert.deepEqual(temasPreguntados("¿Me autorizás a hacer esa consulta? Respondeme sí o no."), ["permiso"]);
+  assert.ok(!temasPreguntados("¿Me pasás tu CUIL?").includes("permiso"));
+  assert.ok(!temasPreguntados("¿Qué auto estás buscando?").includes("usado_datos"));
+  assert.ok(temasPreguntados("¿Cuánto pedís por el Fox?").includes("usado_precio"));
+  assert.ok(!temasPreguntados("¿Cuánto pedís por el Fox?").includes("usado_datos"));
+});
+
+test("temasPreguntados: los temas viejos siguen igual", () => {
+  assert.deepEqual(temasPreguntados("¿La pensás pagar de contado o financiada?"), ["pago"]);
+  assert.deepEqual(temasPreguntados("¿Con cuánto de anticipo contás?"), ["anticipo"]);
+  assert.deepEqual(temasPreguntados("¿Tenés recibo de sueldo o un garante?"), ["recibo"]);
+  assert.ok(temasPreguntados("¿Tenés algún vehículo para entregar como parte de pago?").includes("usado"));
+  assert.ok(temasPreguntados("¿Lo decidís por tu cuenta o lo consultás con alguien?").includes("decisor"));
+  assert.ok(temasPreguntados("¿Cuándo podrías pasar por la agencia?").includes("visita"));
+  assert.deepEqual(temasPreguntados("Te espero el martes."), []);
+});
+
+test("temasPreguntados: lo que no es del recorrido no suma ningún tema permitido (ofertas, fotos, algo más)", () => {
+  const permitidos = ["auto", "pago", "anticipo", "recibo", "usado", "usado_datos", "decisor", "visita"];
+  for (const texto of ["¿Te quedás con el Voyage o con el Gol Trend?", "¿Querés que te pase las fotos?", "¿Algo más?"]) {
+    assert.deepEqual(temasPreguntados(texto).filter((t) => permitidos.includes(t)), [], texto);
+  }
+});
+
+test("temasPreguntados: usado_datos también con la marca o el modelo por separado, y permiso con la frase real del recordatorio del BCRA", () => {
+  assert.ok(temasPreguntados("¿De qué marca es?").includes("usado_datos"));
+  assert.ok(temasPreguntados("¿Qué modelo es el auto que entregás?").includes("usado_datos"));
+  // El recordatorio que salió en producción el 16/11 (C49) con el permiso pendiente.
+  assert.ok(temasPreguntados("¿Me confirmás si te queda bien que consultemos tu situación en el BCRA?").includes("permiso"));
+  assert.ok(temasPreguntados("¿Me autorizás la consulta en la Central de Deudores?").includes("permiso"));
 });

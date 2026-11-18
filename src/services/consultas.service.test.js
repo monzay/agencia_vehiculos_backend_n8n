@@ -621,3 +621,47 @@ test("la lista de ventas y consignaciones sale por orden_at desc y, con el mismo
 
   assert.deepEqual(items.map((i) => i.sesionId), [3, 6, 4, 1]);
 });
+
+// ── ajustes-por-chats-reales: las fotos del usado en el detalle de la consulta ──
+// El detalle se arma en obtenerConsulta(sesionId, alcance, { firmarImagenes }): el tercer parámetro
+// inyecta el firmador del Blob privado (por defecto, el de src/lib/blob-privado.js).
+
+const FOTOS = ["consultas/2/usado/aaaa.jpg", "consultas/2/usado/bbbb.png"];
+const firmadorFalso = () => {
+  const pedidos = [];
+  return { pedidos, firmarImagenes: async (pathnames) => (pedidos.push(pathnames), pathnames.map((p) => `https://firmada.example/${p}?sig=1`)) };
+};
+
+test("el detalle de una consulta con fotos del usado trae fotosUsado con la URL firmada de cada una, en orden", async (t) => {
+  conDetalle(t, { sesiones: [sesion(2, { sesion_inicio: dia(14), vehiculo_cliente: [], fotos_usado_json: FOTOS })] });
+  const firmador = firmadorFalso();
+
+  const detalle = await obtenerConsulta("2", TODAS, { firmarImagenes: firmador.firmarImagenes });
+
+  assert.deepEqual(detalle.fotosUsado, FOTOS.map((p) => ({ url: `https://firmada.example/${p}?sig=1` })));
+  assert.deepEqual(firmador.pedidos, [FOTOS], "firma los pathnames guardados, una sola vez");
+});
+
+test("el detalle de una consulta sin fotos del usado no trae fotosUsado (o viene vacío) y ni llama al firmador", async (t) => {
+  for (const fotos of [undefined, null, []]) {
+    conDetalle(t, { sesiones: [sesion(2, { sesion_inicio: dia(14), vehiculo_cliente: [], fotos_usado_json: fotos })] });
+    const firmador = firmadorFalso();
+    const detalle = await obtenerConsulta("2", TODAS, { firmarImagenes: firmador.firmarImagenes });
+    assert.deepEqual(detalle.fotosUsado ?? [], [], String(fotos));
+    assert.deepEqual(firmador.pedidos, [], "sin fotos no hay nada que firmar");
+    assert.deepEqual(detalle.respuestas, [], "el resto del detalle queda como siempre");
+  }
+});
+
+test("si falla la firma (el Blob privado no responde o no hay store), el detalle se abre igual, sin las fotos", async (t) => {
+  conDetalle(t, { sesiones: [sesion(2, { sesion_inicio: dia(14), nombre_declarado: "Ana", vehiculo_cliente: [], fotos_usado_json: FOTOS })] });
+  const log = console.error;
+  console.error = () => {};
+  t.after(() => (console.error = log));
+
+  const detalle = await obtenerConsulta("2", TODAS, { firmarImagenes: async () => { throw Object.assign(new Error("Blob caído"), { status: 502 }); } });
+
+  assert.deepEqual(detalle.fotosUsado ?? [], []);
+  assert.equal(detalle.sesionId, 2);
+  assert.deepEqual(detalle.respuestas, [{ pregunta: "¿A nombre de quién registramos la consulta?", respuesta: "Ana" }]);
+});
