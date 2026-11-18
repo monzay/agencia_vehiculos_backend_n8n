@@ -77,3 +77,19 @@ Se cambiaron el encabezado de tasks.md, las tareas 1, 7, 9, 10 y 11, y proposal.
 
 Codex dio por resueltos los 2 hallazgos de la ronda 7. `openspec validate --strict` pasa. Falta la aprobación del
 user en `OBJETIVO.md`.
+
+## Ajustes durante la fase 2 (2026-11-18, tarea 1)
+
+Los dos salen de lo que encontró Sonnet al implementar la tarea 1. Codex los revisa junto con los tests de las
+tareas 6 y 7.
+
+1. **Fotos juntas.** Hoy cada foto sale de la ráfaga sin esperar. Con el pedido de fotos del usado, un cliente
+   que manda 3 fotos recibiría 3 respuestas, que son 3 mensajes pagos. Se agregó:
+   - el delta `specs/agente-entrada` (MODIFIED "Mensajes en ráfaga se responden una sola vez"): la foto espera
+     como un texto, las fotos seguidas se responden una sola vez, y al modelo le llegan hasta 3 y para guardar
+     quedan todas;
+   - la viñeta "Fotos juntas, una sola respuesta" en la tarea 7.
+2. **El nombre, en el mensaje siguiente.** Con la regla del plan, `registrar_calificacion` devolvería "su nombre"
+   en el mismo turno en que se guarda la visita, y el modelo lo pediría en el mensaje que confirma la visita. El
+   user lo descartó el 18/11 ("esto no"). Se agregó a `agente-calificacion` el escenario "No en el mismo mensaje
+   que confirma la visita".

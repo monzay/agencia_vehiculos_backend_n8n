@@ -12,6 +12,12 @@ no conteste, y después MUST NOT volver a figurar.
 - **THEN** lo que falta es solo "su nombre"
 <!-- test: FALTA -->
 
+#### Scenario: No en el mismo mensaje que confirma la visita
+- **WHEN** el cliente dice "el jueves a la tarde" y la asesora guarda la visita en ese turno
+- **THEN** lo que devuelve `registrar_calificacion` en ese turno no trae "su nombre": el nombre recién figura en el mensaje siguiente del cliente, porque la visita tiene que haber quedado acordada antes de ese turno
+<!-- test: FALTA -->
+<!-- eval: chats simulados › X9 -->
+
 #### Scenario: Visita acordada con el recorrido incompleto
 - **WHEN** el cliente acordó la visita sin haber dicho quién decide, nunca dijo su nombre y no se le pidió
 - **THEN** "su nombre" va primero en lo que falta y "quién decide" después
