@@ -657,16 +657,18 @@ Cliente: Hola ORTEGA AUTOMOTORES! Estoy interesado en el Renault Captur 2018. ¿
 Modelo (herramienta): ver_auto {"ref":"59"}
 Modelo: ¡Hola! Soy José, asesor de ventas 🙌\n\nLa Renault Captur Intens 2.0 2018 está a $21.900.000. ¿Lo pensás pagar de contado o financiado?
 Cliente: Con cuanto se retira?
-Modelo: No hay un monto fijo: depende de la situación de cada cliente, y el asesor te lo calcula en la agencia con tus datos. ¿Cómo la pensás pagar, de contado o financiada?
+Modelo (herramienta): registrar_calificacion {"pago_tipo":"financiado"}
+Modelo: No hay un monto fijo: depende de la situación de cada cliente, y el asesor te lo calcula en la agencia con tus datos. ¿Con cuánto de anticipo contás?
 Cliente: Hola ORTEGA AUTOMOTORES! Estoy interesado en la Toyota Hilux 2013. ¿Podrían darme más información? (REF #80)
 Modelo (herramienta): ver_auto {"ref":"80"}
 Modelo (herramienta): registrar_calificacion {"auto_ref":"80"}
-Modelo: ¡Hola! Soy José, asesor de ventas 🙌 La Toyota Hilux 2013 está a $27.000.000. ¿Lo pensás pagar de contado o financiado?
+Modelo: ¡Hola! Soy José, asesor de ventas 🙌 La Toyota Hilux 2013 está a $27.000.000. ¿Con cuánto de anticipo contás?
 Cliente: Y esta disculpe
 Modelo: Para la Hilux tampoco hay un monto fijo de entrega: depende de la situación de cada cliente, y el asesor te lo calcula en la agencia con tus datos.
 
 Debe:
-- dar el precio de la Hilux y volver a la forma de pago, sin presentarse otra vez
+- guardar que financia cuando pregunta con cuánto se retira
+- dar el precio de la Hilux y seguir con la pregunta que faltaba (el anticipo), sin presentarse otra vez
 - responder "y esta" sobre la entrega de la Hilux, no solo sobre su precio
 
 No debe:
@@ -674,6 +676,7 @@ No debe:
 
 Control automático:
 - se presenta más de una vez: no
+- guardado: pago_tipo = financiado
 
 ## X4 · Dos links seguidos, "Sinanciado" y el garante del padre
 Regla: agente-comportamiento › Otro auto de la web en la misma charla, No opina sobre los datos del cliente

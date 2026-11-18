@@ -322,3 +322,45 @@ Ver la sección siguiente.
 - **Codex:** aprobable, sin hallazgos.
 - **Pruebas:** 3 de 3 en `fotos-usado.test.js`. Sonnet informó la suite del front en 29 de 29, `npm run build`
   sin errores y ESLint sin errores nuevos (`chat-consulta.jsx` ya tenía uno, `react-hooks/set-state-in-effect`).
+
+## Tarea 10. Rondas finales con Haiku 5.5 simulado y Codex (2026-11-18)
+
+### Comparación de la ronda 0 con la ronda 5
+
+Bot de `main` contra el bot del cambio, con el mismo guion. Las rondas quedan en `simulacion/`, que no se sube a
+git.
+
+| Chat | Qué mide | Ronda 0 | Ronda 5 |
+|---|---|---|---|
+| X1, X2 | Entrega mínima con la respuesta A | ✅ (texto del guion) | ✅ |
+| X3, X4 | Una sola presentación con el segundo link | ❌ "Soy José" dos veces | ✅ se quita la segunda |
+| X5 | "Monotributo no es impedimento" | ❌ se le dice al cliente | ✅ se quita |
+| X6 | "Uber sirve para financiar" y "anotado" en la oración de la pregunta | ❌ | ✅ |
+| X7, X8 | Frases que se leían mal | ✅ (texto del guion) | ✅ |
+| X9 | Pide el nombre una vez después de la visita; ante "dale", 👍 | ❌ 👍 sin pedirlo | ✅ |
+| X10 | "Soy Claudia" antes: se guarda y no se pide después | ❌ no se guardaba | ✅ |
+| X11 | Perfil "Mi Reina": nunca la nombra | ✅ (texto del guion) | ✅ |
+| X12 | Dos fotos juntas: una respuesta y las dos guardadas | ❌ dos respuestas | ✅ una respuesta, `fotos_usado = 2` |
+| X13 | El recordatorio retoma marca, modelo y año sin pedir fotos | ✅ | ✅ |
+| X14 | Sin recordatorio para el permiso del BCRA ni para una oferta; sí para "¿qué auto buscás?" | ❌ recordó el permiso | ✅ |
+
+Las dos rondas corrieron con 0 intentos de conexión fuera de la máquina y costo de IA de US$ 0.
+
+Las filas marcadas "(texto del guion)" son reglas que dependen solo de las instrucciones. Con el modelo simulado
+ese texto lo pone el guion, así que pasan en las dos rondas y no miden al Haiku real.
+
+### Suite completa
+
+1942 de 1944: 1 salteado (el test real de la 086 sin `.env`) y 1 que falla, el de anclas, todas de
+`openspec/changes/importar-lista-por-etapas` (ninguna de este cambio).
+
+### Codex sobre la transcripción de la ronda 5
+
+Se le aclaró que el texto del bot lo pone el guion y que se juzga el código.
+- **X3 (media), aplicó:** el guion, después del segundo auto, preguntaba la forma de pago cuando faltaba el
+  anticipo. Se corrigió el guion (guarda `financiado` al preguntar con cuánto se retira y sigue con el anticipo)
+  y se agregó el control `guardado: pago_tipo = financiado`. Ronda 5 repetida: 14 de 14.
+- **X14 (alta), no aplicó:** dice que "recordatorios: 1" no prueba en qué espera salió. Lo prueba el guion
+  estricto: las dos esperas que no deben recordar no tienen respuestas del modelo, así que si saliera un
+  recordatorio, el código llamaría al modelo, el doble lo marcaría como "llamó de más" y el chat fallaría.
+  Hasta el texto fijo de respaldo del recordatorio pasa antes por esa llamada.
