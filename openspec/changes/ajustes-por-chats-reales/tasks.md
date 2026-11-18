@@ -173,9 +173,11 @@ Salen de las conversaciones reales del 16 y 17/11, sin nombres ni teléfonos rea
     - `scripts/migracion-086.test.js` aplica la migración en una base local con el `sql_mode` de producción
       (ANSI), comprueba las columnas y que las filas existentes no cambian.
     - Se puede aplicar dos veces sin error.
+    - Como `npm test` no carga el `.env`, el test que aplica la migración en la base local se saltea ahí (igual que en la 084). En la verificación de la tarea se corre aparte, con `node --env-file=.env`, y tiene que pasar.
 
 - [ ] 6. El nombre lo dice el cliente (backend)
   - Qué:
+    - **Quién escribe (decidido en la fase 2):** `agente_ia` no tiene UPDATE sobre `nombre_declarado` ni sobre `clientes`, así que el nombre dicho, la ficha y `nombre_pedido_at` se escriben con el usuario del backend, por callbacks del ctx (como `cambiarAuto` y `registrarConsentimiento`). La 086 no suma GRANT.
     - **Ficha:** `resolverCliente` ya no guarda el nombre del perfil.
     - **Guardar:** `registrar_calificacion` acepta `nombre`, lo guarda saneado en
       `sesiones.nombre_declarado` y completa la ficha solo si está vacía.
@@ -197,6 +199,7 @@ Salen de las conversaciones reales del 16 y 17/11, sin nombres ni teléfonos rea
 
 - [ ] 7. Fotos del usado (backend)
   - Qué:
+    - **Quién escribe:** igual que en la tarea 6, `fotos_usado_pedidas_at` y `fotos_usado_json` los escribe el usuario del backend (callback del ctx y `atender.js`), no `agente_ia`.
     - **El pedido:** `registrar_calificacion` avisa que hay que pedir fotos la primera vez que se guarda
       `entrega_usado: true` y marca `fotos_usado_pedidas_at`.
     - **Instrucciones:** pedido de fotos sin pregunta, en el mismo mensaje que la pregunta que sigue. Cuando

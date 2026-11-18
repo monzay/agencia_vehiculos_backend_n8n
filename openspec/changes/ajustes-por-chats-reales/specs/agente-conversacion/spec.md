@@ -55,8 +55,9 @@ y el cliente solo agradece o se despide, el sistema MUST reaccionar con 👍 a s
 IA. "Solo agradece" significa: hasta 60 caracteres, sin pregunta, solo palabras de cierre o
 emojis. Si la última respuesta de la asesora preguntaba o pedía algo, MUST responder la IA:
 un "dale" ahí es un sí. Si falta pedir el nombre (ver `agente-calificacion` › El nombre después
-de la visita), MUST responder la IA aunque el cliente solo agradezca. Si la IA contesta solo 👍,
-MUST salir como reacción.
+de la visita), MUST responder la IA aunque el cliente solo agradezca. Si la última respuesta de la
+asesora fue el pedido del nombre, un agradecimiento o una despedida MUST reaccionarse con 👍: no se insiste.
+Si la IA contesta solo 👍, MUST salir como reacción.
 <!-- id: cierre.debeReaccionar -->
 
 #### Scenario: Charla cerrada y solo agradece
@@ -68,6 +69,12 @@ MUST salir como reacción.
 #### Scenario: Falta pedir el nombre
 - **WHEN** acordó la visita, no dijo su nombre, todavía no se le pidió y el cliente escribe "ok, gracias"
 - **THEN** no se reacciona: responde la IA, que le pide el nombre
+<!-- test: FALTA -->
+<!-- eval: chats simulados › X9 -->
+
+#### Scenario: Después del pedido del nombre
+- **WHEN** la asesora pidió el nombre y el cliente contesta "dale" o "gracias" sin decirlo
+- **THEN** se reacciona con 👍, sin IA y sin volver a pedirlo; si en cambio escribe su nombre ("Claudia"), responde la IA y lo guarda
 <!-- test: FALTA -->
 <!-- eval: chats simulados › X9 -->
 

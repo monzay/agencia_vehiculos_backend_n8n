@@ -116,6 +116,9 @@ model chat_estado {
   disponibilidad   chat_estado_disponibilidad?
   visita_propuesta    String?   @db.VarChar(120)
   visita_propuesta_at DateTime? @db.DateTime(0)
+  nombre_pedido_at       DateTime? @db.DateTime(0)
+  fotos_usado_pedidas_at DateTime? @db.DateTime(0)
+  fotos_usado_json       Json?
   auto_id          Int?                         @db.UnsignedInt
   origen           String?                      @db.VarChar(20)
   vendedor_id      Int?                         @db.UnsignedInt

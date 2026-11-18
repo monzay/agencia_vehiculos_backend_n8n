@@ -3,6 +3,8 @@
 // Ante la duda se responde: alcanza con una pregunta, un dato nuevo o que
 // Agustina haya preguntado algo (ahí un "dale" es un sí, no una despedida).
 
+import { correspondePedirNombre } from "./calificacion.js";
+
 const MAX_LARGO = 60;
 const PALABRAS_DE_CIERRE = new Set([
   "gracias", "muchas", "muchisimas", "mil", "dale", "ok", "okey", "oka", "okis", "genial", "perfecto", "perfecta",
@@ -33,5 +35,6 @@ export function conversacionCerrada(sesion) {
   return presente(s.visita_propuesta) || s.disponibilidad === "no_sabe" || s.requiere_vendedor === true || Number(s.requiere_vendedor) === 1;
 }
 
-export const debeReaccionar = ({ texto, sesion, ultimaRespuesta }) =>
-  esSoloAgradecimiento(texto) && conversacionCerrada(sesion) && !pregunta(ultimaRespuesta);
+// Si todavía falta pedirle el nombre, el "gracias" lo contesta la IA (para pedírselo): no se reacciona.
+export const debeReaccionar = ({ texto, sesion, ultimaRespuesta, nombreDicho }) =>
+  esSoloAgradecimiento(texto) && conversacionCerrada(sesion) && !pregunta(ultimaRespuesta) && !correspondePedirNombre({ sesion, nombreDicho });

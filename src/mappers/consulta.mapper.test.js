@@ -89,11 +89,11 @@ test("una consulta sin cliente se arma igual, sin teléfono ni provincia", () =>
   assert.equal(r.telefonoLocal, "");
 });
 
-// ── Nombre: el de la ficha; el declarado en la consulta solo de respaldo ──
+// ── Nombre: el que dijo el cliente en la consulta; si no, el de la ficha ──
 
-test("el nombre es el de la ficha y, si la ficha no tiene, el que declaró en la consulta", () => {
+test("el nombre es el que dijo el cliente en la consulta y, si no dijo ninguno, el de la ficha", () => {
   const declarada = { ...consulta, nombre_declarado: "Joel Pérez" };
-  assert.equal(mapConsultaResumen(declarada, { id: 1, nombre: "Joel ✨" }, null, null).nombre, "Joel ✨");
+  assert.equal(mapConsultaResumen(declarada, { id: 1, nombre: "Joel ✨" }, null, null).nombre, "Joel Pérez", "lo que dijo gana sobre la ficha");
   assert.equal(mapConsultaResumen(declarada, { id: 1, nombre: null }, null, null).nombre, "Joel Pérez");
   assert.equal(mapConsultaResumen(declarada, null, null, null).nombre, "Joel Pérez");
   assert.equal(mapConsultaResumen(consulta, null, null, null).nombre, "");
@@ -144,7 +144,7 @@ test("la consulta de venta trae el vehículo que ofrece y a nombre de quién se 
 
   const fecha = "2026-10-12T15:00:00.000Z";
   assert.deepEqual(r.venta, { modalidad: "consignacion", marca: "Ford", modelo: "Ka", anio: 2018, kms: "90000", precio: "8000000", fecha, inicio: fecha });
-  assert.deepEqual([r.id, r.sesionId, r.nombre, r.nombreDeclarado, r.telefono, r.clasificacion], [3, 3, "Joel ✨", "Joel Pérez", "3884708347", null]);
+  assert.deepEqual([r.id, r.sesionId, r.nombre, r.nombreDeclarado, r.telefono, r.clasificacion], [3, 3, "Joel Pérez", "Joel Pérez", "3884708347", null]);
 });
 
 test("una consulta de venta sin vehículo cargado ni cliente se arma igual, con todo vacío", () => {
@@ -248,4 +248,36 @@ test("la consulta muestra el CUIL informado y el de la ficha solo si es distinto
   assert.deepEqual(filasDeCuil({}, { cuil: FICHA }), [{ pregunta: "CUIL en la ficha", respuesta: "20-12345678-6" }]);
   assert.deepEqual(filasDeCuil({}, { cuil: null }), []);
   assert.deepEqual(filasDeCuil({}), []);
+});
+
+// ── ajustes-por-chats-reales: el nombre lo dice el cliente ──
+
+test("consulta nueva sin nombre dicho, de una ficha creada sin nombre (perfil 'Mi Reina'): el nombre queda vacío y el panel muestra 'Sin nombre'", () => {
+  const nueva = { id: 20, cliente_id: 1, nombre_declarado: null };
+  assert.equal(mapConsultaResumen(nueva, { id: 1, nombre: null, telefono: "3884708347" }, null, null).nombre, "");
+  assert.equal(mapConsultaVenta(nueva, { id: 1, nombre: null }).nombre, "");
+});
+
+test("si el cliente dijo 'soy Claudia' en la consulta, el nombre es 'Claudia' aunque la ficha diga 'Alvaro'", () => {
+  const dicha = { id: 20, cliente_id: 1, nombre_declarado: "Claudia" };
+  assert.equal(mapConsultaResumen(dicha, { id: 1, nombre: "Alvaro" }, null, null).nombre, "Claudia");
+  assert.equal(mapConsultaVenta(dicha, { id: 1, nombre: "Alvaro" }).nombre, "Claudia");
+});
+
+test("una consulta vieja, sin nombre dicho, sigue mostrando el nombre de la ficha ('Alvaro')", () => {
+  const vieja = { id: 5, cliente_id: 1, nombre_declarado: null };
+  assert.equal(mapConsultaResumen(vieja, { id: 1, nombre: "Alvaro" }, null, null).nombre, "Alvaro");
+  assert.equal(mapConsultaVenta(vieja, { id: 1, nombre: "Alvaro" }).nombre, "Alvaro");
+});
+
+test("la consulta vieja no cambia si después el cliente dice otro nombre en una consulta nueva", () => {
+  const ficha = { id: 1, nombre: "Alvaro" };
+  const vieja = { id: 5, cliente_id: 1, nombre_declarado: null };
+  const nueva = { id: 20, cliente_id: 1, nombre_declarado: "Claudia" };
+  assert.deepEqual([vieja, nueva].map((c) => mapConsultaResumen(c, ficha, null, null).nombre), ["Alvaro", "Claudia"]);
+});
+
+test("un cliente viejo que vuelve sin decir su nombre: la consulta nueva muestra el nombre de la ficha", () => {
+  const nueva = { id: 21, cliente_id: 1, nombre_declarado: null };
+  assert.equal(mapConsultaResumen(nueva, { id: 1, nombre: "Alvaro" }, null, null).nombre, "Alvaro");
 });

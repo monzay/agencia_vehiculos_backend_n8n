@@ -824,11 +824,10 @@ Modelo: ¡Dale! Te esperamos el jueves a la tarde en la agencia.
 Cliente: ok gracias
 Modelo: ¡Dale! ¿Me decís tu nombre así el asesor sabe quién viene?
 Cliente: dale
-Modelo: Perfecto, te esperamos el jueves 🙌
 
 Debe:
 - pedir el nombre una sola vez, después de acordar la visita
-- no insistir cuando el cliente no lo contesta
+- no insistir cuando el cliente no lo contesta: al "dale" se reacciona con 👍, sin IA
 
 No debe:
 - volver a pedir el nombre

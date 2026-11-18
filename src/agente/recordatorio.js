@@ -115,7 +115,7 @@ export async function textoDelRecordatorio({ db, candidato, ahora, minutos = MIN
 
   try {
     const cliente = await db.clientes.findUnique({ where: { id: clienteId } });
-    const contexto = await contextoDelTurno({ root: db, cliente: cliente ?? { id: clienteId }, sesion, ahora, autoWeb: null, cobranza: null, historial });
+    const contexto = await contextoDelTurno({ root: db, cliente: cliente ?? { id: clienteId }, sesion, ahora, autoWeb: null, cobranza: null, historial, pedirNombre: false, nombreDicho: sesion?.nombre_declarado ?? null });
     const conversacion = historialParaClaude([...historial].reverse());
     if (!conversacion.length) return null;
     const esfuerzo = esfuerzoEfectivo();

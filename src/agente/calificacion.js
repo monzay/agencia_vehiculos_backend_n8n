@@ -70,10 +70,15 @@ const PEDIR_PERMISO = "permiso para consultar su situación en el BCRA (pedilo c
 const PEDIR_PERMISO_TRAS_EL_RECIBO = "permiso para consultar su situación en el BCRA (apenas responda lo del recibo o garante)";
 const PEDIR_CUIL = "su CUIL (ya autorizó la consulta)";
 
-export function pendientes(sesion = {}, usado = null, credito = null) {
+// Con la visita acordada, sin nombre dicho y sin haberlo pedido todavía, el cierre pide el nombre (una sola vez por consulta).
+export const correspondePedirNombre = ({ sesion, nombreDicho } = {}) =>
+  presente(sesion?.visita_propuesta) && !definido(sesion?.nombre_pedido_at) && !presente(nombreDicho);
+
+export function pendientes(sesion = {}, usado = null, credito = null, { pedirNombre = false } = {}) {
   const s = sesion ?? {};
   const visitaResuelta = s.disponibilidad === "no_sabe" || presente(s.visita_propuesta);
   return [
+    pedirNombre && "su nombre",
     !definido(s.auto_id) && "auto de interés",
     !definido(s.pago_tipo) && "forma de pago",
     s.pago_tipo === "financiado" && !presente(s.anticipo) && "anticipo",

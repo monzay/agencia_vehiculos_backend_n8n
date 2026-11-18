@@ -26,12 +26,10 @@ const telefonoVisibleDe = (cliente) => telefonoLocal(cliente?.telefono) ?? "";
 // en una ficha fusionada dice por dónde llegó primero (web, presencial), no el de la charla.
 const canalDe = (cliente) => cliente?.canales?.[0]?.canal ?? cliente?.canal ?? "";
 
-// Nombre a mostrar: el de la ficha (`clientes.nombre`). Si la persona escribió primero
-// por WhatsApp es el de su perfil, pero el bot ya no lo refresca en cada mensaje:
-// `resolverCliente` solo completa huecos. La excepción es una carga web o presencial,
-// que lo reemplaza mientras la ficha no tiene DNI. El declarado en la consulta queda de
-// respaldo si la ficha no tiene nombre, y se ve completo en el detalle, entre las respuestas.
-const nombreDe = (sesion, cliente) => cliente?.nombre || sesion.nombre_declarado || "";
+// Nombre a mostrar: el que el cliente dijo en la consulta (`nombre_declarado`). Si no dijo ninguno
+// (consulta vieja o cliente que todavía no lo dio), el de la ficha (`clientes.nombre`); el bot ya no
+// guarda el nombre del perfil de WhatsApp en la ficha. Sin ninguno, vacío ("Sin nombre" en el panel).
+const nombreDe = (sesion, cliente) => sesion.nombre_declarado || cliente?.nombre || "";
 
 // Resumen para la lista (sin cargar mensajes).
 export function mapConsultaResumen(sesion, cliente, auto, vendedor) {

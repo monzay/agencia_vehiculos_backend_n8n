@@ -2,7 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { esSoloAgradecimiento, conversacionCerrada, debeReaccionar } from "./cierre.js";
 
-const CERRADA = { visita_propuesta: "sábado a la mañana" };
+// Ya se le pidió el nombre: si no, falta pedírselo y el "gracias" lo responde la IA.
+const CERRADA = { visita_propuesta: "sábado a la mañana", nombre_pedido_at: new Date("2026-10-11T14:00:00Z") };
 
 test("charla cerrada + solo agradece + Agustina no había preguntado nada: se reacciona", () => {
   assert.equal(debeReaccionar({ texto: "dale, gracias!", sesion: CERRADA, ultimaRespuesta: "¡Te esperamos el sábado! Te dejo la dirección." }), true);
@@ -65,4 +66,24 @@ test("si Agustina pidió algo aunque sea sin signo de pregunta, un 'dale' se res
     assert.equal(debeReaccionar({ texto: "dale", sesion: CERRADA, ultimaRespuesta }), false, ultimaRespuesta);
   }
   assert.equal(debeReaccionar({ texto: "dale, gracias", sesion: CERRADA, ultimaRespuesta: "Cualquier cosa escribime por acá 🙌" }), true);
+});
+
+// ── ajustes-por-chats-reales: el nombre lo dice el cliente ──
+
+const SIN_PEDIR = { visita_propuesta: "sábado a la mañana" };
+
+test("si falta pedir el nombre (visita acordada, sin nombre dicho y sin haberlo pedido), no se reacciona aunque solo agradezca", () => {
+  assert.equal(debeReaccionar({ texto: "ok gracias", sesion: SIN_PEDIR, ultimaRespuesta: "¡Te esperamos el sábado!", nombreDicho: null }), false);
+  assert.equal(debeReaccionar({ texto: "gracias!", sesion: SIN_PEDIR, ultimaRespuesta: null }), false, "sin nombreDicho es como vacío");
+  assert.equal(debeReaccionar({ texto: "👍", sesion: SIN_PEDIR, ultimaRespuesta: null, nombreDicho: "" }), false);
+});
+
+test("si el nombre ya se dijo o ya se pidió, la despedida con la charla cerrada se reacciona como siempre", () => {
+  assert.equal(debeReaccionar({ texto: "ok gracias", sesion: SIN_PEDIR, ultimaRespuesta: null, nombreDicho: "Claudia" }), true);
+  assert.equal(debeReaccionar({ texto: "ok gracias", sesion: { ...SIN_PEDIR, nombre_pedido_at: new Date("2026-10-11T14:00:00Z") }, ultimaRespuesta: null, nombreDicho: null }), true);
+});
+
+test("el nombre solo se pide con la visita acordada: charla cerrada porque no sabe cuándo viene o la tomó un vendedor, se reacciona", () => {
+  assert.equal(debeReaccionar({ texto: "gracias!", sesion: { disponibilidad: "no_sabe" }, ultimaRespuesta: null, nombreDicho: null }), true);
+  assert.equal(debeReaccionar({ texto: "gracias!", sesion: { requiere_vendedor: true }, ultimaRespuesta: null, nombreDicho: null }), true);
 });

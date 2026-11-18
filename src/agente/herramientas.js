@@ -2,7 +2,8 @@ import { z } from "zod";
 import { TIPOS_VEHICULO, normalizarTipoVehiculo } from "../lib/tipos-vehiculo.js";
 import { whereDisponible, selectFicha, autoPublico, fichaConDescripcion, fotosPublicas } from "./auto-publico.js";
 import { COMBUSTIBLES } from "../lib/combustibles.js";
-import { puntaje, clasificar, pendientes } from "./calificacion.js";
+import { puntaje, clasificar, pendientes, correspondePedirNombre } from "./calificacion.js";
+import { nombreSeguro } from "./nombre-dicho.js";
 import { linkDelCatalogo, codigoDeAuto } from "./origen-web.js";
 import { SIN_VERIFICACION } from "../credito/verificacion.js";
 
@@ -399,6 +400,7 @@ const HERRAMIENTAS = [
       decisor_con: textoLibre(40).nullish().describe("Con quién lo consulta, por ejemplo 'pareja'."),
       disponibilidad: z.enum(["esta_semana", "proximas", "no_sabe"]).nullish().describe("Cuándo puede venir a la agencia."),
       visita_propuesta: textoLibre(120).nullish().describe("Cuándo acordó venir: un día, una hora, una semana o una fecha, por ejemplo 'sábado a la mañana'."),
+      nombre: z.string().max(200).nullish().describe("El nombre que el cliente dijo de sí mismo (el suyo, no el de otra persona que nombre). Solo si lo dijo en la charla; nunca el del perfil."),
     }),
     async ejecutar(input, ctx) {
       requiereSesion(ctx);
@@ -408,8 +410,14 @@ const HERRAMIENTAS = [
       const sesionId = await consultaDelAuto(ctx, autoId);
       const actual = await db.chat_estado.findUnique({
         where: { id: sesionId },
-        select: { auto_id: true, pago_tipo: true, anticipo: true, credito_ok: true, entrega_usado: true, decisor: true, disponibilidad: true, visita_propuesta: true, requiere_vendedor: true },
+        select: { auto_id: true, pago_tipo: true, anticipo: true, credito_ok: true, entrega_usado: true, decisor: true, disponibilidad: true, visita_propuesta: true, requiere_vendedor: true, nombre_declarado: true, nombre_pedido_at: true },
       });
+      // El nombre lo guarda el callback con el usuario del backend (agente_ia no puede escribirlo); va a la consulta donde quedó.
+      const nombre = nombreSeguro(input.nombre);
+      const dijoNombre = /\p{L}/u.test(nombre) ? nombre : "";
+      if (dijoNombre) await ctx.guardarNombre?.(dijoNombre, sesionId);
+      // "Su nombre" figura según la consulta como estaba ANTES de este turno: si la visita se guarda ahora, recién va en el próximo mensaje.
+      const pedirNombre = correspondePedirNombre({ sesion: actual, nombreDicho: dijoNombre || actual?.nombre_declarado || ctx.nombreDicho });
       const cambios = cambiosDeSesion(input, autoId, momento, Boolean(actual?.requiere_vendedor));
       const vigente = { ...actual, ...cambios };
       await db.chat_estado.update({
@@ -421,7 +429,7 @@ const HERRAMIENTAS = [
       const credito = await ctx.credito?.estado?.(sesionId).catch(() => null);
       // Para pedir el permiso en este mismo mensaje hace falta el link; el contexto se armó antes de guardar.
       const privacidad = credito === "pedir_consentimiento" && ctx.urlPublica ? new URL("/privacidad", ctx.urlPublica).href : null;
-      return { resultado: { registrado: true, faltan: pendientes(vigente, usado, credito), ...(privacidad && { privacidad }), ...(aviso && { aviso }) }, sesionId };
+      return { resultado: { registrado: true, faltan: pendientes(vigente, usado, credito, { pedirNombre }), ...(privacidad && { privacidad }), ...(aviso && { aviso }) }, sesionId };
     },
   },
   {

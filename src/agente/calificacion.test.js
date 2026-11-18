@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { puntaje, clasificar, pendientes, respondido } from "./calificacion.js";
+import * as calificacion from "./calificacion.js";
 
 // Reglas del bot actual: auto de la web +2 · contado +3 / financiado 0 ·
 // recibo +2 / sin recibo −2 · usado +1 · decide solo +2 / consulta −1 ·
@@ -209,4 +210,44 @@ test("la visita propuesta lleva el día en que el cliente la dijo", () => {
 test("con el permiso anticipado, figura justo después del recibo o garante (que todavía falta) y antes del usado", () => {
   const faltan = pendientes({ auto_id: 5, pago_tipo: "financiado", anticipo: "4 millones" }, null, "pedir_consentimiento_tras_el_recibo");
   assert.deepEqual(faltan.slice(0, 3), ["recibo o garante", "permiso para consultar su situación en el BCRA (apenas responda lo del recibo o garante)", "si entrega un usado"]);
+});
+
+// ── ajustes-por-chats-reales: el nombre lo dice el cliente ──
+
+// Por el módulo entero: si todavía no existe, falla solo este test y no todo el archivo.
+const correspondePedirNombre = (...args) => calificacion.correspondePedirNombre(...args);
+
+const CON_VISITA = { auto_id: 5, pago_tipo: "contado", entrega_usado: 0, decisor: "solo", visita_propuesta: "sábado a la mañana" };
+
+test("pendientes con pedirNombre: con la visita acordada y todo lo demás respondido, lo que falta es solo 'su nombre'", () => {
+  assert.deepEqual(pendientes(CON_VISITA, null, null, { pedirNombre: true }), ["su nombre"]);
+});
+
+test("pendientes con pedirNombre: 'su nombre' va primero, también cuando todavía falta 'quién decide'", () => {
+  const sinDecisor = { ...CON_VISITA, decisor: null };
+  assert.deepEqual(pendientes(sinDecisor, null, null, { pedirNombre: true }), ["su nombre", "quién decide"]);
+});
+
+test("pendientes sin pedirNombre (false o sin el cuarto parámetro): 'su nombre' nunca aparece", () => {
+  assert.deepEqual(pendientes(CON_VISITA, null, null), []);
+  assert.deepEqual(pendientes(CON_VISITA, null, null, {}), []);
+  assert.deepEqual(pendientes(CON_VISITA, null, null, { pedirNombre: false }), []);
+  assert.ok(!pendientes({ ...CON_VISITA, decisor: null }, null, null, { pedirNombre: false }).includes("su nombre"));
+  assert.ok(!pendientes({}, null, null).includes("su nombre"));
+});
+
+test("correspondePedirNombre: con la visita acordada, sin haberlo pedido y sin nombre dicho, sí", () => {
+  assert.equal(correspondePedirNombre({ sesion: { visita_propuesta: "sábado a la mañana" }, nombreDicho: null }), true);
+  assert.equal(correspondePedirNombre({ sesion: { visita_propuesta: "sábado a la mañana", nombre_pedido_at: null }, nombreDicho: "" }), true);
+  assert.equal(correspondePedirNombre({ sesion: { visita_propuesta: "sábado a la mañana" } }), true, "sin nombreDicho es como vacío");
+});
+
+test("correspondePedirNombre: no si ya dijo su nombre, ya se le pidió, no hay visita o no sabe cuándo viene", () => {
+  const visita = { visita_propuesta: "sábado a la mañana" };
+  assert.equal(correspondePedirNombre({ sesion: visita, nombreDicho: "Claudia" }), false, "ya lo dijo");
+  assert.equal(correspondePedirNombre({ sesion: { ...visita, nombre_pedido_at: new Date("2026-10-11T15:00:00Z") }, nombreDicho: null }), false, "ya se le pidió");
+  assert.equal(correspondePedirNombre({ sesion: {}, nombreDicho: null }), false, "sin visita");
+  assert.equal(correspondePedirNombre({ sesion: { visita_propuesta: "  " }, nombreDicho: null }), false, "visita vacía");
+  assert.equal(correspondePedirNombre({ sesion: { disponibilidad: "no_sabe" }, nombreDicho: null }), false, "no sabe cuándo viene");
+  assert.equal(correspondePedirNombre({ sesion: { pago_tipo: "contado" }, nombreDicho: null }), false, "recorrido a medias");
 });

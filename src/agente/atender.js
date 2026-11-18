@@ -2,7 +2,8 @@ import { z } from "zod";
 import { responderConIA } from "./agente.js";
 import { duracionOgg, transcribirConGroq, MODELO_GROQ } from "./audio.js";
 import { LIMITES, MENSAJES_FIJOS, decidirAtencion, audioPermitido, historialParaClaude, recortar } from "./limites.js";
-import { puntaje, clasificar, pendientes, respondido } from "./calificacion.js";
+import { puntaje, clasificar, pendientes, respondido, correspondePedirNombre } from "./calificacion.js";
+import { guardarNombreDicho, nombreDichoDelCliente, pideElNombre } from "./nombre-dicho.js";
 import { cambiarAuto } from "./consultas-por-auto.js";
 import { asesorDelLink, asesorParaConsultaNueva, cambioDeAsesor } from "./reparto.js";
 import { datosDeLaWeb, linkDelCatalogo } from "./origen-web.js";
@@ -246,15 +247,19 @@ async function reaccionar(turno) {
 }
 
 // Las condiciones baratas primero; lo último que dijo Agustina se busca solo si hace falta.
-async function correspondeReaccionar({ root, cliente, sesion }, texto, datos) {
+async function correspondeReaccionar({ root, cliente, sesion, nombreDicho }, texto, datos) {
   if (datos.audio || datos.imagenes.length) return false;
-  if (!debeReaccionar({ texto, sesion, ultimaRespuesta: null })) return false;
+  if (!debeReaccionar({ texto, sesion, ultimaRespuesta: null, nombreDicho })) return false;
   const ultima = await root.historial_mensajes.findFirst({
     where: { cliente_id: cliente.id, direccion: "saliente", paso_nodo: PASO_AGENTE },
     orderBy: { id: "desc" },
-    select: { mensaje: true },
+    select: { mensaje: true, created_at: true },
   });
-  return debeReaccionar({ texto, sesion, ultimaRespuesta: ultima?.mensaje });
+  // Si la última respuesta fue el pedido del nombre (la marca se escribe al final de ese turno, así que
+  // cualquier respuesta posterior es más nueva), su pregunta no cuenta: el "gracias" es una despedida.
+  // La respuesta de ese turno se guarda con la marca de tiempo del turno más 1 ms (`unMsDespues`): ese es el tope.
+  const pidioElNombre = sesion.nombre_pedido_at && ultima?.created_at && new Date(ultima.created_at) <= unMsDespues(new Date(sesion.nombre_pedido_at));
+  return debeReaccionar({ texto, sesion, ultimaRespuesta: pidioElNombre ? null : ultima?.mensaje, nombreDicho });
 }
 
 // Después de gastar en Claude la respuesta sale igual: un fallo al guardar queda en el log.
@@ -356,7 +361,11 @@ async function fotosYaEnviadas(root, historial) {
 
 // Lo que el agente necesita saber en este mensaje: la agencia (nombre, dirección,
 // mapa), el auto de la consulta y en qué punto del recorrido de venta está el cliente.
-export async function contextoDelTurno({ root, cliente, sesion, ahora, autoWeb, cobranza, historial }) {
+// El nombre es el que dijo el cliente (en esta consulta o en una anterior), nunca el de la ficha ni el del perfil.
+// `pedirNombre` y `nombreDicho` se pueden dar ya calculados; si no, se calculan acá.
+export async function contextoDelTurno({ root, cliente, sesion, ahora, autoWeb, cobranza, historial, nombreDicho, pedirNombre }) {
+  nombreDicho = nombreDicho !== undefined ? nombreDicho : await nombreDichoDelCliente({ db: root, clienteId: cliente.id, sesion });
+  pedirNombre = pedirNombre ?? correspondePedirNombre({ sesion, nombreDicho });
   const [usado, ubicacion, credito, auto] = await Promise.all([
     root.vehiculo_cliente.findFirst({ where: { sesion_id: sesion.id, contexto: "trade_in", deleted_at: null } }),
     root.ubicacion.findUnique({ where: { id: 1 }, select: { nombre: true, direccion: true, maps_url: true } }),
@@ -364,7 +373,7 @@ export async function contextoDelTurno({ root, cliente, sesion, ahora, autoWeb, 
     autoDeLaConsulta(root, sesion.auto_id),
   ]);
   // Para el orden de lo que falta, el permiso ya figura tras el recibo aunque todavía no se pueda pedir.
-  const faltan = pendientes(sesion, usado, credito ?? (await permisoAnticipadoDelTurno({ root, cliente, sesion, ahora })));
+  const faltan = pendientes(sesion, usado, credito ?? (await permisoAnticipadoDelTurno({ root, cliente, sesion, ahora })), { pedirNombre });
   const sinContestar = temasSinContestar(historial, faltan);
   const fotosEnviadas = await fotosYaEnviadas(root, historial);
   const tiempo = tiempoDesdeElAnterior(historial, ahora);
@@ -374,7 +383,8 @@ export async function contextoDelTurno({ root, cliente, sesion, ahora, autoWeb, 
     direccion: ubicacion?.direccion,
     mapsUrl: ubicacion?.maps_url,
     ahora,
-    nombreCliente: cliente.nombre,
+    nombreCliente: nombreDicho,
+    pedirNombre,
     catalogoUrl: linkDelCatalogo(process.env.PUBLIC_WEB_URL),
     consultaWeb: autoWeb && { descripcion: autoWeb.descripcion, ref: autoWeb.ref, disponible: autoWeb.disponible },
     autoDeLaConsulta: auto && { ref: auto.ref, descripcion: descripcionDelAuto(auto), disponible: auto.disponible },
@@ -423,6 +433,9 @@ async function responderConAgente(turno, imagenes, deps) {
         ahora,
         // Cambiar el auto de la consulta (y avisar al asesor): con el usuario del backend.
         cambiarAuto: (sesionId, autoId) => cambiarAuto({ db: root, sesionId, ahora }, autoId),
+        // El nombre que dijo el cliente: con el usuario del backend (agente_ia no escribe `nombre_declarado` ni la ficha).
+        guardarNombre: (nombre, sesionDestino) => guardarNombreDicho({ db: root, clienteId: cliente.id, sesionId: sesionDestino ?? sesion.id }, nombre),
+        nombreDicho: turno.nombreDicho,
         cobranza: turno.cobranza && { financiacionId: turno.cobranza.financiacionId, avisoId: turno.cobranza.avisoId },
         // Verificación con el BCRA: con el usuario del backend, solo para este cliente.
         credito: {
@@ -448,6 +461,12 @@ async function responderConAgente(turno, imagenes, deps) {
   // Si Agustina solo contesta 👍 (el cliente agradeció), sale como reacción: gratis.
   const reaccion = r.ok && r.texto?.trim() === REACCION_CIERRE ? REACCION_CIERRE : null;
   await cerrarTurno(reaccion ? { ...turno, paso: PASO_REACCION } : turno, r);
+  // Se marca solo si el texto que salió pide el nombre; si la IA no lo pidió, sigue pendiente para el próximo mensaje.
+  if (r.ok && r.texto && !reaccion && contexto.pedirNombre && pideElNombre(r.texto)) {
+    await root.chat_estado.update({ where: { id: sesion.id }, data: { nombre_pedido_at: ahora } }).catch((err) =>
+      console.error("[agente] no se pudo marcar que se pidió el nombre:", err?.message)
+    );
+  }
   return {
     texto: reaccion ? null : r.texto,
     fotos: r.fotos,
@@ -518,12 +537,14 @@ async function atender(datos, deps) {
   // Con `root` y no con un `tx`: si otro mensaje del mismo número gana la carrera, `resolverCliente`
   // vuelve a buscar y tiene que ver su ficha ya confirmada.
   const { cliente } = await resolverCliente(
-    { canal: "whatsapp", identificador: datos.telefono, telefono: datos.telefono, nombre: datos.nombre },
+    // Sin nombre: el del perfil de WhatsApp no se guarda (lo dice el cliente en la charla).
+    { canal: "whatsapp", identificador: datos.telefono, telefono: datos.telefono },
     root
   );
   const web = datosDeLaWeb(datos.texto);
   const autoWeb = await autoDeLaWeb(root, web.ref);
   const sesion = await vuelveAEscribir(root, await sesionDe(root, cliente.id, ahora, { ...web, auto: autoWeb }), ahora);
+  const nombreDicho = await nombreDichoDelCliente({ db: root, clienteId: cliente.id, sesion });
   const texto = recortar(web.texto);
   const marcaArchivo = datos.imagenes.length ? "[foto]" : datos.audio ? "[audio]" : "[mensaje sin texto]";
   const entrante = texto || marcaArchivo;
@@ -532,7 +553,7 @@ async function atender(datos, deps) {
     mensaje: recortar(datosDeLaWeb(p.texto).texto) || (i === partes.length - 1 ? marcaArchivo : "[mensaje sin texto]"),
     wamid: p.wamid,
   }));
-  const base = { root, cliente, sesion, ahora, wamid: datos.wamid ?? null, paso: PASO_AGENTE, autoWeb, entrantes };
+  const base = { root, cliente, sesion, ahora, wamid: datos.wamid ?? null, paso: PASO_AGENTE, autoWeb, entrantes, nombreDicho, pedirNombre: correspondePedirNombre({ sesion, nombreDicho }) };
 
   // La conversación la tomó una persona desde el panel: el bot no responde, solo registra.
   if (sesion.bot_pausado) return enPausa(base);

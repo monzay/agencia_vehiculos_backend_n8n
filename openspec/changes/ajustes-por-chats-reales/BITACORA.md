@@ -144,3 +144,80 @@ Se hicieron en un solo ciclo, porque tocan los mismos archivos (`instrucciones.j
   (tarea 6), X12 (tarea 7) y X14 (tarea 8).
 - Sonnet informó la suite completa con 9 fallas: las 8 de los tests de la migración 086, que ya estaban escritos
   y la migración todavía no existe, más la vieja de anclas.
+
+## Tareas 5 y 6. Migración 086 y el nombre lo dice el cliente (2026-11-18)
+
+### Tests primero
+
+**Tarea 5 (Claude):** `scripts/migracion-086.test.js`, con 9 tests.
+- Estáticos: las 3 columnas condicionales, sin datos ni GRANT, comillas simples y el `schema.prisma`.
+- Uno real: aplica la 086 dos veces sobre una base temporal local con `sql_mode` ANSI y compara las filas
+  completas antes y después.
+- **Codex:** aplicaron la comparación de filas completas y anotar que el test real se corre con
+  `--env-file=.env` (con `npm test` se saltea, igual que el de la 084). No aplicaron dos: `CREATE TABLE LIKE`
+  no copia las claves foráneas, y las comillas en comentarios ya se ignoran.
+
+**Tarea 6 (Sonnet, con la especificación de Claude):**
+- **Tests nuevos:** en `atender`, `calificacion`, `cierre`, `herramientas`, `instrucciones`, `consulta.mapper` y
+  `nombre-dicho` (nuevo).
+- **Tests viejos adaptados al cambio de comportamiento:**
+  - la ficha ya no toma el nombre del perfil;
+  - el contexto no trae el nombre de la ficha;
+  - las consultas cerradas de los tests de despedida llevan `nombre_pedido_at`;
+  - en el panel gana el nombre dicho.
+- **Corte por el límite de uso:** el agente se cortó a la mitad y se retomó con su contexto cuando se renovó.
+- **Codex:** 3 hallazgos medios.
+  - El test de "¡Hola Ana!" usaba un nombre en la respuesta simulada; pasó a un saludo sin nombre.
+  - Faltaba probar que el nombre lo escribe el usuario del backend y no `agente_ia`. Se agregó un test con un
+    `dbAgente` que anota cualquier escritura.
+  - El flujo completo "soy Claudia" antes de la visita no se agregó como test unitario: ya lo cubre X10 en el
+    simulador.
+- Tests congelados: 13 fallan en `atender`, 4 en `calificacion`, 1 en `cierre`, 8 en `herramientas`, 8 en
+  `instrucciones` y 4 en `consulta.mapper`, y `nombre-dicho` no carga porque falta el módulo.
+
+### Código (Sonnet 5.5)
+
+Ver la sección siguiente.
+
+**Lo que hizo Sonnet:**
+- **Migración:** `086_nombre_y_fotos_del_usado.sql`, con el patrón de la 085. Las 3 columnas se agregan a
+  `chat_estado` en `schema.prisma` y se corrió `prisma generate`. La 086 se aplicó SOLO en la base local
+  (`localhost:3306/agencia`).
+- **`nombre-dicho.js` (nuevo):**
+  - `guardarNombreDicho`, que escribe con el usuario del backend;
+  - `nombreDichoDelCliente`, que toma el nombre de esta consulta o de las anteriores;
+  - `nombreSeguro`, movido desde `instrucciones.js`;
+  - `pideElNombre`.
+- **`atender.js`:**
+  - la ficha ya no recibe el nombre del perfil;
+  - el contexto usa el nombre dicho;
+  - `pedirNombre` se calcula con la consulta como estaba al empezar el turno;
+  - `nombre_pedido_at` se marca con la base raíz y solo si el texto que salió pidió el nombre;
+  - el ctx suma `guardarNombre` y `nombreDicho`.
+- **Otros archivos:**
+  - `calificacion.js`: `pendientes(..., { pedirNombre })` y `correspondePedirNombre`;
+  - `cierre.js`: `debeReaccionar` con `nombreDicho`;
+  - `herramientas.js`: campo `nombre` en `registrar_calificacion`;
+  - `consulta.mapper.js`: nombre dicho → ficha → vacío;
+  - `recordatorio.js`: pasa `pedirNombre: false`, porque la visita acordada ya excluye el recordatorio.
+- **Instrucciones:** nombre solo si lo dijo, pedirlo una vez, guardarlo con `nombre` y la pregunta de quién
+  decide sin género ("¿Lo decidís por tu cuenta o lo consultás con alguien?").
+
+**Decisión nueva durante la tarea:** después del pedido del nombre, si el cliente contesta "dale" o "gracias" sin
+darlo, se reacciona con 👍 sin IA. Es lo que decidió el user: no insistir y no gastar mensajes.
+- Sonnet lo había resuelto con una ventana de 1 segundo, que era frágil. Quedó la condición exacta: la última
+  respuesta de la asesora es anterior o igual a `nombre_pedido_at` (+1 ms, la misma constante con la que se
+  guarda la respuesta del turno).
+- Se agregó a la spec (`agente-conversacion` › Despedidas con 👍, escenario "Después del pedido del nombre"), con
+  2 tests nuevos (uno a 30 segundos de la marca) y el guion de X9 ajustado.
+
+**Revisión de Codex del diff:** 2 hallazgos medios.
+- **Aplicó 1:** `nombre_pedido_at` se marcaba aunque la IA no hubiera pedido el nombre. Ahora se marca solo si
+  el texto final lo pide (`pideElNombre`), con un test nuevo.
+- **No aplicó 1:** que un nombre con solo espacios tape uno más viejo no puede pasar, porque el nombre se guarda
+  saneado.
+
+**Verificación:**
+- 492 de 492 en los 9 archivos de tests, con la barrera de red y el test real de la 086 con `--env-file=.env`.
+- Sonnet informó la suite completa en 1877 de 1879: falla solo el de anclas viejo.
+- Ronda 3 con 0 intentos de red: pasan 12 de 14, con X9 y X10 nuevas. Faltan X12 (tarea 7) y X14 (tarea 8).
