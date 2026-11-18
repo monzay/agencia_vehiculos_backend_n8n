@@ -73,7 +73,7 @@ Salen de las conversaciones reales del 16 y 17/11, sin nombres ni teléfonos rea
 
 ## Tareas
 
-- [ ] 0. Ramas y punto de partida
+- [x] 0. Ramas y punto de partida
   - Qué:
     - Crear `feat/ajustes-por-chats-reales` desde `main` en el backend y en `sea_automotores`.
     - Correr `openspec validate ajustes-por-chats-reales --strict`.
@@ -82,7 +82,7 @@ Salen de las conversaciones reales del 16 y 17/11, sin nombres ni teléfonos rea
   - Criterio: la validación pasa y el archive de prueba deja las specs con los requisitos nuevos, sin
     errores.
 
-- [ ] 1. Chats nuevos con Haiku 5.5 simulado y ronda 0 (medición antes de cambiar)
+- [x] 1. Chats nuevos con Haiku 5.5 simulado y ronda 0 (medición antes de cambiar)
   - Qué:
     - **Script sin API:** `scripts/simular-chats.js` deja de crear el cliente real de Anthropic.
       - **Barrera de red:** hoy usa `limitarFetch` de `chats/entorno.js`, que deja pasar a Anthropic a
@@ -135,14 +135,14 @@ Salen de las conversaciones reales del 16 y 17/11, sin nombres ni teléfonos rea
       fecha y 0 intentos de conexión fuera de la máquina. Los controles de X1 a X14 que dependen del código
       nuevo fallan: eso confirma que miden los errores de producción.
 
-- [ ] 2. Entrega mínima
+- [x] 2. Entrega mínima
   - Qué: en `instrucciones.js`, la regla del anticipo en `null` y su ejemplo pasan a la respuesta A: "No hay
     un monto fijo: depende de la situación de cada cliente, y el asesor te lo calcula en la agencia con tus
     datos". Después sigue con lo primero que falta. Se saca "para decírtela necesito…".
   - Criterio: escenarios de `agente-comportamiento` › Entrega mínima sin cargar y › La entrega mínima sigue
     con el recorrido.
 
-- [ ] 3. Limpieza final del texto
+- [x] 3. Limpieza final del texto
   - Qué: en `agente.js`:
     - **Opiniones de crédito:** el filtro de valoraciones suma "no es impedimento", "sirve para financiar",
       "queda cubierto", "lo podemos trabajar" y "estás en buena posición".
@@ -152,7 +152,7 @@ Salen de las conversaciones reales del 16 y 17/11, sin nombres ni teléfonos rea
       lo pasa `atender.js`, que ya tiene el historial.
   - Criterio: escenarios de `agente-conversacion` › Limpieza final del texto.
 
-- [ ] 4. Instrucciones: otro auto, frases y crédito
+- [x] 4. Instrucciones: otro auto, frases y crédito
   - Qué: en `instrucciones.js`:
     - **Otro auto de la web en la misma charla:** sin presentación, el precio del nuevo y la pregunta que
       faltaba; "¿y esta?" se aplica al auto nuevo.
@@ -162,7 +162,7 @@ Salen de las conversaciones reales del 16 y 17/11, sin nombres ni teléfonos rea
   - Criterio: escenarios de `agente-comportamiento` › Otro auto de la web en la misma charla, › Frases de los
     clientes que se leían mal y › No opina sobre los datos del cliente.
 
-- [ ] 5. Migración 086
+- [x] 5. Migración 086
   - Qué: `prisma/migrations_manual/086_nombre_y_fotos_del_usado.sql` agrega a `sesiones`:
     - `nombre_pedido_at DATETIME NULL`;
     - `fotos_usado_pedidas_at DATETIME NULL`;
@@ -175,7 +175,7 @@ Salen de las conversaciones reales del 16 y 17/11, sin nombres ni teléfonos rea
     - Se puede aplicar dos veces sin error.
     - Como `npm test` no carga el `.env`, el test que aplica la migración en la base local se saltea ahí (igual que en la 084). En la verificación de la tarea se corre aparte, con `node --env-file=.env`, y tiene que pasar.
 
-- [ ] 6. El nombre lo dice el cliente (backend)
+- [x] 6. El nombre lo dice el cliente (backend)
   - Qué:
     - **Quién escribe (decidido en la fase 2):** `agente_ia` no tiene UPDATE sobre `nombre_declarado` ni sobre `clientes`, así que el nombre dicho, la ficha y `nombre_pedido_at` se escriben con el usuario del backend, por callbacks del ctx (como `cambiarAuto` y `registrarConsentimiento`). La 086 no suma GRANT.
     - **Ficha:** `resolverCliente` ya no guarda el nombre del perfil.
@@ -197,7 +197,7 @@ Salen de las conversaciones reales del 16 y 17/11, sin nombres ni teléfonos rea
     - `agente-comportamiento` › El nombre lo dice el cliente y › Defensa contra manipulación;
     - `consultas-ficha` › El nombre del cliente en el panel.
 
-- [ ] 7. Fotos del usado (backend)
+- [x] 7. Fotos del usado (backend)
   - Qué:
     - **Quién escribe:** igual que en la tarea 6, `fotos_usado_pedidas_at` y `fotos_usado_json` los escribe el usuario del backend (callback del ctx y `atender.js`), no `agente_ia`.
     - **El pedido:** `registrar_calificacion` avisa que hay que pedir fotos la primera vez que se guarda
@@ -239,7 +239,7 @@ Salen de las conversaciones reales del 16 y 17/11, sin nombres ni teléfonos rea
     - `agente-recordatorio` › Qué dice el recordatorio;
     - `consultas-ficha` › Fotos del usado en la consulta (la parte del backend).
 
-- [ ] 8. Recordatorio solo en las preguntas elegidas
+- [x] 8. Recordatorio solo en las preguntas elegidas
   - Qué:
     - **Temas nuevos en `TEMAS` de `temas-preguntados.js`:**
       - `auto`: "¿qué auto (o modelo) buscás / estás buscando / te interesa?" y "¿tenés alguno en mente?";
@@ -264,7 +264,7 @@ Salen de las conversaciones reales del 16 y 17/11, sin nombres ni teléfonos rea
       - "¿Me autorizás a hacer esa consulta?", "¿Cuánto pedís por él?" y "¿Te quedás con el Voyage o con la
         Bora?" (X14) no.
 
-- [ ] 9. Fotos del usado en el panel (`sea_automotores`)
+- [x] 9. Fotos del usado en el panel (`sea_automotores`)
   - Qué:
     - En el detalle de la consulta (`components/panel/secciones/chat-consulta.jsx`), junto a los datos del
       usado, se muestran las miniaturas que vienen firmadas, con vista en grande. Sin fotos no cambia nada.
@@ -278,7 +278,7 @@ Salen de las conversaciones reales del 16 y 17/11, sin nombres ni teléfonos rea
         ni `BLOB_DOCUMENTOS_TOKEN`, así que tampoco corre el recordatorio contra WhatsApp.
       - Nada de esto toca producción.
 
-- [ ] 10. Rondas de chats con Haiku 5.5 simulado y Codex (hasta 4)
+- [x] 10. Rondas de chats con Haiku 5.5 simulado y Codex (hasta 4)
   - Qué: correr X1 a X14 con el modelo simulado y la red cortada. Codex juzga cada ronda; Claude verifica cada
     hallazgo contra la transcripción y corrige.
   - Criterio:
@@ -289,7 +289,7 @@ Salen de las conversaciones reales del 16 y 17/11, sin nombres ni teléfonos rea
     - Codex no deja hallazgos altos sin resolver.
     - La comparación con la ronda 0 queda escrita en `simulacion/`.
 
-- [ ] 11. Cierre
+- [x] 11. Cierre
   - Qué:
     - **`DOCUMENTO-FINAL.md`:** qué cambió, la comparación antes y después, y los pasos de deploy:
       - respaldo de la base de producción;

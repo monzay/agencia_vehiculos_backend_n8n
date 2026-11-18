@@ -64,7 +64,7 @@ La IA MUST NOT usar herramientas para escribirlo.
 #### Scenario: El último mensaje pedía fotos
 - **WHEN** la asesora escribió "Si podés, pasame unas fotos de la moto. ¿Qué marca, modelo y año es?" y pasan 10 minutos
 - **THEN** el recordatorio retoma la marca, el modelo y el año, y no menciona las fotos
-<!-- test: FALTA -->
+<!-- test: src/agente/recordatorio.test.js › "la línea de sistema del recordatorio pide no volver a pedir fotos: retoma solo la pregunta" -->
 <!-- eval: chats simulados › X13 -->
 
 ## ADDED Requirements
@@ -79,32 +79,34 @@ salir.
 #### Scenario: Qué auto busca
 - **WHEN** el cliente escribió "quería hacer una consulta", la asesora preguntó qué auto busca y pasan 10 minutos
 - **THEN** sale el recordatorio
-<!-- test: FALTA -->
+<!-- test: src/agente/recordatorio.test.js › "el cliente escribió 'quería hacer una consulta', la asesora preguntó qué auto busca y a los 10 minutos sale el recordatorio" -->
 <!-- eval: chats simulados › X14 -->
 
 #### Scenario: Quién decide y la visita
 - **WHEN** la pregunta sin contestar es "¿Lo decidís por tu cuenta o lo consultás con alguien?" o "¿Cuándo podrías pasar por la agencia?"
 - **THEN** sale el recordatorio
-<!-- test: FALTA -->
+<!-- test: src/agente/recordatorio.test.js › "consultasParaRecordar incluye la consulta cuando la pregunta sin contestar es de un tema permitido (auto, pago, anticipo, recibo, usado, marca y año, decisor, visita)" -->
 
 #### Scenario: Permiso del BCRA o CUIL
 - **WHEN** la pregunta sin contestar es el permiso para consultar el BCRA o el pedido del CUIL
 - **THEN** no sale nada
-<!-- test: FALTA -->
+<!-- test: src/agente/recordatorio.test.js › "consultasParaRecordar deja afuera el permiso del BCRA, el CUIL, cuánto pide por el usado, las ofertas, el ofrecimiento de fotos y las preguntas que no se reconocen" -->
+<!-- test: src/agente/temas-preguntados.test.js › "temasPreguntados reconoce el permiso para consultar el BCRA (permiso) y el pedido del CUIL (cuil)" -->
 <!-- eval: chats simulados › X14 -->
 
 #### Scenario: Cuánto pide por el usado
 - **WHEN** la pregunta sin contestar es "¿Cuánto pedís por el Fox?"
 - **THEN** no sale nada
-<!-- test: FALTA -->
+<!-- test: src/agente/recordatorio.test.js › "consultasParaRecordar deja afuera el permiso del BCRA, el CUIL, cuánto pide por el usado, las ofertas, el ofrecimiento de fotos y las preguntas que no se reconocen" -->
 
 #### Scenario: Una oferta
 - **WHEN** la pregunta sin contestar es "¿Te quedás con el Voyage o con la Bora?" o "¿Querés que te pase las fotos?"
 - **THEN** no sale nada
-<!-- test: FALTA -->
+<!-- test: src/agente/recordatorio.test.js › "consultasParaRecordar deja afuera el permiso del BCRA, el CUIL, cuánto pide por el usado, las ofertas, el ofrecimiento de fotos y las preguntas que no se reconocen" -->
+<!-- test: src/agente/temas-preguntados.test.js › "temasPreguntados: lo que no es del recorrido no suma ningún tema permitido (ofertas, fotos, algo más)" -->
 <!-- eval: chats simulados › X14 -->
 
 #### Scenario: Una pregunta que no se reconoce
 - **WHEN** la pregunta sin contestar no es de ningún tema de la lista
 - **THEN** no sale nada
-<!-- test: FALTA -->
+<!-- test: src/agente/recordatorio.test.js › "con una pregunta que no se recuerda, la revisión no manda nada, no llama a Claude y no reserva la consulta" -->

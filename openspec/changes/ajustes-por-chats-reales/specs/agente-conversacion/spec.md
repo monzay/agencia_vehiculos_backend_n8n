@@ -37,12 +37,12 @@ o alguien lo carga en el panel. MUST NOT tocar el nombre de las fichas que ya ex
 #### Scenario: Ficha nueva con perfil
 - **WHEN** escribe un número nuevo cuyo perfil de WhatsApp dice "Mi Reina"
 - **THEN** la ficha se crea sin nombre
-<!-- test: FALTA -->
+<!-- test: src/agente/atender.test.js › "un número nuevo cuyo perfil de WhatsApp dice 'Mi Reina' crea la ficha sin nombre" -->
 
 #### Scenario: La ficha no tiene nombre
 - **WHEN** la ficha no tiene nombre y el perfil sí
 - **THEN** la ficha sigue sin nombre
-<!-- test: FALTA -->
+<!-- test: src/agente/atender.test.js › "la ficha sin nombre sigue sin nombre aunque el perfil de WhatsApp traiga uno" -->
 
 #### Scenario: Financiación cargada por la web
 - **WHEN** un cliente con financiación cargada por la web consulta desde WhatsApp
@@ -69,13 +69,16 @@ Si la IA contesta solo 👍, MUST salir como reacción.
 #### Scenario: Falta pedir el nombre
 - **WHEN** acordó la visita, no dijo su nombre, todavía no se le pidió y el cliente escribe "ok, gracias"
 - **THEN** no se reacciona: responde la IA, que le pide el nombre
-<!-- test: FALTA -->
+<!-- test: src/agente/cierre.test.js › "si falta pedir el nombre (visita acordada, sin nombre dicho y sin haberlo pedido), no se reacciona aunque solo agradezca" -->
+<!-- test: src/agente/atender.test.js › "con la visita acordada, sin nombre dicho y sin haberlo pedido, 'ok gracias' no se reacciona: responde la IA y 'su nombre' va primero en lo que falta" -->
 <!-- eval: chats simulados › X9 -->
 
 #### Scenario: Después del pedido del nombre
 - **WHEN** la asesora pidió el nombre y el cliente contesta "dale" o "gracias" sin decirlo
 - **THEN** se reacciona con 👍, sin IA y sin volver a pedirlo; si en cambio escribe su nombre ("Claudia"), responde la IA y lo guarda
-<!-- test: FALTA -->
+<!-- test: src/agente/atender.test.js › "si la última respuesta fue el pedido del nombre y el cliente dice 'dale' sin darlo, se reacciona con 👍 sin IA" -->
+<!-- test: src/agente/atender.test.js › "si después del pedido del nombre la asesora preguntó otra cosa, un 'dale' vuelve a ser un sí y responde la IA" -->
+<!-- test: src/agente/atender.test.js › "con nombre_pedido_at ya puesto, 'ok gracias' vuelve a ser una reacción 👍 sin IA" -->
 <!-- eval: chats simulados › X9 -->
 
 #### Scenario: La asesora había preguntado algo
@@ -142,7 +145,7 @@ anterior.
 #### Scenario: Opina sobre si puede financiar
 - **WHEN** la respuesta dice "Monotributo no es impedimento para armarte opciones. ¿Tenés algún auto para dejar como parte de pago?"
 - **THEN** sale solo "¿Tenés algún auto para dejar como parte de pago?"
-<!-- test: FALTA -->
+<!-- test: src/agente/agente.test.js › "sinValoraciones quita las opiniones sobre si el cliente puede financiar (frases reales de producción)" -->
 
 #### Scenario: Anuncia que anotó
 - **WHEN** la respuesta dice "¡Anotado, con 5 millones de anticipo!"
@@ -152,22 +155,24 @@ anterior.
 #### Scenario: "Anotado" en la misma oración que la pregunta
 - **WHEN** la respuesta dice "Perfecto, anotado 👍 ¿Tenés recibo de sueldo o contás con un garante?"
 - **THEN** sale "¿Tenés recibo de sueldo o contás con un garante?"
-<!-- test: FALTA -->
+<!-- test: src/agente/agente.test.js › "una frase a quitar en la misma oración que la pregunta: se quita la frase y queda la pregunta" -->
 
 #### Scenario: Se presenta de nuevo
 - **WHEN** la asesora ya escribió en la consulta y la respuesta empieza "¡Hola! Soy José, asesor de ventas 🙌 El Fiat Siena 2016 está a $13.500.000."
 - **THEN** sale "¡Hola! El Fiat Siena 2016 está a $13.500.000."
-<!-- test: FALTA -->
+<!-- test: src/agente/agente.test.js › "sinPresentacionRepetida quita 'Soy José, asesor de ventas' con su emoji y deja el saludo y el resto" -->
+<!-- test: src/agente/atender.test.js › "si la asesora ya escribió en la consulta, la presentación de la respuesta se quita antes de enviar" -->
 
 #### Scenario: El nombre del asesor en otra frase
 - **WHEN** la asesora ya escribió y la respuesta dice "Cualquier cosa, preguntá por José en la agencia"
 - **THEN** no se toca: solo se quita la frase de presentación
-<!-- test: FALTA -->
+<!-- test: src/agente/agente.test.js › "sinPresentacionRepetida usa el nombre configurado, no toca otras menciones y no deja el texto vacío" -->
+<!-- test: src/agente/agente.test.js › "sinPresentacionRepetida solo quita la presentación si termina ahí (emoji, punto, signo o fin de línea): nunca corta una oración que sigue" -->
 
 #### Scenario: Primera respuesta de la consulta
 - **WHEN** es el primer mensaje de la asesora en la consulta
 - **THEN** la presentación sale como la escribió la IA
-<!-- test: FALTA -->
+<!-- test: src/agente/atender.test.js › "en el primer mensaje de la asesora en la consulta, la presentación sale como la escribió la IA" -->
 
 #### Scenario: Precio mal escrito
 - **WHEN** la respuesta trae "$19.800.£000"
@@ -187,12 +192,12 @@ el cliente nunca dijo su nombre, el contexto MUST NOT traer ninguno.
 #### Scenario: Ficha vieja con el nombre del perfil
 - **WHEN** escribe un cliente cuya ficha dice "El Chino" (cargado del perfil antes de este cambio) y nunca dijo su nombre
 - **THEN** el contexto no trae nombre
-<!-- test: FALTA -->
+<!-- test: src/agente/atender.test.js › "el contexto no trae el nombre de la ficha ni el del perfil si el cliente nunca dijo su nombre" -->
 
 #### Scenario: Lo dijo en una consulta anterior
 - **WHEN** el cliente dijo "soy Claudia" en una consulta que ya venció y escribe en una nueva
 - **THEN** el contexto trae "Claudia"
-<!-- test: FALTA -->
+<!-- test: src/agente/atender.test.js › "si dijo su nombre en una consulta anterior que ya venció, el contexto de la consulta nueva lo trae" -->
 
 ### Requirement: Las fotos del usado quedan guardadas
 Las fotos que el cliente manda en una consulta en las 24 horas siguientes al pedido de fotos del usado
@@ -204,39 +209,41 @@ falta de store MUST NOT frenar la respuesta al cliente.
 #### Scenario: El historial no cambia
 - **WHEN** el cliente manda una foto
 - **THEN** en el historial queda "[foto]", como hoy
-<!-- test: FALTA -->
+<!-- test: src/agente/atender.test.js › "el historial sigue guardando '[foto]' del mensaje con foto, haya o no pedido de fotos" -->
 
 #### Scenario: Manda fotos después de decir que entrega
 - **WHEN** el cliente dijo que entrega un Fox, la asesora le pidió fotos y después manda dos
 - **THEN** las dos quedan en el Blob privado y su pathname en la consulta
-<!-- test: FALTA -->
+<!-- test: src/agente/atender.test.js › "con las fotos pedidas hace menos de 24 horas, cada foto se sube al Blob privado con su pathname y queda anotada en la consulta" -->
 
 #### Scenario: Fotos sin usado
 - **WHEN** el cliente manda una foto en una consulta en la que todavía no se pidieron las fotos del usado
 - **THEN** no se guarda
-<!-- test: FALTA -->
+<!-- test: src/agente/atender.test.js › "sin fotos_usado_pedidas_at (todavía no se pidieron las fotos) no se sube ni se guarda nada, y el cliente recibe su respuesta" -->
 
 #### Scenario: Pasaron las 24 horas
 - **WHEN** las fotos se pidieron el lunes a las 10 y el cliente manda una foto el martes a las 11
 - **THEN** no se guarda
-<!-- test: FALTA -->
+<!-- test: src/agente/atender.test.js › "pasadas las 24 horas del pedido (lunes 10 hs, martes 11 hs) la foto no se guarda; a las 23 horas todavía sí" -->
 
 #### Scenario: Lote que pasa el tope
 - **WHEN** la consulta tiene 9 fotos guardadas y llegan 3 juntas
 - **THEN** se guarda 1 y las otras 2 no; una subida que falló no cuenta para el tope
-<!-- test: FALTA -->
+<!-- test: src/agente/atender.test.js › "con 9 fotos guardadas y 3 en el lote se sube 1 (tope de 10 por consulta); con 10 no se sube ninguna" -->
+<!-- test: src/agente/atender.test.js › "una subida que falló no cuenta para el tope: con 8 guardadas y 3 en el lote, falla la primera y se suben las otras dos (quedan 10)" -->
 
 #### Scenario: Falla la escritura en la base después de subir
 - **WHEN** la foto se subió al Blob pero no se pudo anotar en la consulta
 - **THEN** el cliente recibe la respuesta igual, el fallo queda en el log y el archivo suelto en el Blob se tolera (es privado y no se muestra)
-<!-- test: FALTA -->
+<!-- test: src/agente/atender.test.js › "si la foto se subió pero falla la anotación en la consulta, la respuesta sale igual y el fallo queda en el log" -->
 
 #### Scenario: Falla la subida
 - **WHEN** el Blob privado no responde, o no hay store privado configurado
 - **THEN** el cliente recibe la respuesta igual, en la consulta no queda ninguna foto a medias y el log registra el fallo sin datos del cliente
-<!-- test: FALTA -->
+<!-- test: src/agente/atender.test.js › "si falla la subida el cliente recibe la respuesta igual, en la consulta no queda ningún pathname nuevo y el log no lleva datos del cliente" -->
+<!-- test: src/agente/atender.test.js › "si falla la subida, el log tampoco lleva el texto del mensaje, el nombre dicho ni el usado del cliente" -->
 
 #### Scenario: Tope
 - **WHEN** la consulta ya tiene 10 fotos del usado y llega otra
 - **THEN** no se guarda
-<!-- test: FALTA -->
+<!-- test: src/agente/atender.test.js › "con 9 fotos guardadas y 3 en el lote se sube 1 (tope de 10 por consulta); con 10 no se sube ninguna" -->

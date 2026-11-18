@@ -364,3 +364,20 @@ Se le aclaró que el texto del bot lo pone el guion y que se juzga el código.
   estricto: las dos esperas que no deben recordar no tienen respuestas del modelo, así que si saliera un
   recordatorio, el código llamaría al modelo, el doble lo marcaría como "llamó de más" y el chat fallaría.
   Hasta el texto fijo de respaldo del recordatorio pasa antes por esa llamada.
+
+## Tarea 11. Cierre (2026-11-18)
+
+- **`DOCUMENTO-FINAL.md`:** qué cambia para el cliente, decisiones, cómo se verificó, errores encontrados en el
+  camino, límites y los pasos para pasar a producción:
+  - respaldo;
+  - la 086 antes del backend;
+  - verificar `BLOB_DOCUMENTOS_TOKEN`;
+  - el panel después del backend.
+- **Anclas (Sonnet):** 66 de las 67 `test: FALTA` quedaron apuntando al test exacto. La que falta es "Venció la URL";
+  está explicada en el documento final. `openspec validate --strict` pasa, y el test de anclas sigue fallando solo
+  por `importar-lista-por-etapas`.
+- **Bóveda:**
+  - "BOT CON RAZONAMIENTO", sección 13: subsección "Ajustes por los chats reales (18/11/2026, solo en local)";
+  - "Plan de mejora del bot": fila del 18/11/2026 en el registro de avances.
+- `tasks.md`: 0 a 11 marcadas.
+- **Producción:** nada. Solo con la orden del user (ver `DOCUMENTO-FINAL.md` › 6).
