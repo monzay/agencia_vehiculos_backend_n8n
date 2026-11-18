@@ -117,7 +117,13 @@ Después de las correcciones (Sonnet), Claude verificó:
 **Resultado:**
 - `npm test`: 32 de 32.
 - ESLint sin errores en los archivos tocados.
-- El e2e quedó pendiente: el backend de :4000 no respondía.
+- e2e (Playwright con Edge, contra el stack local): 3 de 3. Después del e2e, la política local volvió a estar
+  vigente (id 3).
+- **Revisión de Codex del diff:** 2 hallazgos medios, ninguno aplicó:
+  - `/financiacion` no tiene un pie propio: por eso el link va al final del contenido;
+  - el test de `ENLACES_PIE` existe (`lib/constantes.test.js`), pero era un archivo nuevo, sin seguimiento, y
+    no salía en el diff.
+- **Commit:** `sea_automotores`, en `feat/cuil-directo`.
 
 ## Tarea 5. Simulador (2026-11-18)
 
@@ -163,3 +169,13 @@ Las tres rondas: 0 intentos de red y US$ 0 de IA. Las rondas quedan en `simulaci
 - **P11:** dos oraciones en un mensaje corto cumplen "en una línea".
 
 **Suite:** 1964 de 1966, con 1 salteado y 1 que falla: el de anclas, como antes.
+
+## Tarea 7. Cierre (2026-11-18)
+
+- **Anclas:** todas las `FALTA` cerradas con el nombre exacto de su test; ninguna ancla del cambio falla.
+- `openspec validate cuil-directo --strict`: pasa.
+- `DOCUMENTO-FINAL.md`: escrito, con los pasos para producción.
+- **Archive:** va con el deploy, después de `cuil-en-consulta` y `ajustes-por-chats-reales`, igual que en
+  `ajustes-por-chats-reales`. Probado en una copia en la fase 1.
+- **Bóveda:** fila en "Plan de mejora del bot", resumen en "BOT CON RAZONAMIENTO" (sección 13) y nota en
+  "Verificación crediticia (BCRA)".

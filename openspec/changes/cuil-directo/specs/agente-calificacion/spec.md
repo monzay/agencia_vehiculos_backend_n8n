@@ -48,13 +48,17 @@ momento acordado o con "no sabe".
 #### Scenario: Falta el permiso
 - **WHEN** el cliente financia, ya dijo lo del recibo o garante, y todavía no pasó el CUIL ni dijo que no
 - **THEN** no figura un permiso aparte: figura el CUIL, con para qué es, después del recibo o garante y antes del usado
-<!-- test: FALTA -->
+<!-- test: src/agente/calificacion.test.js › "si falta el CUIL, figura con para qué es, después del recibo o garante y antes del usado, sin un permiso aparte" -->
+<!-- test: src/agente/atender.test.js › "el estado de la verificación entra en lo que falta: el CUIL va después del recibo y antes del usado" -->
 <!-- eval: chats simulados › P10, E1 -->
 
 #### Scenario: Financia y todavía no dijo lo del recibo
 - **WHEN** el cliente financia, la verificación está activa y todavía no contestó lo del recibo o garante
 - **THEN** el CUIL ya figura en lo que falta, justo después del recibo o garante, sin habilitar pedirlo antes de tiempo
-<!-- test: FALTA -->
+<!-- test: src/agente/calificacion.test.js › "con el CUIL anticipado, figura justo después del recibo o garante (que todavía falta) y antes del usado" -->
+<!-- test: src/credito/verificacion.test.js › "permisoAnticipado: si financia y todavía no dijo lo del recibo, avisa que el CUIL va justo después (sin habilitar pedirlo ahora)" -->
+<!-- test: src/credito/verificacion.test.js › "permisoAnticipado: no aplica si paga de contado, ya dijo lo del recibo, dijo que no, ya se consultó o no hay términos" -->
+<!-- test: src/agente/atender.test.js › "antes de que conteste lo del recibo, el CUIL ya figura en lo que falta (después del recibo) sin pedirse todavía" -->
 <!-- eval: chats simulados › P10, E1 -->
 
 #### Scenario: Autorizó y falta el CUIL
@@ -65,5 +69,6 @@ momento acordado o con "no sabe".
 #### Scenario: Dijo que no, o paga de contado
 - **WHEN** el cliente no quiso pasar el CUIL, ya se consultó, o paga de contado
 - **THEN** el CUIL no figura en lo que falta
-<!-- test: FALTA -->
+<!-- test: src/agente/calificacion.test.js › "si dijo que no, ya se consultó o paga de contado (credito nulo), ni el permiso ni el CUIL figuran" -->
+<!-- test: src/credito/verificacion.test.js › "el no se guarda con la versión vigente y deja de pedir el CUIL" -->
 <!-- test: src/agente/calificacion.test.js › "sin el tercer parámetro, pendientes es igual que antes" -->

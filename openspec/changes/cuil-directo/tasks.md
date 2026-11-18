@@ -23,7 +23,7 @@ verifica.
 - Las bases son la local y `agencia_simulacion`.
 
 ## 0. Ordenar los cambios sin archivar
-- [ ] **Qué:** antes de archivar este cambio, archivar `cuil-en-consulta` y `ajustes-por-chats-reales`.
+- [x] **Qué:** antes de archivar este cambio, archivar `cuil-en-consulta` y `ajustes-por-chats-reales`.
   - El MODIFIED de "La entrega mínima sigue con el recorrido" parte del texto de `ajustes-por-chats-reales`:
     si ese cambio se archiva después, pisa este.
   - Probar los tres archive en una copia en el scratchpad antes de hacerlos de verdad.
@@ -31,7 +31,7 @@ verifica.
   cambios en orden sin errores.
 
 ## 1. Pasar el CUIL es la autorización (`src/credito/verificacion.js`)
-- [ ] **Qué:**
+- [x] **Qué:**
   - `estadoCredito` devuelve `"pedir_cuil"` cuando corresponde pedirlo: financia, ya dijo lo del recibo,
     hay términos, no hay consulta vigente ni error reciente, y no hay un "no" como último registro. Si no,
     devuelve `null`. Desaparece `"pedir_consentimiento"`.
@@ -113,7 +113,7 @@ verifica.
   - Los tests existentes de semáforo, reutilización y errores siguen pasando sin cambios.
 
 ## 2. Lo que falta (`src/agente/calificacion.js`)
-- [ ] **Qué:**
+- [x] **Qué:**
   - `pendientes` reemplaza los textos del permiso por uno solo: "su CUIL, para que el asesor consulte su
     situación en el BCRA (pedilo como dice Verificación crediticia)".
   - Va en el mismo lugar: después del recibo o garante y antes del usado, tanto con `"pedir_cuil"` como con
@@ -125,7 +125,7 @@ verifica.
   no dijo lo del recibo, Autorizó y falta el CUIL (respuestas viejas), Dijo que no o paga de contado.
 
 ## 3. Herramientas y orquestador (`src/agente/herramientas.js`, `src/agente/atender.js`)
-- [ ] **Qué:**
+- [x] **Qué:**
   - `registrar_consentimiento`: la descripción dice que se usa solo con `false`, cuando el cliente dice
     claramente que no quiere pasar el CUIL.
     - Si esquiva la pregunta o no queda claro, no se usa. `acepta` deja de decir "o no quedó claro".
@@ -148,7 +148,7 @@ verifica.
   - "El semáforo es solo informativo" › Sin la verificación conectada, que sigue pasando.
 
 ## 4. Instrucciones y contexto (`src/agente/instrucciones.js`)
-- [ ] **Qué:**
+- [x] **Qué:**
   - **Sección "Verificación crediticia":** se reescribe así:
     - pedir el CUIL en un mensaje corto con para qué es, con el ejemplo del dueño;
     - sin permiso, sin "sí o no", sin "tus datos se usan solo para eso" y sin el link;
@@ -173,7 +173,7 @@ verifica.
   - El test que impide el femenino sigue pasando.
 
 ## 5. Simulador
-- [ ] **Qué:**
+- [x] **Qué:**
   - **P10** pasa a ser "Pide el CUIL directo y el cliente lo manda": un solo pedido con la Central de Deudores,
     sin link ni "sí o no", y después la consulta. Controles:
     - el pedido nombra el BCRA o la Central de Deudores;
@@ -196,7 +196,7 @@ verifica.
   resultado que en la ronda 5 de `ajustes-por-chats-reales` (14/14 más los nuevos).
 
 ## 6. Link en el pie de la web (`sea_automotores/components/inicio/seccion-pie.jsx`)
-- [ ] **Qué:**
+- [x] **Qué:**
   - El pie público suma "Política de privacidad" → `/privacidad`.
   - Se revisa si `/financiacion` usa otro pie: si es pública y no tiene el link, se suma ahí también.
   - Sin cambios en la página /privacidad.
@@ -207,7 +207,7 @@ verifica.
     pie y el texto "La política de privacidad todavía no está publicada."
 
 ## 7. Cierre
-- [ ] **Qué:**
+- [x] **Qué:**
   - Anclas `FALTA` cerradas con los nombres de los tests.
   - `openspec validate cuil-directo --strict`.
   - `DOCUMENTO-FINAL.md`, con los pasos para producción:
@@ -220,6 +220,7 @@ verifica.
       antes de subir. Los "sí" nuevos quedan atados a esa versión.
   - Bóveda: fila en el registro de "Plan de mejora del bot", resumen en "BOT CON RAZONAMIENTO" (sección 13) y
     nota "Verificación crediticia (BCRA)".
-  - Archive después de la tarea 0.
+  - Archive después de la tarea 0. **Decisión al cierre:** el archive va con el deploy, como en
+    `ajustes-por-chats-reales` (`DOCUMENTO-FINAL.md` § 5, paso 8), y queda en ese orden.
 - **Criterio:** suite completa del backend y del front en verde, `openspec validate --strict` y el archive de
   prueba sin errores.
