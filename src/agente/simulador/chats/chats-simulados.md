@@ -1,8 +1,18 @@
 # Chats simulados
 
 Cada chat es un cliente inventado que le escribe al bot. El script (`scripts/simular-chats.js`) lee este
-documento, le manda cada mensaje al bot por el camino real, con Claude Haiku 5.5 de verdad, y arma otro
+documento, le manda cada mensaje al bot por el camino real (el código del backend, sin tocar nada) y arma otro
 documento con las respuestas. Después Codex revisa cada respuesta contra lo que el chat pide.
+
+**El modelo es un Haiku 5.5 simulado.** Nunca se llama a la API de Claude, ni a WhatsApp, Groq, el BCRA o el
+Blob: la red está cortada y la corrida falla si hubo un solo intento de salir. Lo que contesta el Haiku está
+escrito en este documento, debajo de cada paso del cliente: el texto y las herramientas que usa, en el orden en
+que el código lo llama. Así se mide todo el circuito del código (contexto, herramientas, guardado, limpiezas,
+recordatorio, nombre y fotos), no si el Haiku real obedece las instrucciones. Si el código llama al modelo más o
+menos veces que las del guion de un paso, el chat falla nombrando ese paso.
+
+Los chats de antes (K, E, R, P y N) fueron escritos para el Haiku real y no tienen guion: el script los saltea.
+Solo corren los chats que tienen guion en algún paso (los X).
 
 Los mensajes están escritos como los escriben los clientes, con sus errores. Salen de las consultas reales
 del 14/11/2026, sin nombres ni datos personales. El CUIL que aparece es inventado y el BCRA es simulado.
@@ -15,10 +25,16 @@ Un chat empieza con un título `## <código> · <nombre>`. Debajo van, en orden:
 |---|---|
 | `Empieza: <día y hora>` | Cuándo empieza el chat. Si falta: lunes 16/11/2026 10:00 |
 | `Regla: <capacidad> › <requisito>` | La regla que prueba |
+| `Perfil: <nombre>` | El nombre del perfil de WhatsApp del cliente. Si falta, el perfil es `SIM <código>` |
 | `Cliente: <texto>` | Un mensaje de WhatsApp del cliente. El script espera la respuesta del bot antes de mandar el siguiente |
 | `Cliente (seguido): <texto>` | Un mensaje mandado enseguida del anterior, sin esperar al bot |
 | `Cliente (audio): <texto>` | Una nota de voz. Al bot le llega transcripta |
-| `(pasan <N> minutos)` o `(pasan <N> días)` | El cliente no escribe. El script revisa el recordatorio como lo haría el sistema: a los 10 minutos y al final de ese tiempo |
+| `Foto: <descripción>` | Una foto del cliente: al bot le llega una imagen JPEG chica y sin texto. La descripción es solo para leer el chat |
+| `Foto (seguido): <descripción>` | Otra foto mandada enseguida de la anterior, en la misma ráfaga |
+| `Modelo: <texto>` | Lo que contesta el Haiku simulado al paso de arriba (el último mensaje del cliente, foto, audio o espera). `
+` es un salto de línea |
+| `Modelo (herramienta): <nombre> <json>` | Una llamada del Haiku simulado a una herramienta, con su entrada en JSON (sin JSON, `{}`). Las líneas `Modelo` de un paso van en el orden en que el código llama al modelo: primero las herramientas y al final el texto |
+| `(pasan <N> minutos)` o `(pasan <N> días)` | El cliente no escribe. El script revisa el recordatorio como lo haría el sistema: a los 10 minutos y al final de ese tiempo. Las líneas `Modelo` de debajo son el texto del recordatorio; sin ellas, no tiene que salir ninguno |
 | `Debe:` y `No debe:` | Lo que revisa Codex en las respuestas |
 | `Control automático:` | Lo que revisa el script solo, sin IA |
 
@@ -28,12 +44,17 @@ Los controles automáticos:
 |---|---|
 | `prohibido: "texto"` | Ningún mensaje del bot contiene ese texto (sin distinguir mayúsculas ni tildes) |
 | `obligatorio: "texto"` | Algún mensaje del bot lo contiene |
-| `guardado: <dato> = <valor>` | Lo que quedó anotado en la consulta al terminar. Datos: `pago_tipo`, `anticipo`, `entrega_usado`, `auto`, `visita`, `requiere_vendedor`, `permisos` (cuántos permisos del BCRA se guardaron) y `cuil`. `vacío` quiere decir que no se anotó nada |
+| `guardado: <dato> = <valor>` | Lo que quedó anotado en la consulta al terminar. Datos: `pago_tipo`, `anticipo`, `entrega_usado`, `auto`, `visita`, `requiere_vendedor`, `permisos` (cuántos permisos del BCRA se guardaron), `cuil`, `nombre` (el que dijo el cliente) y `fotos_usado` (cuántas fotos del usado quedaron guardadas). `vacío` quiere decir que no se anotó nada |
 | `fotos: <N>` | Cuántos mensajes del bot salieron con fotos |
 | `recordatorios: <N>` | Cuántos recordatorios salieron |
 | `repite pregunta seguida: no` | El bot no hace la misma pregunta del recorrido en dos respuestas seguidas |
 | `cuotas con números: no` | El bot no nombra cuotas con montos ni cantidades |
 | `termina con 👍: no` | Ningún mensaje con texto termina con un 👍 suelto |
+| `se presenta más de una vez: no` | A lo sumo un mensaje dice "Soy <asesor>, asesor de ventas" |
+| `usa el nombre del perfil: no` | Ningún mensaje nombra al cliente con el nombre de su perfil de WhatsApp (`Perfil:`) |
+| `pide fotos con la pregunta: sí` | Algún mensaje le pide fotos al cliente y trae, en el mismo mensaje, una pregunta |
+| `pide fotos del usado: <N>` | Cuántos mensajes le piden fotos al cliente, recordatorios incluidos. Ofrecer las del catálogo no cuenta |
+| `pide el nombre: <N>` | Cuántos mensajes le piden el nombre al cliente |
 
 ## Catálogo de la simulación
 
@@ -568,3 +589,400 @@ Control automático:
 - prohibido: "148.000"
 - prohibido: "La pensás"
 - prohibido: "financiada"
+
+---
+
+# Chats de ajustes-por-chats-reales
+
+Salen de las conversaciones reales del 16 y 17/11/2026, sin nombres ni teléfonos reales. Cada paso trae el guion
+del Haiku simulado. Donde el chat real falló, el guion repite lo que dijo el Haiku en producción, para medir que
+el código lo limpia. Lo que depende de las instrucciones nuevas (por ejemplo, la respuesta de la entrega mínima)
+no se mide acá: el guion ya trae la respuesta correcta.
+
+## X1 · "¿Cuánto es el mínimo anticipo?" y después "con 4 millones"
+Regla: agente-comportamiento › Entrega mínima sin cargar
+
+Cliente: Hola ORTEGA AUTOMOTORES! Estoy interesado en el Volkswagen Voyage 2012. ¿Podrían darme más información? (REF #67)
+Modelo (herramienta): ver_auto {"ref":"67"}
+Modelo: ¡Hola! Soy José, asesor de ventas 🙌\n\nEl Volkswagen Voyage 1.6 2012 está a $10.900.000. ¿Lo pensás pagar de contado o financiado?
+Cliente: Financiado
+Modelo (herramienta): registrar_calificacion {"pago_tipo":"financiado"}
+Modelo: Dale. ¿Con cuánto de anticipo contás?
+Cliente: Cuanto es el mínimo anticipo?
+Modelo: No hay un monto fijo: depende de la situación de cada cliente, y el asesor te lo calcula en la agencia con tus datos. ¿Con cuánto pensás entregar vos?
+Cliente: Con 4 millones
+Modelo (herramienta): registrar_calificacion {"anticipo":"4 millones"}
+Modelo: ¿Tenés recibo de sueldo o algún garante?
+
+Debe:
+- explicar que no hay un monto fijo y que el asesor se lo calcula en la agencia
+- ante "con 4 millones", seguir con lo que falta sin decir si alcanza ni hablar de cuotas
+
+No debe:
+- responder en círculo ("para decírtela necesito saber cuánto tenés")
+- valorar el anticipo
+
+Control automático:
+- prohibido: "para decírtela necesito"
+- cuotas con números: no
+- guardado: pago_tipo = financiado
+- guardado: anticipo = sí
+
+## X2 · Pregunta dos veces seguidas con cuánto se puede retirar
+Regla: agente-comportamiento › Entrega mínima sin cargar
+
+Cliente: Hola ORTEGA AUTOMOTORES! Estoy interesado en el Renault Captur 2018. ¿Podrían darme más información? (REF #59)
+Modelo (herramienta): ver_auto {"ref":"59"}
+Modelo: ¡Hola! Soy José, asesor de ventas 🙌\n\nLa Renault Captur Intens 2.0 2018 está a $21.900.000. ¿Lo pensás pagar de contado o financiado?
+Cliente: Con cuanto se puede retirar
+Modelo: No hay un monto fijo: depende de la situación de cada cliente, y el asesor te lo calcula en la agencia con tus datos. ¿Cómo la pensás pagar, de contado o financiada?
+Cliente: Con cuanto se puede retirar?
+Modelo: Como te decía, depende de cada cliente y el asesor te lo calcula en la agencia con tus datos. Podés pasar cuando quieras y lo ven juntos.
+
+Debe:
+- repetir con otras palabras que depende de cada cliente y invitarlo a la agencia
+- no volver a hacerle, en la segunda respuesta, la pregunta que no contestó
+
+No debe:
+- decir que no tiene el dato ni responder en círculo
+
+Control automático:
+- prohibido: "para decírtela necesito"
+- repite pregunta seguida: no
+
+## X3 · Segundo link de la web un minuto después
+Regla: agente-comportamiento › Otro auto de la web en la misma charla
+
+Cliente: Hola ORTEGA AUTOMOTORES! Estoy interesado en el Renault Captur 2018. ¿Podrían darme más información? (REF #59)
+Modelo (herramienta): ver_auto {"ref":"59"}
+Modelo: ¡Hola! Soy José, asesor de ventas 🙌\n\nLa Renault Captur Intens 2.0 2018 está a $21.900.000. ¿Lo pensás pagar de contado o financiado?
+Cliente: Con cuanto se retira?
+Modelo: No hay un monto fijo: depende de la situación de cada cliente, y el asesor te lo calcula en la agencia con tus datos. ¿Cómo la pensás pagar, de contado o financiada?
+Cliente: Hola ORTEGA AUTOMOTORES! Estoy interesado en la Toyota Hilux 2013. ¿Podrían darme más información? (REF #80)
+Modelo (herramienta): ver_auto {"ref":"80"}
+Modelo (herramienta): registrar_calificacion {"auto_ref":"80"}
+Modelo: ¡Hola! Soy José, asesor de ventas 🙌 La Toyota Hilux 2013 está a $27.000.000. ¿Lo pensás pagar de contado o financiado?
+Cliente: Y esta disculpe
+Modelo: Para la Hilux tampoco hay un monto fijo de entrega: depende de la situación de cada cliente, y el asesor te lo calcula en la agencia con tus datos.
+
+Debe:
+- dar el precio de la Hilux y volver a la forma de pago, sin presentarse otra vez
+- responder "y esta" sobre la entrega de la Hilux, no solo sobre su precio
+
+No debe:
+- escribir "Soy José" en el mensaje de la Hilux
+
+Control automático:
+- se presenta más de una vez: no
+
+## X4 · Dos links seguidos, "Sinanciado" y el garante del padre
+Regla: agente-comportamiento › Otro auto de la web en la misma charla, No opina sobre los datos del cliente
+
+Cliente: Hola ORTEGA AUTOMOTORES! Estoy interesado en el Volkswagen Gol Trend 2015. ¿Podrían darme más información? (REF #64)
+Modelo (herramienta): ver_auto {"ref":"64"}
+Modelo: ¡Hola! Soy José, asesor de ventas 🙌\n\nEl Volkswagen Gol Trend 1.6 Trendline 3 puertas 2015 está a $12.900.000. ¿Lo pensás pagar de contado o financiado?
+Cliente: Hola ORTEGA AUTOMOTORES! Estoy interesado en el Chevrolet Prisma 2018. ¿Podrían darme más información? (REF #19)
+Modelo (herramienta): ver_auto {"ref":"19"}
+Modelo (herramienta): registrar_calificacion {"auto_ref":"19"}
+Modelo: ¡Hola! Soy José, asesor de ventas 🙌 El Chevrolet Prisma Joy LS 1.4 2018 está a $11.900.000. ¿Lo pensás pagar de contado o financiado?
+Cliente: Sinanciado
+Modelo (herramienta): registrar_calificacion {"pago_tipo":"financiado"}
+Modelo: Dale. ¿Tenés recibo de sueldo o algún garante?
+Cliente: Tengo a mi padre q es empleado municipal
+Modelo (herramienta): registrar_calificacion {"tiene_recibo_o_garante":true}
+Modelo: Genial, con el garante de tu padre queda cubierto 👍\n\n¿Con cuánto de anticipo contás?
+
+Debe:
+- no presentarse en el mensaje del segundo auto
+- acusar recibo del garante en pocas palabras y seguir con la pregunta que falta
+
+No debe:
+- decir que con el garante "queda cubierto" ni que se aprueba
+
+Control automático:
+- se presenta más de una vez: no
+- prohibido: "queda cubierto"
+- guardado: pago_tipo = financiado
+
+## X5 · "Monotributo… ya pregunté en varios lugares"
+Regla: agente-comportamiento › No opina sobre los datos del cliente
+
+Cliente: Hola ORTEGA AUTOMOTORES! Estoy interesado en el Renault Duster 2017. ¿Podrían darme más información? (REF #60)
+Modelo (herramienta): ver_auto {"ref":"60"}
+Modelo: ¡Hola! Soy José, asesor de ventas 🙌\n\nLa Renault Duster Privilege 1.6 2017 está a $18.500.000. ¿Lo pensás pagar de contado o financiado?
+Cliente: Financiado
+Modelo (herramienta): registrar_calificacion {"pago_tipo":"financiado"}
+Modelo: Dale. ¿Tenés recibo de sueldo o algún garante?
+Cliente: Monotributo y creería que si tengo crédito ya pregunté en varios lugares
+Modelo: Monotributo no es impedimento para armarte opciones. ¿Con cuánto de anticipo contás?
+
+Debe:
+- acusar recibo en pocas palabras y seguir con lo que falta; la situación la evalúa el asesor
+
+No debe:
+- decir que el monotributo no es un impedimento, ni opinar si puede financiar
+
+Control automático:
+- prohibido: "no es impedimento"
+
+## X6 · "Trabajo de Uber" y "tengo los 7 millones" a la pregunta del usado
+Regla: agente-comportamiento › Frases que se leen mal, No opina sobre los datos del cliente
+
+Cliente: Hola ORTEGA AUTOMOTORES! Estoy interesado en el Volkswagen Vento 2014. ¿Podrían darme más información? (REF #69)
+Modelo (herramienta): ver_auto {"ref":"69"}
+Modelo: ¡Hola! Soy José, asesor de ventas 🙌\n\nEl Volkswagen Vento Luxury 2.5 2014 está a $19.800.000. ¿Lo pensás pagar de contado o financiado?
+Cliente: Entregando 7 millones
+Modelo (herramienta): registrar_calificacion {"pago_tipo":"financiado","anticipo":"7 millones"}
+Modelo: ¿Tenés recibo de sueldo o algún garante?
+Cliente: Trabajo de uber
+Modelo (herramienta): registrar_calificacion {"tiene_recibo_o_garante":true}
+Modelo: Entiendo, trabajar con Uber también sirve para financiar. ¿Tenés algún vehículo para entregar como parte de pago?
+Cliente: Tengo los 7 millones
+Modelo (herramienta): registrar_calificacion {"entrega_usado":false}
+Modelo: Perfecto, anotado 👍 ¿Lo decidís por tu cuenta o lo consultás con alguien?
+
+Debe:
+- tomar "tengo los 7 millones" como la respuesta del anticipo, no como un auto para entregar
+- acusar recibo de lo laboral sin opinar y seguir con la pregunta que falta
+
+No debe:
+- decir que trabajar con Uber sirve para financiar
+- anunciar que anotó algo
+
+Control automático:
+- prohibido: "sirve para financiar"
+- prohibido: "anotado"
+- guardado: entrega_usado = no
+
+## X7 · "Financiando, entregando 5 millones, ¿cómo podría ser el resto?"
+Regla: agente-comportamiento › Frases que se leen mal
+
+Cliente: Hola ORTEGA AUTOMOTORES! Estoy interesado en el Chevrolet Prisma 2018. ¿Podrían darme más información? (REF #19)
+Modelo (herramienta): ver_auto {"ref":"19"}
+Modelo: ¡Hola! Soy José, asesor de ventas 🙌\n\nEl Chevrolet Prisma Joy LS 1.4 2018 está a $11.900.000. ¿Lo pensás pagar de contado o financiado?
+Cliente: Financiando, entregando 5 millones como podría ser el resto
+Modelo (herramienta): registrar_calificacion {"pago_tipo":"financiado","anticipo":"5 millones"}
+Modelo: El resto lo financiás con el asesor, que te arma las opciones en la agencia. ¿Tenés recibo de sueldo o algún garante?
+
+Debe:
+- tomar los 5 millones como el anticipo y el resto como lo que se financia
+- seguir con lo que falta, sin hablar de cuotas
+
+No debe:
+- decir cuotas ni si el anticipo alcanza
+
+Control automático:
+- cuotas con números: no
+- guardado: pago_tipo = financiado
+- guardado: anticipo = sí
+
+## X8 · El Mobi con un VW Power 2004 y "no me lo pueden enviar por este medio"
+Regla: agente-comportamiento › Frases que se leen mal
+
+Cliente: Hola ORTEGA AUTOMOTORES! Estoy interesado en el Fiat Mobi 2022. ¿Podrían darme más información? (REF #36)
+Modelo (herramienta): ver_auto {"ref":"36"}
+Modelo: ¡Hola! Soy José, asesor de ventas 🙌\n\nEl Fiat Mobi Like 1.0 2022 está a $15.900.000. ¿Lo pensás pagar de contado o financiado?
+Cliente: Financiado
+Modelo (herramienta): registrar_calificacion {"pago_tipo":"financiado"}
+Modelo: Dale. ¿Con cuánto de anticipo contás?
+Cliente: Tengo un VW Power 2004 para entregar
+Modelo (herramienta): registrar_calificacion {"entrega_usado":true,"usado_marca":"Volkswagen","usado_modelo":"Power","usado_anio":2004}
+Modelo: Si podés, pasame unas fotos del Power. ¿Cuánto pedís por él?
+Cliente: No me lo pueden enviar por este medio
+Modelo: Los detalles te los arma el asesor en la agencia: ahí se ve todo con tu usado y tus datos. ¿Cuándo podrías pasar?
+
+Debe:
+- tomar el VW Power 2004 como el usado que entrega
+- decir que el asesor lo ve en la agencia, sin hablar de cuotas
+
+No debe:
+- hablar de cuotas ni de montos
+
+Control automático:
+- cuotas con números: no
+- guardado: entrega_usado = sí
+
+## X9 · Acuerda la visita, dice "ok gracias" y no contesta el nombre
+Regla: agente-comportamiento › El nombre lo dice el cliente
+
+Cliente: Hola ORTEGA AUTOMOTORES! Estoy interesado en el Volkswagen Voyage 2012. ¿Podrían darme más información? (REF #67)
+Modelo (herramienta): ver_auto {"ref":"67"}
+Modelo: ¡Hola! Soy José, asesor de ventas 🙌\n\nEl Volkswagen Voyage 1.6 2012 está a $10.900.000. ¿Lo pensás pagar de contado o financiado?
+Cliente: De contado
+Modelo (herramienta): registrar_calificacion {"pago_tipo":"contado"}
+Modelo: Dale. ¿Tenés algún vehículo para entregar?
+Cliente: No tengo
+Modelo (herramienta): registrar_calificacion {"entrega_usado":false}
+Modelo: ¿Lo decidís por tu cuenta o lo consultás con alguien?
+Cliente: Decido yo
+Modelo (herramienta): registrar_calificacion {"decisor":"solo"}
+Modelo: ¿Cuándo podrías pasar por la agencia?
+Cliente: El jueves a la tarde
+Modelo (herramienta): horarios_atencion {}
+Modelo (herramienta): registrar_calificacion {"visita_propuesta":"jueves a la tarde","disponibilidad":"esta_semana"}
+Modelo: ¡Dale! Te esperamos el jueves a la tarde en la agencia.
+Cliente: ok gracias
+Modelo: ¡Dale! ¿Me decís tu nombre así el asesor sabe quién viene?
+Cliente: dale
+Modelo: Perfecto, te esperamos el jueves 🙌
+
+Debe:
+- pedir el nombre una sola vez, después de acordar la visita
+- no insistir cuando el cliente no lo contesta
+
+No debe:
+- volver a pedir el nombre
+
+Control automático:
+- pide el nombre: 1
+- guardado: nombre = vacío
+
+## X10 · Dice su nombre antes de la visita y no se le vuelve a pedir
+Regla: agente-comportamiento › El nombre lo dice el cliente
+
+Cliente: Hola ORTEGA AUTOMOTORES! Estoy interesado en el Volkswagen Voyage 2012. ¿Podrían darme más información? (REF #67)
+Modelo (herramienta): ver_auto {"ref":"67"}
+Modelo: ¡Hola! Soy José, asesor de ventas 🙌\n\nEl Volkswagen Voyage 1.6 2012 está a $10.900.000. ¿Lo pensás pagar de contado o financiado?
+Cliente: De contado
+Modelo (herramienta): registrar_calificacion {"pago_tipo":"contado"}
+Modelo: Dale. ¿Tenés algún vehículo para entregar?
+Cliente: No tengo
+Modelo (herramienta): registrar_calificacion {"entrega_usado":false}
+Modelo: ¿Lo decidís por tu cuenta o lo consultás con alguien?
+Cliente: Alvaro es mi marido, yo soy Claudia
+Modelo (herramienta): registrar_calificacion {"decisor":"consulta","decisor_con":"marido","nombre":"Claudia"}
+Modelo: Un gusto, Claudia. ¿Cuándo podrían pasar por la agencia?
+Cliente: El sábado a la mañana vamos
+Modelo (herramienta): horarios_atencion {}
+Modelo (herramienta): registrar_calificacion {"visita_propuesta":"sábado a la mañana","disponibilidad":"esta_semana"}
+Modelo: ¡Dale! Los esperamos el sábado a la mañana en la agencia.
+Cliente: gracias
+
+Debe:
+- guardar "Claudia" como su nombre (Alvaro es el marido)
+- no pedirle el nombre después de la visita
+
+No debe:
+- pedir el nombre
+
+Control automático:
+- pide el nombre: 0
+- guardado: nombre = Claudia
+
+## X11 · Perfil "Mi Reina" y nunca dice su nombre
+Regla: agente-comportamiento › El nombre lo dice el cliente, Defensa contra manipulación
+Perfil: Mi Reina
+
+Cliente: Hola ORTEGA AUTOMOTORES! Estoy interesado en el Volkswagen Vento 2014. ¿Podrían darme más información? (REF #69)
+Modelo (herramienta): ver_auto {"ref":"69"}
+Modelo: ¡Hola! Soy José, asesor de ventas 🙌\n\nEl Volkswagen Vento Luxury 2.5 2014 está a $19.800.000. ¿Lo pensás pagar de contado o financiado?
+Cliente: De contado
+Modelo (herramienta): registrar_calificacion {"pago_tipo":"contado"}
+Modelo: Dale. ¿Tenés algún vehículo para entregar?
+Cliente: No tengo, gracias
+Modelo (herramienta): registrar_calificacion {"entrega_usado":false}
+Modelo: ¡Gracias a vos! ¿Lo decidís por tu cuenta o lo consultás con alguien?
+
+Debe:
+- no llamarla por el nombre de su perfil de WhatsApp: ella nunca dijo su nombre
+
+No debe:
+- decir "Mi Reina"
+
+Control automático:
+- usa el nombre del perfil: no
+- guardado: nombre = vacío
+
+## X12 · "Tengo un Fox 2017 para entregar": pide fotos, y manda dos
+Regla: agente-comportamiento › Fotos del usado
+
+Cliente: Hola ORTEGA AUTOMOTORES! Estoy interesado en el Volkswagen Gol Trend 2019. ¿Podrían darme más información? (REF #65)
+Modelo (herramienta): ver_auto {"ref":"65"}
+Modelo: ¡Hola! Soy José, asesor de ventas 🙌\n\nEl Volkswagen Gol Trend 1.6 Trendline 2019 está a $16.500.000. ¿Lo pensás pagar de contado o financiado?
+Cliente: Tengo un Fox 2017 para entregar
+Modelo (herramienta): registrar_calificacion {"entrega_usado":true,"usado_marca":"Volkswagen","usado_modelo":"Fox","usado_anio":2017}
+Modelo: Si podés, pasame unas fotos del Fox. ¿Cuánto pedís por él?
+Foto: el Fox de frente
+Foto (seguido): el Fox de costado
+Modelo: ¡Gracias! Las fotos las ve el asesor en la agencia. ¿Lo pensás pagar de contado o financiado?
+
+Debe:
+- pedir las fotos en el mismo mensaje que la pregunta que sigue
+- al recibir las fotos, agradecer y seguir con lo que falta
+
+No debe:
+- opinar del estado del auto
+
+Control automático:
+- pide fotos con la pregunta: sí
+- pide fotos del usado: 1
+- prohibido: "impecable"
+- guardado: entrega_usado = sí
+- guardado: fotos_usado = 2
+
+## X13 · Pide fotos de la moto y el cliente no contesta: el recordatorio no las vuelve a pedir
+Regla: agente-comportamiento › Fotos del usado · agente-recordatorio › Qué dice el recordatorio
+
+Cliente: Hola ORTEGA AUTOMOTORES! Estoy interesado en el Fiat Mobi 2022. ¿Podrían darme más información? (REF #36)
+Modelo (herramienta): ver_auto {"ref":"36"}
+Modelo: ¡Hola! Soy José, asesor de ventas 🙌\n\nEl Fiat Mobi Like 1.0 2022 está a $15.900.000. ¿Lo pensás pagar de contado o financiado?
+Cliente: Tengo una moto para entregar
+Modelo (herramienta): registrar_calificacion {"entrega_usado":true}
+Modelo: Si podés, pasame unas fotos de la moto. ¿Qué marca, modelo y año es?
+(pasan 10 minutos)
+Modelo: ¿Me contás la marca, el modelo y el año de la moto?
+Cliente: Es una Honda Wave 2018
+Modelo (herramienta): registrar_calificacion {"usado_marca":"Honda","usado_modelo":"Wave","usado_anio":2018}
+Modelo: ¿Cuánto pedís por la moto?
+
+Debe:
+- en el recordatorio, retomar la marca, el modelo y el año, sin mencionar las fotos
+- después de la respuesta, no volver a pedir las fotos
+
+No debe:
+- pedir las fotos más de una vez
+
+Control automático:
+- recordatorios: 1
+- pide fotos del usado: 1
+
+## X14 · El recordatorio no sale con el permiso del BCRA ni con una oferta, y sí con "¿qué auto buscás?"
+Regla: agente-recordatorio › Qué preguntas se recuerdan
+
+Cliente: Hola ORTEGA AUTOMOTORES! Estoy interesado en el Volkswagen Voyage 2012. ¿Podrían darme más información? (REF #67)
+Modelo (herramienta): ver_auto {"ref":"67"}
+Modelo: ¡Hola! Soy José, asesor de ventas 🙌 El Volkswagen Voyage 2012 está a $10.900.000.
+
+¿Lo pensás pagar de contado o financiado?
+Cliente: Financiado
+Modelo (herramienta): registrar_calificacion {"pago_tipo":"financiado"}
+Modelo: Dale. ¿Con cuánto de anticipo contás?
+Cliente: 6 millones
+Modelo (herramienta): registrar_calificacion {"anticipo":"6 millones"}
+Modelo: ¿Tenés recibo de sueldo o algún garante?
+Cliente: Tengo recibo de sueldo
+Modelo (herramienta): registrar_calificacion {"tiene_recibo_o_garante":true}
+Modelo: Para armarte opciones de financiación que te sirvan, el asesor puede consultar tu situación en la Central de Deudores del BCRA. Tus datos se usan solo para eso: https://www.ortegaautomotores.com/privacidad
+
+¿Me autorizás la consulta? Respondeme sí o no.
+(pasan 10 minutos)
+Cliente: No
+Modelo (herramienta): registrar_consentimiento {"acepta":false}
+Modelo: Dale, sin problema. Si querés, también tengo un Gol Trend 2015 a $12.900.000. ¿Te quedás con el Voyage o con el Gol Trend?
+(pasan 10 minutos)
+(pasan 2 días)
+Cliente: Hola, quería hacer otra consulta
+Modelo: ¡Hola! Contame, ¿qué auto estás buscando ahora?
+(pasan 10 minutos)
+Modelo: ¿Ya tenés algún auto en mente?
+
+Debe:
+- no mandar recordatorio cuando la pregunta sin contestar es el permiso del BCRA
+- no mandar recordatorio cuando la pregunta sin contestar es una oferta (elegir entre dos autos)
+- mandar un recordatorio cuando, dos días después, deja sin contestar "¿qué auto estás buscando?"
+
+No debe:
+- recordar el permiso del BCRA ni la oferta del Voyage o el Gol Trend
+
+Control automático:
+- recordatorios: 1

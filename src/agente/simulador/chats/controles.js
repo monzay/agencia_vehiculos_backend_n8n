@@ -51,6 +51,17 @@ function controlRepitePregunta(control, transcripcion) {
   return resultado(control, true);
 }
 
+const PRESENTACION = /\bsoy\s+[^,.!?\n]+,\s*asesor de ventas/;
+// Pedirle fotos al cliente ("pasame unas fotos", "¿me mandás las fotos?", "podés enviarme fotos"); ofrecer
+// las del catálogo ("te paso las fotos del Vento") no cuenta.
+const PEDIDO_DE_FOTOS = /\b(?:(?:pasa|manda|envia|subi|adjunta)(?:r(?:me|nos)?|me|nos)?|mandas|pasas|envias|compartis|compartime|compartir(?:me|nos)?)\b[^.?!\n]*\bfotos?\b/;
+const PIDE_NOMBRE = /\btu nombre\b|\bcomo te llamas\b|\bcual es tu nombre\b/;
+const pedidoDeFotos = (texto) => PEDIDO_DE_FOTOS.test(normalizar(texto));
+const pideNombre = (texto) => {
+  const t = normalizar(texto);
+  return PIDE_NOMBRE.test(t) && t.includes("?");
+};
+
 const CONTROLES = {
   prohibido: (c, t) => {
     const hallado = textos(t).some((x) => contiene(x, c.texto));
@@ -70,6 +81,24 @@ const CONTROLES = {
     return resultado(c, n === c.cantidad, `salieron ${n} recordatorios y se esperaban ${c.cantidad}`);
   },
   repite_pregunta: controlRepitePregunta,
+  presentacion_repetida: (c, t) => {
+    const n = textos(t).filter((x) => PRESENTACION.test(normalizar(x))).length;
+    return resultado(c, n <= 1, `${n} mensajes se presentan ("soy ..., asesor de ventas")`);
+  },
+  nombre_del_perfil: (c, t, chat) => {
+    const perfil = normalizar(chat?.perfil).trim();
+    const hallado = perfil !== "" && textos(t).some((x) => normalizar(x).includes(perfil));
+    return resultado(c, !hallado, `algún mensaje nombra al cliente con su perfil de WhatsApp "${chat?.perfil}"`);
+  },
+  fotos_con_pregunta: (c, t) => resultado(c, textos(t).some((x) => pedidoDeFotos(x) && String(x).includes("?")), "ningún mensaje pide fotos y hace la pregunta en el mismo mensaje"),
+  pedidos_de_fotos: (c, t) => {
+    const n = textos(t).filter(pedidoDeFotos).length;
+    return resultado(c, n === c.cantidad, `se pidieron fotos en ${n} mensajes y se esperaban ${c.cantidad}`);
+  },
+  pedidos_de_nombre: (c, t) => {
+    const n = textos(t).filter(pideNombre).length;
+    return resultado(c, n === c.cantidad, `se pidió el nombre en ${n} mensajes y se esperaban ${c.cantidad}`);
+  },
   cuotas_con_numeros: (c, t) => resultado(c, !textos(t).some((x) => CUOTAS_CON_NUMEROS.test(x)), "algún mensaje nombra cuotas con números"),
   termina_con_pulgar: (c, t) => {
     const falla = textos(t).some((x) => {
@@ -81,5 +110,5 @@ const CONTROLES = {
 };
 
 export function aplicarControles(chat, transcripcion) {
-  return chat.controles.map((control) => CONTROLES[control.tipo](control, transcripcion));
+  return chat.controles.map((control) => CONTROLES[control.tipo](control, transcripcion, chat));
 }

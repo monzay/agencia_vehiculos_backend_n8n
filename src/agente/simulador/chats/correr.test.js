@@ -179,3 +179,115 @@ test("cada turno anota el nombre, el pedido y el resultado completo de las herra
   assert.ok(bot.usos[0].resultado.length <= 601, "recortado");
   assert.equal(bot.usos[1].resultado, '{"horarios":[]}');
 });
+
+// ── ajustes-por-chats-reales: perfil, fotos y guion del Haiku simulado por turno ──
+
+test("con Perfil:, el nombre del perfil que llega a atender es ese y no el SIM", async () => {
+  const { llamadas, deps } = armar();
+  await correr(chatBase([mensaje("hola")], { perfil: "Mi Reina" }), deps);
+  assert.equal(llamadas[0].entrada.nombre, "Mi Reina");
+});
+
+test("un paso de foto llama a atender con una imagen JPEG real en base64 y sin texto", async () => {
+  const { llamadas, deps } = armar();
+  const r = await correr(chatBase([{ tipo: "foto", descripcion: "el Fox de frente" }]), deps);
+  assert.equal(llamadas.length, 1);
+  const { imagenes, texto } = llamadas[0].entrada;
+  assert.equal(texto ?? "", "");
+  assert.equal(imagenes.length, 1);
+  assert.equal(imagenes[0].media_type, "image/jpeg");
+  const bytes = Buffer.from(imagenes[0].data, "base64");
+  assert.deepEqual([...bytes.subarray(0, 3)], [0xff, 0xd8, 0xff], "empieza como un JPEG");
+  assert.ok(bytes.length < 5_000_000);
+  assert.deepEqual(r.turnos[0], { de: "cliente", tipo: "foto", textos: ["el Fox de frente"], ahora: r.turnos[0].ahora });
+});
+
+test("dos fotos seguidas salen en la misma ráfaga, con el mismo ahora", async () => {
+  const { llamadas, deps } = armar();
+  await correr(chatBase([{ tipo: "foto", descripcion: "frente" }, { tipo: "foto", descripcion: "costado", seguido: true }]), deps);
+  assert.equal(llamadas.length, 2);
+  assert.equal(llamadas[0].entrada.ahora.getTime(), llamadas[1].entrada.ahora.getTime());
+});
+
+// Un modelo por turnos falso que anota qué turnos se abrieron y cerraron.
+function modeloEspia({ fallaAlCerrar = null } = {}) {
+  const eventos = [];
+  return {
+    eventos,
+    abrirTurno(guion, etiqueta) {
+      eventos.push({ abre: etiqueta, guion });
+    },
+    cerrarTurno() {
+      const ultimo = eventos.at(-1)?.abre;
+      eventos.push({ cierra: ultimo });
+      if (fallaAlCerrar && ultimo === fallaAlCerrar) throw new Error(`el modelo simulado se desfasó en ${ultimo}`);
+    },
+  };
+}
+
+test("con un modelo por turnos, cada turno abre su guion con la etiqueta del chat y del paso, y lo cierra", async () => {
+  const modelo = modeloEspia();
+  const { deps } = armar({ modelo });
+  const g1 = [{ texto: "¿Contado o financiado?" }];
+  const g2 = [{ texto: "¿Ya tenés algún auto en mente?" }];
+  await correr(chatBase([mensaje("hola", { guion: g1 }), { tipo: "espera", minutos: 10, guion: g2 }]), deps);
+  assert.deepEqual(modelo.eventos, [{ abre: "X1 paso 1", guion: g1 }, { cierra: "X1 paso 1" }, { abre: "X1 paso 2", guion: g2 }, { cierra: "X1 paso 2" }]);
+});
+
+test("en una ráfaga, el guion del turno es el de sus mensajes en orden, y la etiqueta es la del primero", async () => {
+  const modelo = modeloEspia();
+  const { deps } = armar({ modelo });
+  const a = [{ herramienta: "registrar_calificacion", entrada: {} }];
+  const b = [{ texto: "listo" }];
+  await correr(chatBase([mensaje("uno", { guion: a }), mensaje("dos", { seguido: true, guion: b })]), deps);
+  assert.deepEqual(modelo.eventos[0], { abre: "X1 paso 1", guion: [...a, ...b] });
+});
+
+test("un paso sin guion abre su turno con un guion vacío", async () => {
+  const modelo = modeloEspia();
+  const { deps } = armar({ modelo });
+  await correr(chatBase([mensaje("hola")]), deps);
+  assert.deepEqual(modelo.eventos[0], { abre: "X1 paso 1", guion: [] });
+});
+
+test("si el modelo se desfasa al cerrar un turno, el chat termina con ese error y no sigue", async () => {
+  const modelo = modeloEspia({ fallaAlCerrar: "X1 paso 1" });
+  const { llamadas, deps } = armar({ modelo });
+  const r = await correr(chatBase([mensaje("uno"), mensaje("dos")]), deps);
+  assert.match(r.error, /se desfasó en X1 paso 1/);
+  assert.equal(llamadas.length, 1, "el segundo mensaje no se manda");
+});
+
+test("sin modelo por turnos, el chat corre igual que antes", async () => {
+  const { llamadas, deps } = armar();
+  const r = await correr(chatBase([mensaje("hola", { guion: [{ texto: "x" }] })]), deps);
+  assert.equal(llamadas.length, 1);
+  assert.equal(r.error, null);
+});
+
+test("integración: con el Claude simulado por turnos como modelo, una llamada de más del código hace fallar el chat con su paso", async () => {
+  const { crearClaudeFalsoPorTurnos } = await import("../masivo/claude-falso.js");
+  const claude = crearClaudeFalsoPorTurnos();
+  // Un atender falso que llama al modelo dos veces, aunque el guion del turno tenga una sola respuesta.
+  const atender = async (_entrada, deps) => {
+    const r = await deps.anthropic.messages.create({ messages: [] });
+    await deps.anthropic.messages.create({ messages: [] }).catch(() => {}); // atender se traga el error y responde el respaldo
+    return { texto: r.content[0].text, fotos: [], envios: [{ type: "text" }] };
+  };
+  const { deps } = armar({ atender, anthropic: claude, modelo: claude });
+  const r = await correr(chatBase([mensaje("hola", { guion: [{ texto: "¡Hola!" }] }), mensaje("chau", { guion: [{ texto: "Chau" }] })]), deps);
+  assert.match(r.error, /X1 paso 1/);
+});
+
+test("integración: con el guion justo, el chat corre sin error y cada turno usa su respuesta", async () => {
+  const { crearClaudeFalsoPorTurnos } = await import("../masivo/claude-falso.js");
+  const claude = crearClaudeFalsoPorTurnos();
+  const atender = async (_entrada, deps) => {
+    const r = await deps.anthropic.messages.create({ messages: [] });
+    return { texto: r.content[0].text, fotos: [], envios: [{ type: "text" }] };
+  };
+  const { deps } = armar({ atender, anthropic: claude, modelo: claude });
+  const r = await correr(chatBase([mensaje("hola", { guion: [{ texto: "¡Hola!" }] }), mensaje("chau", { guion: [{ texto: "Chau" }] })]), deps);
+  assert.equal(r.error, null);
+  assert.deepEqual(r.turnos.filter((t) => t.de === "bot").map((t) => t.texto), ["¡Hola!", "Chau"]);
+});

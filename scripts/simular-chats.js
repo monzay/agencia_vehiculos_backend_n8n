@@ -2,21 +2,31 @@
 //
 // Lee src/agente/simulador/chats/chats-simulados.md, arma la base local `agencia_simulacion`
 // de cero con el catálogo del documento y le manda cada chat al bot por el camino real
-// (`atenderMensaje`), con Claude Haiku de verdad. Lo demás es de prueba: BCRA simulado, audios
-// transcriptos por el guion, sin WhatsApp ni Groq. Lo único que sale a la red es Anthropic.
+// (`atenderMensaje`). El modelo es un Haiku 5.5 SIMULADO (`crearClaudeFalsoPorTurnos`): responde el
+// guion que trae cada paso del documento (`Modelo:` / `Modelo (herramienta):`). Lo demás es de prueba:
+// BCRA simulado, audios transcriptos por el guion, sin WhatsApp, Groq ni Blob. Nunca sale nada a la
+// red: la barrera de red se precarga primero y la corrida falla si hubo un solo intento de salir.
 //
 // Uso (desde web/backend):
-//   node scripts/simular-chats.js --ronda 0 [--solo K1,E1] [--repeticiones 2] [--esfuerzo low|medium|high] [--paralelo 4] [--cambio <nombre>]
+//   node scripts/simular-chats.js --ronda 0 [--solo K1,E1] [--repeticiones 2] [--esfuerzo low|medium|high] [--cambio <nombre>]
 //   node scripts/simular-chats.js --salida <carpeta> --solo N5 --repeticiones 1
 //
 // Deja en simulacion/chats/ronda-<N>/ (dentro de web/backend, ignorada por git; o en --salida):
-// transcripcion.md, resultados.json y pedido-codex.md. Gasta centavos de Claude.
+// transcripcion.md, resultados.json y pedido-codex.md. No gasta nada: no hay API real.
 
+// Lo primero de todo: corta la red antes de cargar cualquier otro módulo (deja globalThis.__RED_BARRERA__).
+import * as redPrecarga from "../src/agente/simulador/masivo/red-precarga.js";
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { prepararEntorno, limitarFetch } from "../src/agente/simulador/chats/entorno.js";
+import { crearClaudeFalsoPorTurnos } from "../src/agente/simulador/masivo/claude-falso.js";
+import { prepararEntorno, limitarFetch, verificarSinClaves, codigoDeSalida } from "../src/agente/simulador/chats/entorno.js";
 
 if (existsSync(".env")) process.loadEnvFile(".env");
+
+if (!redPrecarga || globalThis.__RED_CORTADA__ !== true) {
+  console.error("La barrera de red no quedó puesta: se aborta sin correr nada.");
+  process.exit(1);
+}
 
 const argumento = (nombre, porDefecto = null) => {
   const i = process.argv.indexOf(`--${nombre}`);
@@ -32,8 +42,10 @@ if (!salida) {
   process.exit(1);
 }
 const solo = argumento("solo")?.split(",").map((c) => c.trim());
-const repeticiones = Number(argumento("repeticiones", 2));
-const paralelo = Math.max(1, Number(argumento("paralelo", 1)));
+const repeticiones = Number(argumento("repeticiones", 1));
+// El Haiku simulado lleva un solo guion abierto a la vez: los chats corren de a uno.
+if (Number(argumento("paralelo", 1)) > 1) console.log("--paralelo se ignora: el modelo simulado por turnos corre un chat a la vez.");
+const paralelo = 1;
 const esfuerzo = argumento("esfuerzo");
 if (esfuerzo && !["low", "medium", "high"].includes(esfuerzo)) {
   console.error("--esfuerzo tiene que ser low, medium o high.");
@@ -45,6 +57,14 @@ if (esfuerzo) process.env.AGENTE_ESFUERZO = esfuerzo;
 let urls;
 try {
   urls = prepararEntorno(process.env);
+} catch (err) {
+  console.error("Se aborta sin correr nada:", err.message);
+  process.exit(1);
+}
+// prepararEntorno vació las claves que trae el .env de desarrollo; acá se confirma que no quedó ninguna con
+// valor (si quedara, se aborta antes de tocar la base). La barrera de red corta igual cualquier salida.
+try {
+  verificarSinClaves(process.env);
 } catch (err) {
   console.error("Se aborta sin correr nada:", err.message);
   process.exit(1);
@@ -64,14 +84,13 @@ for (const metodo of ["info", "log"]) {
 
 let prisma;
 let baseAgente;
-let codigoDeSalida = 0;
+let error = null;
 try {
   const { prepararBase } = await import("../src/agente/simulador/masivo/base.js");
   const { DATOS_CATALOGO } = await import("../src/agente/simulador/chats/catalogo.js");
   console.log("Preparando la base agencia_simulacion…");
   await prepararBase(urls, { prohibidas: urls.prohibidas, datos: DATOS_CATALOGO });
 
-  const { crearClienteAnthropic } = await import("../src/lib/anthropic.js");
   const { esfuerzoEfectivo } = await import("../src/agente/agente.js");
   // El nivel que de verdad usa el bot (no lo que se pidió): en producción o con un valor inválido no cambia.
   const esfuerzoUsado = esfuerzoEfectivo();
@@ -93,13 +112,19 @@ try {
   }
 
   const todos = leerChats(readFileSync(DOCUMENTO, "utf8"));
-  const chats = todos.filter((c) => !solo || solo.includes(c.codigo));
+  const conGuion = (c) => c.pasos.some((p) => p.guion?.length);
+  const sinGuion = todos.filter((c) => !conGuion(c) && (!solo || solo.includes(c.codigo)));
+  if (sinGuion.length) {
+    console.log(`Se saltean ${sinGuion.length} chats sin guion del modelo (necesitan el Haiku real): ${sinGuion.map((c) => c.codigo).join(", ")}.`);
+  }
+  const chats = todos.filter((c) => conGuion(c) && (!solo || solo.includes(c.codigo)));
   const desconocidos = (solo ?? []).filter((c) => !todos.some((t) => t.codigo === c));
   if (desconocidos.length) throw new Error(`No existe(n) el/los chat(s): ${desconocidos.join(", ")}.`);
 
   // El módulo del recordatorio es de la tarea 9: mientras no exista, las esperas solo adelantan el reloj.
   // Se invoca con los datos de prueba y un envío que solo anota; si devuelve algo, eso se anota; si no, lo "enviado".
-  const anthropic = crearClienteAnthropic(); // el mismo cliente que el backend (agrega el workspace)
+  // El Haiku 5.5 simulado: responde el guion de cada paso. Es el `anthropic` del bot, del recordatorio y el modelo por turnos.
+  const modelo = crearClaudeFalsoPorTurnos();
   const modulo = await import("../src/agente/recordatorio.js").catch(() => null);
   const enviados = [];
   // Envío de prueba: solo anota; nunca sale nada a WhatsApp.
@@ -107,7 +132,7 @@ try {
   const revisarRecordatorios = modulo?.revisarRecordatorios
     ? async ({ ahora, telefono }) => {
         enviados.length = 0;
-        const devuelto = await modulo.revisarRecordatorios({ ahora, minutos: 10, root: prisma, dbAgente: baseAgente, anthropic, enviar, soloTelefono: telefono });
+        const devuelto = await modulo.revisarRecordatorios({ ahora, minutos: 10, root: prisma, dbAgente: baseAgente, anthropic: modelo, enviar, soloTelefono: telefono });
         return Array.isArray(devuelto) ? devuelto : enviados.splice(0);
       }
     : undefined;
@@ -125,7 +150,8 @@ try {
   const deps = {
     root: prisma,
     dbAgente: baseAgente,
-    anthropic,
+    anthropic: modelo,
+    modelo,
     esperaRafagaMs: 1500,
     pausaRafagaMs: 300,
     // Nunca el BCRA real: los CUIL de los chats son inventados.
@@ -137,7 +163,7 @@ try {
   const tareas = chats.flatMap((chat, i) =>
     Array.from({ length: repeticiones }, (_, r) => ({ chat, repeticion: r + 1, telefono: `5490001${String(i * 10 + r).padStart(5, "0")}` }))
   );
-  console.log(`Corriendo ${chats.length} chats × ${repeticiones} repeticiones (${paralelo} en paralelo), esfuerzo ${esfuerzoUsado}…`);
+  console.log(`Corriendo ${chats.length} chats × ${repeticiones} repeticiones (de a uno), esfuerzo ${esfuerzoUsado}…`);
   const resultados = new Array(tareas.length);
   let siguiente = 0;
   const trabajador = async () => {
@@ -182,10 +208,13 @@ try {
   if (bloqueados.length) console.log(`Atención: se frenaron ${bloqueados.length} intentos de red a ${[...new Set(bloqueados)].join(", ")}.`);
 } catch (err) {
   console.error("Los chats simulados se detuvieron:", err?.message ?? err);
-  codigoDeSalida = 1;
+  error = err ?? new Error("falló");
 } finally {
   await prisma?.$disconnect().catch(() => {});
   await baseAgente?.$disconnect().catch(() => {});
   guardaDeRed.restaurar();
 }
-process.exitCode = codigoDeSalida;
+// Los intentos de conexión fuera de la máquina tienen que ser 0: con uno solo, la corrida falla.
+const intentosDeRed = globalThis.__RED_BARRERA__?.intentos();
+console.log(`Intentos de conexión fuera de la máquina: ${intentosDeRed ?? "sin dato"}`);
+process.exitCode = codigoDeSalida({ error, intentosDeRed });

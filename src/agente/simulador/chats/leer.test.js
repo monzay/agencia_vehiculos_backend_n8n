@@ -11,10 +11,10 @@ const chat = (...lineas) => ["## X1 · Prueba", ...lineas].join("\n");
 
 // ── El documento real ──
 
-test("lee los 25 chats del documento real, con códigos únicos", () => {
+test("lee los 39 chats del documento real (25 de antes y X1 a X14), con códigos únicos", () => {
   const chats = leerChats(readFileSync(RUTA_DOCUMENTO, "utf8"));
-  assert.equal(chats.length, 25);
-  assert.equal(new Set(chats.map((c) => c.codigo)).size, 25);
+  assert.equal(chats.length, 39);
+  assert.equal(new Set(chats.map((c) => c.codigo)).size, 39);
   for (const c of chats) assert.ok(c.pasos.length > 0, c.codigo);
 });
 
@@ -186,4 +186,122 @@ test("una viñeta fuera de Debe, No debe o Control automático falla con su lín
 
 test("un Empieza con formato inválido falla con su línea", () => {
   assert.throws(() => leerChats(chat("Empieza: mañana", "Cliente: hola")), /línea 2/);
+});
+
+// ── ajustes-por-chats-reales: guion del Haiku simulado, fotos y perfil ──
+
+test("en el documento real están X1 a X14 y cada uno trae guion del modelo", () => {
+  const chats = leerChats(readFileSync(RUTA_DOCUMENTO, "utf8"));
+  for (let i = 1; i <= 14; i++) {
+    const x = chats.find((c) => c.codigo === `X${i}`);
+    assert.ok(x, `falta X${i}`);
+    assert.ok(x.pasos.some((p) => Array.isArray(p.guion) && p.guion.length > 0), `X${i} sin guion`);
+  }
+});
+
+test("Perfil: fija el nombre del perfil de WhatsApp del chat; sin la línea queda null", () => {
+  const [con] = leerChats(chat("Perfil: Mi Reina", "Cliente: hola"));
+  assert.equal(con.perfil, "Mi Reina");
+  const [sin] = leerChats(chat("Cliente: hola"));
+  assert.equal(sin.perfil, null);
+});
+
+test("Foto: es un paso de foto con su descripción; Foto (seguido): va en la ráfaga del anterior", () => {
+  const [c] = leerChats(chat("Cliente: tengo un Fox para entregar", "Foto: el Fox de frente", "Foto (seguido): el Fox de costado"));
+  assert.deepEqual(c.pasos[1], { tipo: "foto", descripcion: "el Fox de frente" });
+  assert.deepEqual(c.pasos[2], { tipo: "foto", descripcion: "el Fox de costado", seguido: true });
+});
+
+test("Modelo: y Modelo (herramienta): arman, en orden, el guion del paso anterior", () => {
+  const [c] = leerChats(
+    chat(
+      "Cliente: financiado",
+      'Modelo (herramienta): registrar_calificacion {"pago_tipo":"financiado"}',
+      "Modelo: ¿Con cuánto de anticipo contás?",
+      "Cliente: 5 millones"
+    )
+  );
+  assert.deepEqual(c.pasos[0], {
+    tipo: "mensaje",
+    texto: "financiado",
+    guion: [{ herramienta: "registrar_calificacion", entrada: { pago_tipo: "financiado" } }, { texto: "¿Con cuánto de anticipo contás?" }],
+  });
+  assert.deepEqual(c.pasos[1], { tipo: "mensaje", texto: "5 millones" });
+});
+
+test("Modelo: \n en el texto es un salto de línea, para los mensajes con párrafos", () => {
+  const [c] = leerChats(chat("Cliente: hola", "Modelo: ¡Hola! Soy José, asesor de ventas 🙌\n\n¿Qué auto estás buscando?"));
+  assert.equal(c.pasos[0].guion[0].texto, "¡Hola! Soy José, asesor de ventas 🙌\n\n¿Qué auto estás buscando?");
+});
+
+test("el guion también se puede poner después de una espera (el texto del recordatorio) y de una foto", () => {
+  const [c] = leerChats(chat("Cliente: hola", "Modelo: ¿Qué auto buscás?", "(pasan 10 minutos)", "Modelo: ¿Ya tenés algún auto en mente?", "Foto: el Fox", "Modelo: ¡Gracias!"));
+  assert.deepEqual(c.pasos[1], { tipo: "espera", minutos: 10, guion: [{ texto: "¿Ya tenés algún auto en mente?" }] });
+  assert.deepEqual(c.pasos[2].guion, [{ texto: "¡Gracias!" }]);
+});
+
+test("un paso sin líneas Modelo no tiene guion", () => {
+  const [c] = leerChats(chat("Cliente: hola", "Cliente: chau"));
+  assert.equal("guion" in c.pasos[0], false);
+});
+
+test("una línea Modelo antes del primer paso falla con el número de línea", () => {
+  assert.throws(() => leerChats(chat("Modelo: hola", "Cliente: hola")), /línea 2/);
+});
+
+test("Modelo (herramienta) con JSON inválido o sin nombre falla con el número de línea", () => {
+  assert.throws(() => leerChats(chat("Cliente: hola", "Modelo (herramienta): registrar_calificacion {pago_tipo:financiado}")), /línea 3/);
+  assert.throws(() => leerChats(chat("Cliente: hola", 'Modelo (herramienta): {"pago_tipo":"financiado"}')), /línea 3/);
+});
+
+test("Modelo (herramienta) sin entrada usa un objeto vacío", () => {
+  const [c] = leerChats(chat("Cliente: hola", "Modelo (herramienta): horarios_atencion"));
+  assert.deepEqual(c.pasos[0].guion, [{ herramienta: "horarios_atencion", entrada: {} }]);
+});
+
+test("los controles nuevos se leen", () => {
+  const [c] = leerChats(
+    chat(
+      "Cliente: hola",
+      "Control automático:",
+      "- se presenta más de una vez: no",
+      "- usa el nombre del perfil: no",
+      "- pide fotos con la pregunta: sí",
+      "- pide fotos del usado: 1",
+      "- pide el nombre: 1",
+      "- guardado: nombre = Claudia",
+      "- guardado: fotos_usado = 2"
+    )
+  );
+  assert.deepEqual(c.controles, [
+    { tipo: "presentacion_repetida" },
+    { tipo: "nombre_del_perfil" },
+    { tipo: "fotos_con_pregunta" },
+    { tipo: "pedidos_de_fotos", cantidad: 1 },
+    { tipo: "pedidos_de_nombre", cantidad: 1 },
+    { tipo: "guardado", dato: "nombre", valor: "Claudia" },
+    { tipo: "guardado", dato: "fotos_usado", valor: "2" },
+  ]);
+});
+
+test("en el documento real siguen los 25 chats de antes con sus códigos", () => {
+  const codigos = leerChats(readFileSync(RUTA_DOCUMENTO, "utf8")).map((c) => c.codigo);
+  for (const c of ["K1", "K2", "K3", "E1", "E2", "E3", "R1", "R2", "R3", "R4", "P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "P10", "N1", "N2", "N3", "N4", "N5"]) {
+    assert.ok(codigos.includes(c), `falta ${c}`);
+  }
+});
+
+test("en el documento real cada X trae su regla y al menos un control automático", () => {
+  const chats = leerChats(readFileSync(RUTA_DOCUMENTO, "utf8")).filter((c) => /^X\d+$/.test(c.codigo));
+  assert.equal(chats.length, 14);
+  for (const c of chats) {
+    assert.ok(c.reglas, `${c.codigo} sin Regla`);
+    assert.ok(c.controles.length > 0, `${c.codigo} sin controles`);
+  }
+});
+
+test("en el documento real X11 fija el perfil 'Mi Reina' y X12 manda fotos", () => {
+  const chats = leerChats(readFileSync(RUTA_DOCUMENTO, "utf8"));
+  assert.equal(chats.find((c) => c.codigo === "X11").perfil, "Mi Reina");
+  assert.ok(chats.find((c) => c.codigo === "X12").pasos.some((p) => p.tipo === "foto"));
 });

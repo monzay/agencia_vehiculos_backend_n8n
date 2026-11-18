@@ -186,3 +186,86 @@ test("obligatorio que empieza con un dígito tampoco coincide dentro de un núme
   assert.equal(uno(c, [msg("Son 19.000.000")]).ok, false);
   assert.equal(uno(c, [msg("Son $ 000.000 pesos")]).ok, true);
 });
+
+// ── ajustes-por-chats-reales: controles nuevos ──
+
+// Igual que `uno`, pero con datos del chat (el perfil de WhatsApp).
+function unoConChat(control, chatExtra, mensajesBot = [], guardado = {}) {
+  const [r] = aplicarControles({ controles: [control], ...chatExtra }, { mensajesBot, guardado: { ...guardadoVacio, ...guardado } });
+  return r;
+}
+
+test("se presenta más de una vez: pasa si solo el primer mensaje dice 'Soy José, asesor de ventas'", () => {
+  const r = uno({ tipo: "presentacion_repetida" }, [msg("¡Hola! Soy José, asesor de ventas 🙌 El Logan está a $13.900.000."), msg("El Stepway está a $15.900.000.")]);
+  assert.equal(r.ok, true);
+});
+
+test("se presenta más de una vez: falla si dos mensajes se presentan, sin distinguir tildes", () => {
+  const r = uno({ tipo: "presentacion_repetida" }, [msg("¡Hola! Soy José, asesor de ventas 🙌"), msg("¡Hola Rodrigo! Soy Jose, asesor de ventas 🙌 El Stepway…")]);
+  assert.equal(r.ok, false);
+  assert.match(r.detalle, /2/);
+});
+
+test("se presenta más de una vez: nombrar al asesor en otra frase no cuenta como presentación", () => {
+  const r = uno({ tipo: "presentacion_repetida" }, [msg("¡Hola! Soy José, asesor de ventas 🙌"), msg("Cualquier cosa, preguntá por José en la agencia.")]);
+  assert.equal(r.ok, true);
+});
+
+test("usa el nombre del perfil: falla si algún mensaje nombra al cliente con su perfil de WhatsApp", () => {
+  const r = unoConChat({ tipo: "nombre_del_perfil" }, { perfil: "Mi Reina" }, [msg("¡Gracias, Mi Reina! Pasame tu CUIL.")]);
+  assert.equal(r.ok, false);
+  assert.match(r.detalle, /Mi Reina/);
+});
+
+test("usa el nombre del perfil: pasa si nunca lo nombra, y sin perfil en el chat también", () => {
+  assert.equal(unoConChat({ tipo: "nombre_del_perfil" }, { perfil: "Mi Reina" }, [msg("¡Gracias! Pasame tu CUIL.")]).ok, true);
+  assert.equal(unoConChat({ tipo: "nombre_del_perfil" }, { codigo: "X1", perfil: null }, [msg("¡Gracias!")]).ok, true);
+});
+
+test("pide fotos con la pregunta: pasa si el pedido de fotos y la pregunta van en el mismo mensaje", () => {
+  const r = uno({ tipo: "fotos_con_pregunta" }, [msg("Si podés, pasame unas fotos del Fox. ¿Cuánto pedís por él?")]);
+  assert.equal(r.ok, true);
+});
+
+test("pide fotos con la pregunta: falla si el pedido va solo y la pregunta en otro mensaje", () => {
+  const r = uno({ tipo: "fotos_con_pregunta" }, [msg("Si podés, pasame unas fotos del Fox."), msg("¿Cuánto pedís por él?")]);
+  assert.equal(r.ok, false);
+});
+
+test("pide fotos con la pregunta: ofrecer las fotos de un auto del catálogo no es pedir fotos del usado", () => {
+  const r = uno({ tipo: "fotos_con_pregunta" }, [msg("Te paso las fotos del Vento 👇 ¿Lo pensás pagar de contado o financiado?")]);
+  assert.equal(r.ok, false);
+});
+
+test("pide fotos del usado: cuenta los mensajes que piden fotos, recordatorios incluidos", () => {
+  const mensajes = [msg("Si podés, pasame unas fotos del Fox. ¿De qué año es?"), msg("¿Me mandás las fotos del Fox?", { recordatorio: true }), msg("Te paso las fotos del Vento 👇")];
+  assert.equal(uno({ tipo: "pedidos_de_fotos", cantidad: 2 }, mensajes).ok, true);
+  const r = uno({ tipo: "pedidos_de_fotos", cantidad: 1 }, mensajes);
+  assert.equal(r.ok, false);
+  assert.match(r.detalle, /2/);
+});
+
+test("pide el nombre: cuenta los mensajes que le piden el nombre al cliente", () => {
+  const mensajes = [msg("¡Dale! ¿Me decís tu nombre así el asesor sabe quién viene?"), msg("¿Cómo te llamás?"), msg("Soy José, asesor de ventas")];
+  assert.equal(uno({ tipo: "pedidos_de_nombre", cantidad: 2 }, mensajes).ok, true);
+  assert.equal(uno({ tipo: "pedidos_de_nombre", cantidad: 0 }, [msg("¡Te esperamos el jueves!")]).ok, true);
+});
+
+test("guardado: nombre y fotos_usado se comparan como los demás datos", () => {
+  assert.equal(uno({ tipo: "guardado", dato: "nombre", valor: "Claudia" }, [], { nombre: "Claudia" }).ok, true);
+  assert.equal(uno({ tipo: "guardado", dato: "nombre", valor: "vacío" }, [], { nombre: null }).ok, true);
+  assert.equal(uno({ tipo: "guardado", dato: "fotos_usado", valor: "2" }, [], { fotos_usado: 2 }).ok, true);
+  assert.equal(uno({ tipo: "guardado", dato: "fotos_usado", valor: "2" }, [], { fotos_usado: 0 }).ok, false);
+});
+
+test("pide el nombre: si se esperaba una vez y lo pidió dos, falla", () => {
+  const r = uno({ tipo: "pedidos_de_nombre", cantidad: 1 }, [msg("¿Me decís tu nombre así el asesor sabe quién viene?"), msg("Perdón, ¿cómo te llamás?")]);
+  assert.equal(r.ok, false);
+  assert.match(r.detalle, /2/);
+});
+
+test("guardado: entrega_usado = no exige que esté anotado que no entrega", () => {
+  assert.equal(uno({ tipo: "guardado", dato: "entrega_usado", valor: "no" }, [], { entrega_usado: false }).ok, true);
+  assert.equal(uno({ tipo: "guardado", dato: "entrega_usado", valor: "no" }, [], { entrega_usado: null }).ok, false);
+  assert.equal(uno({ tipo: "guardado", dato: "entrega_usado", valor: "no" }, [], { entrega_usado: true }).ok, false);
+});

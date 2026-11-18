@@ -4,6 +4,7 @@
 import { randomUUID } from "node:crypto";
 import { atenderMensaje } from "../../atender.js";
 import { notaDeVoz } from "../../ogg-de-prueba.js";
+import { fotoDePrueba } from "../../jpeg-de-prueba.js";
 import { aplicarControles } from "./controles.js";
 
 const MIN = 60_000;
@@ -18,15 +19,26 @@ const esperar = (ms) => new Promise((listo) => setTimeout(listo, ms));
 const cuentaWhatsApp = (r) => (r.envios ?? []).filter((e) => e.type !== "reaction").length;
 const soloReaccion = (r) => Array.isArray(r.envios) && r.envios.length > 0 && r.envios.every((e) => e.type === "reaction");
 
-// Los `seguido` van en la misma ráfaga que el mensaje anterior; el audio sale solo.
+// Los `seguido` van en la misma ráfaga que el paso anterior (mensajes y fotos); el audio sale solo.
+// Cada grupo anota el número (desde 1) de su primer paso y el guion del modelo de todos sus pasos.
 function agruparPasos(pasos) {
   const grupos = [];
-  for (const paso of pasos) {
+  pasos.forEach((paso, i) => {
     const ultimo = grupos.at(-1);
-    if (paso.tipo === "mensaje" && paso.seguido && ultimo?.tipo === "rafaga") ultimo.mensajes.push(paso);
-    else if (paso.tipo === "mensaje") grupos.push({ tipo: "rafaga", mensajes: [paso] });
-    else grupos.push(paso);
-  }
+    const esRafaga = paso.tipo === "mensaje" || paso.tipo === "foto";
+    let grupo;
+    if (esRafaga && paso.seguido && ultimo?.tipo === "rafaga") {
+      ultimo.mensajes.push(paso);
+      grupo = ultimo;
+    } else if (esRafaga) {
+      grupo = { tipo: "rafaga", mensajes: [paso], numero: i + 1, guion: [] };
+      grupos.push(grupo);
+    } else {
+      grupo = { ...paso, numero: i + 1, guion: [] };
+      grupos.push(grupo);
+    }
+    grupo.guion.push(...(paso.guion ?? []));
+  });
   return grupos;
 }
 
@@ -39,7 +51,7 @@ function recordatoriosDe(salida, telefono) {
 }
 
 export async function correrChat(chat, { telefono, repeticion = 1 }, deps) {
-  const { atender = atenderMensaje, leerGuardado, revisarRecordatorios, herramientas, pausaRafagaMs = 300, ...depsDeAtender } = deps;
+  const { atender = atenderMensaje, leerGuardado, revisarRecordatorios, herramientas, pausaRafagaMs = 300, modelo, ...depsDeAtender } = deps;
   let textoDelAudio = "";
   // La transcripción de Groq se reemplaza por el texto del guion: nunca hay red.
   // Lo que usó el bot en el turno, con el resultado entero (recortado): lo registra el gancho del orquestador.
@@ -49,7 +61,7 @@ export async function correrChat(chat, { telefono, repeticion = 1 }, deps) {
     usosPendientes.push({ nombre, pedido, resultado: texto.length > MAX_RESULTADO ? `${texto.slice(0, MAX_RESULTADO)}…` : texto, esError });
   };
   const depsDelChat = { ...depsDeAtender, alUsarHerramienta, transcribir: async () => ({ texto: textoDelAudio, segundos: SEGUNDOS_DE_AUDIO }) };
-  const nombre = `SIM ${chat.codigo}`;
+  const nombre = chat.perfil || `SIM ${chat.codigo}`;
   const turnos = [];
   let reloj = new Date((chat.empieza ?? INICIO_POR_DEFECTO).getTime());
   let error = null;
@@ -61,7 +73,9 @@ export async function correrChat(chat, { telefono, repeticion = 1 }, deps) {
     const ahora = reloj;
     reloj = new Date(reloj.getTime() + MIN);
     const esAudio = grupo.tipo === "audio";
-    turnos.push({ de: "cliente", tipo: esAudio ? "audio" : "mensaje", textos: esAudio ? [grupo.texto] : grupo.mensajes.map((m) => m.texto), ahora });
+    const soloFotos = !esAudio && grupo.mensajes.every((m) => m.tipo === "foto");
+    const tipo = esAudio ? "audio" : soloFotos ? "foto" : "mensaje";
+    turnos.push({ de: "cliente", tipo, textos: esAudio ? [grupo.texto] : grupo.mensajes.map((m) => m.texto ?? m.descripcion), ahora });
     let respuestas;
     if (esAudio) {
       textoDelAudio = grupo.texto;
@@ -69,7 +83,9 @@ export async function correrChat(chat, { telefono, repeticion = 1 }, deps) {
       respuestas = [await atender(entrada({ audio }, ahora), depsDelChat)];
     } else {
       respuestas = await Promise.all(
-        grupo.mensajes.map((m, i) => esperar(i * pausaRafagaMs).then(() => atender(entrada({ texto: m.texto }, ahora), depsDelChat)))
+        grupo.mensajes.map((m, i) =>
+          esperar(i * pausaRafagaMs).then(() => atender(entrada(m.tipo === "foto" ? { imagenes: [{ media_type: "image/jpeg", data: fotoDePrueba().toString("base64") }] } : { texto: m.texto }, ahora), depsDelChat))
+        )
       );
     }
     const propias = respuestas.filter((r) => r && !r.duplicado && !r.juntado && !r.pausado);
@@ -105,8 +121,12 @@ export async function correrChat(chat, { telefono, repeticion = 1 }, deps) {
 
   try {
     for (const grupo of agruparPasos(chat.pasos)) {
+      // Con el modelo simulado por turnos, cada grupo abre su guion y lo cierra: si el código
+      // llamó de más o de menos al modelo, el cierre falla y el chat termina ahí.
+      modelo?.abrirTurno(grupo.guion, `${chat.codigo} paso ${grupo.numero}`);
       if (grupo.tipo === "espera") await espera(grupo.minutos);
       else await turnoDeCliente(grupo);
+      modelo?.cerrarTurno();
     }
   } catch (err) {
     error = err?.message ?? String(err);

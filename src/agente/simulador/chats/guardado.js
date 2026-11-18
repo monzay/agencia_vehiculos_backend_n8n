@@ -20,6 +20,9 @@ export function crearLectorDeGuardado(prisma) {
       requiere_vendedor: Boolean(sesion?.requiere_vendedor),
       permisos,
       cuil: sesion?.cuil_informado ?? null,
+      nombre: sesion?.nombre_declarado ?? null,
+      // La columna fotos_usado_json llega en la tarea 5: hasta entonces no existe y son 0.
+      fotos_usado: Array.isArray(sesion?.fotos_usado_json) ? sesion.fotos_usado_json.length : 0,
     };
     return { guardado, costoUsd: Number(_sum.costo_usd ?? 0), clienteId };
   };

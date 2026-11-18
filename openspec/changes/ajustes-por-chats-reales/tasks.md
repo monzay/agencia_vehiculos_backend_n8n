@@ -201,6 +201,12 @@ Salen de las conversaciones reales del 16 y 17/11, sin nombres ni teléfonos rea
       `entrega_usado: true` y marca `fotos_usado_pedidas_at`.
     - **Instrucciones:** pedido de fotos sin pregunta, en el mismo mensaje que la pregunta que sigue. Cuando
       llegan, gracias sin opinar.
+    - **Fotos juntas, una sola respuesta** (agregado en la fase 2, ver BITACORA › Tarea 1):
+      - `rafagas.js` deja de despachar enseguida los mensajes con foto: esperan como un texto y se juntan con
+        los que lleguen. El audio sigue saliendo ya.
+      - `combinar` junta las fotos de todo el lote. Al modelo le llegan hasta 3, las últimas, y para guardar
+        quedan todas.
+      - Criterio: escenarios de `agente-entrada` › Mensajes en ráfaga se responden una sola vez.
     - **Guardar:** `atender.js` ya recibe cada foto validada: JPEG, PNG, GIF o WEBP, hasta ~5 MB y hasta 3 por
       mensaje, en base64 con su tipo.
       - En las 24 horas siguientes a `fotos_usado_pedidas_at`, las sube al Blob privado, hasta completar 10
