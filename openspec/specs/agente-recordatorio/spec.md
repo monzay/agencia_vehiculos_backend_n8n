@@ -7,8 +7,9 @@ TBD - created by archiving change respuestas-del-bot. Update Purpose after archi
 
 ### Requirement: Cuándo corresponde el recordatorio
 El sistema MUST mandarle un recordatorio al cliente cuando el último mensaje de la consulta es de la asesora
-virtual, ese mensaje pregunta o pide algo, pasaron 10 minutos o más (y menos de 60) y el cliente no escribió
-después. Reemplaza la regla del 15/10/2026 ("al cliente que deja de responder no se le escribe").
+virtual, ese mensaje hace una pregunta que se recuerda (ver Qué preguntas se recuerdan), pasaron 10 minutos o
+más (y menos de 60) y el cliente no escribió después. Reemplaza la regla del 15/10/2026 ("al cliente que deja
+de responder no se le escribe").
 <!-- id: recordatorio.consultasParaRecordar -->
 
 #### Scenario: Deja sin contestar una pregunta
@@ -94,7 +95,9 @@ responde al recordatorio, MUST NOT mandarle otro mensaje.
 ### Requirement: Qué dice el recordatorio
 El recordatorio MUST ser un solo mensaje corto, escrito por la IA con las instrucciones de la asesora, que
 retome su última pregunta con otras palabras. MUST NOT saludar de nuevo, presionar ni agregar datos nuevos;
-si la IA empieza con un saludo, el sistema MUST quitarlo.
+si la IA empieza con un saludo, el sistema MUST quitarlo. Si el último mensaje de la asesora pedía fotos del
+usado además de hacer una pregunta, el recordatorio MUST retomar solo la pregunta, sin volver a pedir las
+fotos.
 La IA MUST NOT usar herramientas para escribirlo.
 <!-- id: recordatorio.textoDelRecordatorio -->
 
@@ -106,6 +109,12 @@ La IA MUST NOT usar herramientas para escribirlo.
 <!-- test: src/agente/recordatorio.test.js › "el recordatorio que sale no empieza con un saludo aunque la IA lo escriba" -->
 <!-- test: src/agente/recordatorio.test.js › "sinSaludoInicial quita un saludo al empezar el recordatorio y deja el resto" -->
 <!-- eval: chats simulados › R1, R2 -->
+
+#### Scenario: El último mensaje pedía fotos
+- **WHEN** la asesora escribió "Si podés, pasame unas fotos de la moto. ¿Qué marca, modelo y año es?" y pasan 10 minutos
+- **THEN** el recordatorio retoma la marca, el modelo y el año, y no menciona las fotos
+<!-- test: src/agente/recordatorio.test.js › "la línea de sistema del recordatorio pide no volver a pedir fotos: retoma solo la pregunta" -->
+<!-- eval: chats simulados › X13 -->
 
 ### Requirement: El cliente avisó que escribía después
 Si el cliente había avisado que estaba ocupado, que escribía más tarde o se había despedido, la IA MUST
@@ -235,3 +244,45 @@ MUST NOT arrancar la revisión automática.
 - **THEN** revisa cada 60 segundos, sin frenar el cierre del proceso, con 10 minutos de espera; cada revisión atiende como mucho 20 consultas
 <!-- test: src/agente/recordatorio.test.js › "con todo configurado revisa cada 60 segundos, con unref y los 10 minutos por defecto" -->
 <!-- test: src/agente/recordatorio.test.js › "cada revisión atiende como mucho 20 consultas" -->
+
+### Requirement: Qué preguntas se recuerdan
+El recordatorio MUST salir solo si la pregunta del último mensaje de la asesora es de uno de estos temas: qué
+auto busca, contado o financiado, anticipo, recibo o garante, si entrega un vehículo (con su marca, modelo y
+año), quién decide y cuándo puede venir. Con cualquier otra pregunta, o si el tema no se reconoce, MUST NOT
+salir.
+<!-- id: recordatorio.consultasParaRecordar -->
+
+#### Scenario: Qué auto busca
+- **WHEN** el cliente escribió "quería hacer una consulta", la asesora preguntó qué auto busca y pasan 10 minutos
+- **THEN** sale el recordatorio
+<!-- test: src/agente/recordatorio.test.js › "el cliente escribió 'quería hacer una consulta', la asesora preguntó qué auto busca y a los 10 minutos sale el recordatorio" -->
+<!-- eval: chats simulados › X14 -->
+
+#### Scenario: Quién decide y la visita
+- **WHEN** la pregunta sin contestar es "¿Lo decidís por tu cuenta o lo consultás con alguien?" o "¿Cuándo podrías pasar por la agencia?"
+- **THEN** sale el recordatorio
+<!-- test: src/agente/recordatorio.test.js › "consultasParaRecordar incluye la consulta cuando la pregunta sin contestar es de un tema permitido (auto, pago, anticipo, recibo, usado, marca y año, decisor, visita)" -->
+
+#### Scenario: Permiso del BCRA o CUIL
+- **WHEN** la pregunta sin contestar es el permiso para consultar el BCRA o el pedido del CUIL
+- **THEN** no sale nada
+<!-- test: src/agente/recordatorio.test.js › "consultasParaRecordar deja afuera el permiso del BCRA, el CUIL, cuánto pide por el usado, las ofertas, el ofrecimiento de fotos y las preguntas que no se reconocen" -->
+<!-- test: src/agente/temas-preguntados.test.js › "temasPreguntados reconoce el permiso para consultar el BCRA (permiso) y el pedido del CUIL (cuil)" -->
+<!-- eval: chats simulados › X14 -->
+
+#### Scenario: Cuánto pide por el usado
+- **WHEN** la pregunta sin contestar es "¿Cuánto pedís por el Fox?"
+- **THEN** no sale nada
+<!-- test: src/agente/recordatorio.test.js › "consultasParaRecordar deja afuera el permiso del BCRA, el CUIL, cuánto pide por el usado, las ofertas, el ofrecimiento de fotos y las preguntas que no se reconocen" -->
+
+#### Scenario: Una oferta
+- **WHEN** la pregunta sin contestar es "¿Te quedás con el Voyage o con la Bora?" o "¿Querés que te pase las fotos?"
+- **THEN** no sale nada
+<!-- test: src/agente/recordatorio.test.js › "consultasParaRecordar deja afuera el permiso del BCRA, el CUIL, cuánto pide por el usado, las ofertas, el ofrecimiento de fotos y las preguntas que no se reconocen" -->
+<!-- test: src/agente/temas-preguntados.test.js › "temasPreguntados: lo que no es del recorrido no suma ningún tema permitido (ofertas, fotos, algo más)" -->
+<!-- eval: chats simulados › X14 -->
+
+#### Scenario: Una pregunta que no se reconoce
+- **WHEN** la pregunta sin contestar no es de ningún tema de la lista
+- **THEN** no sale nada
+<!-- test: src/agente/recordatorio.test.js › "con una pregunta que no se recuerda, la revisión no manda nada, no llama a Claude y no reserva la consulta" -->

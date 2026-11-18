@@ -179,3 +179,38 @@ Las tres rondas: 0 intentos de red y US$ 0 de IA. Las rondas quedan en `simulaci
   `ajustes-por-chats-reales`. Probado en una copia en la fase 1.
 - **Bóveda:** fila en "Plan de mejora del bot", resumen en "BOT CON RAZONAMIENTO" (sección 13) y nota en
   "Verificación crediticia (BCRA)".
+
+## Deploy a producción (2026-11-18, por orden del user: "subi todo estos cambios a produccion")
+
+Subieron juntos `ajustes-por-chats-reales` y `cuil-directo`.
+
+**Antes:**
+- **Política publicada en producción (versión 1):** dice para qué se usa el CUIL, quién lo ve (un asesor) y los
+  derechos, y no dice que el permiso se pide por WhatsApp. Cumple la condición; no hizo falta una versión nueva.
+- **Variables:** `BLOB_DOCUMENTOS_TOKEN` cargada; `BLOB_SIMULADO` ausente.
+
+**Pasos:**
+1. **Respaldo:** `backups/prod-antes-086-cuil-directo-2026-11-18_1645.sql` (596 KB, 39 tablas, "Dump
+   completed").
+2. **Migración 086:** aplicada en Aiven. 3 columnas nulas en `sesiones`; las 63 consultas intactas.
+3. **GitHub, `main` por fast-forward:**
+   - backend `746c8e1..ca46c22`;
+   - front `75ad55f..93293db`;
+   - ramas `feat/ajustes-por-chats-reales` y `feat/cuil-directo` subidas.
+4. **Backend `ca46c22` al droplet:** `git archive`, `docker compose build backend` y `up -d backend`. Copia en
+   `/opt/agencia/backend.bak.20261118-164827`.
+
+**Verificación:**
+- `/health` da 200 y `envio-fallido` sin clave, 401.
+- Dentro del contenedor:
+  - las instrucciones tienen el pedido directo y no el permiso;
+  - el contexto lleva el link solo para si pregunta;
+  - `esAvisoDelCuil` funciona;
+  - el backend y `agente_ia` leen las columnas de la 086.
+- Front: la web publicada tiene el link a /privacidad en la portada y en /financiacion.
+- n8n sin cambios.
+
+**Archive:**
+- En orden: `cuil-en-consulta`, `ajustes-por-chats-reales`, `cuil-directo`.
+- El test de anclas falla solo por `importar-lista-por-etapas`, que ya fallaba antes.
+- Suite: 1964 de 1966.

@@ -153,10 +153,10 @@ número MUST responder 429 con `Retry-After`.
 <!-- observacion: el test prueba el middleware en general; no hay test que fije el valor 300 en la ruta del agente -->
 
 ### Requirement: Mensajes en ráfaga se responden una sola vez
-El sistema MUST esperar 4 segundos después de cada mensaje de un número. Si en ese tiempo
-llegan otros del mismo número, MUST responder una sola vez, al último, con todos los textos
-juntos y en orden. Los anteriores no responden nada. Un mensaje con foto o audio MUST salir
-sin esperar, junto con lo que ya estaba esperando. Cada parte se guarda con su propio id.
+El sistema MUST esperar 4 segundos después de cada mensaje de un número, también si trae una foto. Si en ese
+tiempo llegan otros del mismo número, MUST responder una sola vez, al último, con todos los textos juntos y en
+orden y con las fotos de todos. Los anteriores no responden nada. Un mensaje con audio MUST salir sin esperar,
+junto con lo que ya estaba esperando. Cada parte se guarda con su propio id.
 <!-- id: rafagas.juntarRafaga -->
 <!-- observacion: riesgo aceptado y documentado en el código: si el backend se reinicia durante la espera, esos mensajes se pierden -->
 
@@ -173,9 +173,17 @@ sin esperar, junto con lo que ya estaba esperando. Cada parte se guarda con su p
 <!-- test: src/routes/agente.routes.test.js › "un mensaje que se juntó con otro de la misma ráfaga no responde (responde el último)" -->
 
 #### Scenario: Mensaje con foto o audio
-- **WHEN** llega un mensaje con foto o audio
-- **THEN** sale ya, con lo que estaba esperando
-<!-- test: src/agente/rafagas.test.js › "un mensaje con foto o audio no espera: sale ya, con lo que estaba esperando" -->
+- **WHEN** llega un audio, o una foto
+- **THEN** el audio sale ya, con lo que estaba esperando; la foto espera como un texto, para juntarse con las que lleguen después
+<!-- test: src/agente/rafagas.test.js › "un mensaje con foto espera como un texto: no sale enseguida y hay que esperar el tiempo de la ráfaga" -->
+<!-- test: src/agente/rafagas.test.js › "un texto y una foto seguidos se responden juntos; después un audio sale ya con todo lo que esperaba" -->
+
+#### Scenario: Fotos seguidas
+- **WHEN** el cliente manda dos fotos de su usado una detrás de la otra, dentro de la espera
+- **THEN** el bot responde una sola vez, y el lote lleva las dos fotos (al modelo le llegan hasta 3, las últimas; para guardar, todas)
+<!-- test: src/agente/rafagas.test.js › "dos fotos seguidas dentro de la espera: responde el último, una sola vez, con las dos fotos en orden" -->
+<!-- test: src/agente/atender.test.js › "dos mensajes con fotos dentro de la espera se responden una sola vez: se guardan las cuatro y al modelo le llegan las últimas tres" -->
+<!-- eval: chats simulados › X12 -->
 
 #### Scenario: Números distintos
 - **WHEN** escriben dos números distintos al mismo tiempo

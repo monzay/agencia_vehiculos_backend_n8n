@@ -17,7 +17,8 @@ mensaje, qué se le responde y cómo sale la respuesta por WhatsApp.
 El sistema MUST reconocer al cliente por su número de WhatsApp o por el teléfono de una
 ficha que ya existe. Si no existe, MUST crear la ficha y su canal de WhatsApp juntos, en
 una transacción, con el teléfono guardado en 10 dígitos. El nombre del perfil de WhatsApp
-MUST completar una ficha sin nombre y MUST NOT pisar un nombre ya cargado.
+MUST NOT guardarse en la ficha: una ficha nueva queda sin nombre hasta que el cliente lo dice
+o alguien lo carga en el panel. MUST NOT tocar el nombre de las fichas que ya existen.
 <!-- id: clientes.service.resolverCliente -->
 <!-- dueña-futura: clientes — también la usan el alta desde la web y el panel -->
 
@@ -46,10 +47,15 @@ MUST completar una ficha sin nombre y MUST NOT pisar un nombre ya cargado.
 - **THEN** se conserva el nombre de la ficha
 <!-- test: src/agente/atender.test.js › "el nombre del perfil de WhatsApp no pisa el nombre ya cargado" -->
 
+#### Scenario: Ficha nueva con perfil
+- **WHEN** escribe un número nuevo cuyo perfil de WhatsApp dice "Mi Reina"
+- **THEN** la ficha se crea sin nombre
+<!-- test: src/agente/atender.test.js › "un número nuevo cuyo perfil de WhatsApp dice 'Mi Reina' crea la ficha sin nombre" -->
+
 #### Scenario: La ficha no tiene nombre
 - **WHEN** la ficha no tiene nombre y el perfil sí
-- **THEN** se completa con el nombre del perfil
-<!-- test: src/agente/atender.test.js › "el nombre del perfil de WhatsApp completa una ficha que no tenía nombre" -->
+- **THEN** la ficha sigue sin nombre
+<!-- test: src/agente/atender.test.js › "la ficha sin nombre sigue sin nombre aunque el perfil de WhatsApp traiga uno" -->
 
 #### Scenario: Financiación cargada por la web
 - **WHEN** un cliente con financiación cargada por la web consulta desde WhatsApp
@@ -289,14 +295,32 @@ Si la charla está cerrada (visita acordada, "no sabe cuándo viene" o ya deriva
 y el cliente solo agradece o se despide, el sistema MUST reaccionar con 👍 a su mensaje, sin
 IA. "Solo agradece" significa: hasta 60 caracteres, sin pregunta, solo palabras de cierre o
 emojis. Si la última respuesta de la asesora preguntaba o pedía algo, MUST responder la IA:
-un "dale" ahí es un sí. Si la IA contesta solo 👍, MUST salir como reacción.
+un "dale" ahí es un sí. Si falta pedir el nombre (ver `agente-calificacion` › El nombre después
+de la visita), MUST responder la IA aunque el cliente solo agradezca. Si la última respuesta de la
+asesora fue el pedido del nombre, un agradecimiento o una despedida MUST reaccionarse con 👍: no se insiste.
+Si la IA contesta solo 👍, MUST salir como reacción.
 <!-- id: cierre.debeReaccionar -->
 
 #### Scenario: Charla cerrada y solo agradece
-- **WHEN** la charla está cerrada, el cliente solo agradece y la asesora no había preguntado nada
+- **WHEN** la charla está cerrada, el cliente solo agradece, la asesora no había preguntado nada y no falta pedir el nombre
 - **THEN** se reacciona con 👍, gratis y sin IA
 <!-- test: src/agente/cierre.test.js › "charla cerrada + solo agradece + Agustina no había preguntado nada: se reacciona" -->
 <!-- test: src/agente/atender.test.js › "despedida con la charla cerrada: reacción 👍 (gratis) sin llamar a la IA" -->
+
+#### Scenario: Falta pedir el nombre
+- **WHEN** acordó la visita, no dijo su nombre, todavía no se le pidió y el cliente escribe "ok, gracias"
+- **THEN** no se reacciona: responde la IA, que le pide el nombre
+<!-- test: src/agente/cierre.test.js › "si falta pedir el nombre (visita acordada, sin nombre dicho y sin haberlo pedido), no se reacciona aunque solo agradezca" -->
+<!-- test: src/agente/atender.test.js › "con la visita acordada, sin nombre dicho y sin haberlo pedido, 'ok gracias' no se reacciona: responde la IA y 'su nombre' va primero en lo que falta" -->
+<!-- eval: chats simulados › X9 -->
+
+#### Scenario: Después del pedido del nombre
+- **WHEN** la asesora pidió el nombre y el cliente contesta "dale" o "gracias" sin decirlo
+- **THEN** se reacciona con 👍, sin IA y sin volver a pedirlo; si en cambio escribe su nombre ("Claudia"), responde la IA y lo guarda
+<!-- test: src/agente/atender.test.js › "si la última respuesta fue el pedido del nombre y el cliente dice 'dale' sin darlo, se reacciona con 👍 sin IA" -->
+<!-- test: src/agente/atender.test.js › "si después del pedido del nombre la asesora preguntó otra cosa, un 'dale' vuelve a ser un sí y responde la IA" -->
+<!-- test: src/agente/atender.test.js › "con nombre_pedido_at ya puesto, 'ok gracias' vuelve a ser una reacción 👍 sin IA" -->
+<!-- eval: chats simulados › X9 -->
 
 #### Scenario: La asesora había preguntado algo
 - **WHEN** la última respuesta preguntaba o pedía algo, aunque sea sin signo de pregunta
@@ -843,9 +867,21 @@ enviarla. Si al quitarla no queda texto, MUST salir la respuesta original.
 <!-- test: src/agente/temas-preguntados.test.js › "sinPreguntaRepetida no toca preguntas de otros temas ni respuestas sin la pregunta repetida" -->
 
 ### Requirement: Limpieza final del texto
-Antes de guardar y enviar una respuesta de la IA, el sistema MUST quitar el código interno del auto, las
-oraciones que valoran el anticipo o los datos del cliente y las que anuncian que guardó datos, y MUST corregir
-un precio con símbolos extraños. Si una limpieza dejara el texto vacío, MUST quedar el texto anterior.
+Antes de guardar y enviar una respuesta de la IA, el sistema MUST:
+- quitar el código interno del auto;
+- quitar lo que valora el anticipo o los datos del cliente, incluidas las opiniones sobre si puede financiar
+  ("no es impedimento", "sirve para financiar", "queda cubierto", "lo podemos trabajar", "estás en buena
+  posición");
+- quitar lo que anuncia que guardó datos;
+- quitar la presentación ("Soy José, asesor de ventas", con el nombre configurado, y el emoji o la puntuación
+  que la siguen) si la asesora ya escribió antes en la consulta en curso. Se quita solo esa frase: un saludo
+  que la precede ("¡Hola!") queda. Un segundo auto dentro del plazo sigue en la misma consulta, así que cuenta
+  como "ya escribió";
+- corregir un precio con símbolos extraños.
+
+Si lo que hay que quitar está en la misma oración que una pregunta ("Perfecto, anotado 👍 ¿Tenés recibo…?"),
+MUST quitarse solo esa parte y quedar la pregunta. Si una limpieza dejara el texto vacío, MUST quedar el texto
+anterior.
 <!-- id: agente.responderConIA -->
 
 #### Scenario: Código del auto
@@ -860,10 +896,37 @@ un precio con símbolos extraños. Si una limpieza dejara el texto vacío, MUST 
 <!-- test: src/agente/agente.test.js › "sinValoraciones quita la oración que valora el anticipo o los datos del cliente y deja el resto" -->
 <!-- test: src/agente/agente.test.js › "sinValoraciones es conservador: no toca oraciones normales y, si quedaría vacío, deja el original" -->
 
+#### Scenario: Opina sobre si puede financiar
+- **WHEN** la respuesta dice "Monotributo no es impedimento para armarte opciones. ¿Tenés algún auto para dejar como parte de pago?"
+- **THEN** sale solo "¿Tenés algún auto para dejar como parte de pago?"
+<!-- test: src/agente/agente.test.js › "sinValoraciones quita las opiniones sobre si el cliente puede financiar (frases reales de producción)" -->
+
 #### Scenario: Anuncia que anotó
 - **WHEN** la respuesta dice "¡Anotado, con 5 millones de anticipo!"
 - **THEN** sale sin esa oración
 <!-- test: src/agente/agente.test.js › "sinAnuncioDeGuardado quita 'anotado', 'lo anoto', 'quedó registrado' y 'ya dejé registrado'" -->
+
+#### Scenario: "Anotado" en la misma oración que la pregunta
+- **WHEN** la respuesta dice "Perfecto, anotado 👍 ¿Tenés recibo de sueldo o contás con un garante?"
+- **THEN** sale "¿Tenés recibo de sueldo o contás con un garante?"
+<!-- test: src/agente/agente.test.js › "una frase a quitar en la misma oración que la pregunta: se quita la frase y queda la pregunta" -->
+
+#### Scenario: Se presenta de nuevo
+- **WHEN** la asesora ya escribió en la consulta y la respuesta empieza "¡Hola! Soy José, asesor de ventas 🙌 El Fiat Siena 2016 está a $13.500.000."
+- **THEN** sale "¡Hola! El Fiat Siena 2016 está a $13.500.000."
+<!-- test: src/agente/agente.test.js › "sinPresentacionRepetida quita 'Soy José, asesor de ventas' con su emoji y deja el saludo y el resto" -->
+<!-- test: src/agente/atender.test.js › "si la asesora ya escribió en la consulta, la presentación de la respuesta se quita antes de enviar" -->
+
+#### Scenario: El nombre del asesor en otra frase
+- **WHEN** la asesora ya escribió y la respuesta dice "Cualquier cosa, preguntá por José en la agencia"
+- **THEN** no se toca: solo se quita la frase de presentación
+<!-- test: src/agente/agente.test.js › "sinPresentacionRepetida usa el nombre configurado, no toca otras menciones y no deja el texto vacío" -->
+<!-- test: src/agente/agente.test.js › "sinPresentacionRepetida solo quita la presentación si termina ahí (emoji, punto, signo o fin de línea): nunca corta una oración que sigue" -->
+
+#### Scenario: Primera respuesta de la consulta
+- **WHEN** es el primer mensaje de la asesora en la consulta
+- **THEN** la presentación sale como la escribió la IA
+<!-- test: src/agente/atender.test.js › "en el primer mensaje de la asesora en la consulta, la presentación sale como la escribió la IA" -->
 
 #### Scenario: Precio mal escrito
 - **WHEN** la respuesta trae "$19.800.£000"
@@ -885,3 +948,69 @@ Si la respuesta de la IA tiene texto y termina con un 👍 en una línea aparte,
 - **WHEN** la IA responde únicamente 👍
 - **THEN** sale como reacción, igual que hoy
 <!-- test: src/agente/agente.test.js › "un texto que es solo 👍 sigue igual (sale como reacción) y un 👍 en medio de una línea no se toca" -->
+
+### Requirement: El nombre del cliente en el contexto
+El nombre del cliente que recibe el agente MUST ser el último que el cliente dijo en una charla, en la consulta
+en curso o en una anterior (`sesiones.nombre_declarado`). El nombre de la ficha y el del perfil de WhatsApp
+MUST NOT usarse para esto, porque en las fichas que llegaron antes de este cambio es el nombre del perfil. Si
+el cliente nunca dijo su nombre, el contexto MUST NOT traer ninguno.
+<!-- id: atender.contextoDelTurno -->
+
+#### Scenario: Ficha vieja con el nombre del perfil
+- **WHEN** escribe un cliente cuya ficha dice "El Chino" (cargado del perfil antes de este cambio) y nunca dijo su nombre
+- **THEN** el contexto no trae nombre
+<!-- test: src/agente/atender.test.js › "el contexto no trae el nombre de la ficha ni el del perfil si el cliente nunca dijo su nombre" -->
+
+#### Scenario: Lo dijo en una consulta anterior
+- **WHEN** el cliente dijo "soy Claudia" en una consulta que ya venció y escribe en una nueva
+- **THEN** el contexto trae "Claudia"
+<!-- test: src/agente/atender.test.js › "si dijo su nombre en una consulta anterior que ya venció, el contexto de la consulta nueva lo trae" -->
+
+### Requirement: Las fotos del usado quedan guardadas
+Las fotos que el cliente manda en una consulta en las 24 horas siguientes al pedido de fotos del usado
+(`fotos_usado_pedidas_at`) MUST guardarse en el Blob privado (el de los papeles), hasta 10 por consulta, y su
+pathname en la consulta, nunca una URL firmada. El asesor descarta las que no sean del usado. Un fallo o la
+falta de store MUST NOT frenar la respuesta al cliente.
+<!-- id: atender.atender -->
+
+#### Scenario: El historial no cambia
+- **WHEN** el cliente manda una foto
+- **THEN** en el historial queda "[foto]", como hoy
+<!-- test: src/agente/atender.test.js › "el historial sigue guardando '[foto]' del mensaje con foto, haya o no pedido de fotos" -->
+
+#### Scenario: Manda fotos después de decir que entrega
+- **WHEN** el cliente dijo que entrega un Fox, la asesora le pidió fotos y después manda dos
+- **THEN** las dos quedan en el Blob privado y su pathname en la consulta
+<!-- test: src/agente/atender.test.js › "con las fotos pedidas hace menos de 24 horas, cada foto se sube al Blob privado con su pathname y queda anotada en la consulta" -->
+
+#### Scenario: Fotos sin usado
+- **WHEN** el cliente manda una foto en una consulta en la que todavía no se pidieron las fotos del usado
+- **THEN** no se guarda
+<!-- test: src/agente/atender.test.js › "sin fotos_usado_pedidas_at (todavía no se pidieron las fotos) no se sube ni se guarda nada, y el cliente recibe su respuesta" -->
+
+#### Scenario: Pasaron las 24 horas
+- **WHEN** las fotos se pidieron el lunes a las 10 y el cliente manda una foto el martes a las 11
+- **THEN** no se guarda
+<!-- test: src/agente/atender.test.js › "pasadas las 24 horas del pedido (lunes 10 hs, martes 11 hs) la foto no se guarda; a las 23 horas todavía sí" -->
+
+#### Scenario: Lote que pasa el tope
+- **WHEN** la consulta tiene 9 fotos guardadas y llegan 3 juntas
+- **THEN** se guarda 1 y las otras 2 no; una subida que falló no cuenta para el tope
+<!-- test: src/agente/atender.test.js › "con 9 fotos guardadas y 3 en el lote se sube 1 (tope de 10 por consulta); con 10 no se sube ninguna" -->
+<!-- test: src/agente/atender.test.js › "una subida que falló no cuenta para el tope: con 8 guardadas y 3 en el lote, falla la primera y se suben las otras dos (quedan 10)" -->
+
+#### Scenario: Falla la escritura en la base después de subir
+- **WHEN** la foto se subió al Blob pero no se pudo anotar en la consulta
+- **THEN** el cliente recibe la respuesta igual, el fallo queda en el log y el archivo suelto en el Blob se tolera (es privado y no se muestra)
+<!-- test: src/agente/atender.test.js › "si la foto se subió pero falla la anotación en la consulta, la respuesta sale igual y el fallo queda en el log" -->
+
+#### Scenario: Falla la subida
+- **WHEN** el Blob privado no responde, o no hay store privado configurado
+- **THEN** el cliente recibe la respuesta igual, en la consulta no queda ninguna foto a medias y el log registra el fallo sin datos del cliente
+<!-- test: src/agente/atender.test.js › "si falla la subida el cliente recibe la respuesta igual, en la consulta no queda ningún pathname nuevo y el log no lleva datos del cliente" -->
+<!-- test: src/agente/atender.test.js › "si falla la subida, el log tampoco lleva el texto del mensaje, el nombre dicho ni el usado del cliente" -->
+
+#### Scenario: Tope
+- **WHEN** la consulta ya tiene 10 fotos del usado y llega otra
+- **THEN** no se guarda
+<!-- test: src/agente/atender.test.js › "con 9 fotos guardadas y 3 en el lote se sube 1 (tope de 10 por consulta); con 10 no se sube ninguna" -->
