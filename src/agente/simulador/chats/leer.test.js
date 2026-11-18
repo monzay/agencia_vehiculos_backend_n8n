@@ -11,10 +11,10 @@ const chat = (...lineas) => ["## X1 · Prueba", ...lineas].join("\n");
 
 // ── El documento real ──
 
-test("lee los 39 chats del documento real (25 de antes y X1 a X14), con códigos únicos", () => {
+test("lee los 43 chats del documento real (25 de antes, X1 a X14 y P11 a P14), con códigos únicos", () => {
   const chats = leerChats(readFileSync(RUTA_DOCUMENTO, "utf8"));
-  assert.equal(chats.length, 39);
-  assert.equal(new Set(chats.map((c) => c.codigo)).size, 39);
+  assert.equal(chats.length, 43);
+  assert.equal(new Set(chats.map((c) => c.codigo)).size, 43);
   for (const c of chats) assert.ok(c.pasos.length > 0, c.codigo);
 });
 
@@ -304,4 +304,23 @@ test("en el documento real X11 fija el perfil 'Mi Reina' y X12 manda fotos", () 
   const chats = leerChats(readFileSync(RUTA_DOCUMENTO, "utf8"));
   assert.equal(chats.find((c) => c.codigo === "X11").perfil, "Mi Reina");
   assert.ok(chats.find((c) => c.codigo === "X12").pasos.some((p) => p.tipo === "foto"));
+});
+
+// ── cuil-directo: el CUIL se pide directo ──
+
+test("en el documento real, P10 a P14 traen guion del modelo, la regla de agente-credito y controles de lo guardado", () => {
+  const chats = leerChats(readFileSync(RUTA_DOCUMENTO, "utf8"));
+  for (const codigo of ["P10", "P11", "P12", "P13", "P14"]) {
+    const chat = chats.find((c) => c.codigo === codigo);
+    assert.ok(chat, `falta ${codigo}`);
+    assert.ok(chat.pasos.some((p) => Array.isArray(p.guion) && p.guion.length > 0), `${codigo} sin guion`);
+    assert.match(chat.reglas ?? "", /agente-credito/, `${codigo} sin regla`);
+    assert.ok(chat.controles.some((c) => c.tipo === "guardado" && c.dato === "permisos"), `${codigo} no controla los permisos`);
+    assert.ok(chat.controles.some((c) => c.tipo === "guardado" && c.dato === "cuil"), `${codigo} no controla el CUIL`);
+  }
+});
+
+test("en el documento real ningún mensaje del bot pide permiso con el link ni 'sí o no' para el BCRA", () => {
+  const texto = readFileSync(RUTA_DOCUMENTO, "utf8");
+  assert.doesNotMatch(texto, /¿Me autorizás la consulta\? Respondeme sí o no\./);
 });

@@ -126,7 +126,7 @@ export const ESCENARIOS = [
       "Te interesa la Volkswagen Amarok V6 2020.",
       "La querés financiar y tenés 8 millones de anticipo.",
       "Tenés recibo de sueldo.",
-      "Si te piden permiso para consultar tu situación en el BCRA, aceptás.",
+      "Si te piden el CUIL para consultar tu situación en el BCRA, lo pasás.",
       "Tu CUIL es 20-12345678-6.",
       "No tenés auto usado para entregar.",
       "Decidís vos solo.",

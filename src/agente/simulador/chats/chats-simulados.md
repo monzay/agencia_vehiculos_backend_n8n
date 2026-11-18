@@ -154,7 +154,6 @@ Cliente: Con cuánto se lo podría retirar
 Cliente (seguido): La entrega minima
 Cliente: tengo 4 millones de anticipo
 Cliente: si, tengo recibo de sueldo
-Cliente: si, autorizo
 Cliente: 20-12345678-6
 Cliente: no tengo auto para entregar
 
@@ -162,13 +161,12 @@ Debe:
 - explicar que la entrega depende de la situación de cada cliente
 - nombrar las tres cosas que necesita: el anticipo que tiene, si entrega un vehículo y su CUIL
 - preguntar de a una cosa
-- pedir el permiso del BCRA, con el link de privacidad, antes de pedir el CUIL
-- pedir el CUIL apenas el cliente autoriza
+- pedir el CUIL en un solo mensaje, diciendo que el asesor puede consultar su situación en la Central de Deudores del BCRA
 
 No debe:
 - decir que no tiene el dato de la entrega
 - hablar de cuotas ni decir si los 4 millones alcanzan
-- pedir el CUIL sin haber pedido antes el permiso
+- pedir permiso aparte, preguntar "sí o no" ni pasar el link de privacidad
 - decirle el resultado de la consulta al BCRA
 
 Control automático:
@@ -488,26 +486,167 @@ No debe:
 Control automático:
 - termina con 👍: no
 
-## P10 · Después del permiso viene el CUIL
-Regla: agente-calificacion › Lo que falta preguntar, en orden · agente-credito › El permiso se guarda una sola vez
+## P10 · Pide el CUIL directo y el cliente lo manda
+Regla: agente-credito › El CUIL se consulta con la herramienta · agente-credito › Consentimiento antes de consultar
 
 Cliente: Hola ORTEGA AUTOMOTORES! Estoy interesado en el Volkswagen Voyage 2012. ¿Podrían darme más información? (REF #67)
+Modelo (herramienta): ver_auto {"ref":"67"}
+Modelo: ¡Hola! Soy José, asesor de ventas 🙌 El Volkswagen Voyage 2012 está a $10.900.000.\n\n¿Lo pensás pagar de contado o financiado?
 Cliente: Financiado
+Modelo (herramienta): registrar_calificacion {"pago_tipo":"financiado"}
+Modelo: Dale. ¿Con cuánto de anticipo contás?
 Cliente: 6 millones
+Modelo (herramienta): registrar_calificacion {"anticipo":"6 millones"}
+Modelo: ¿Tenés recibo de sueldo o algún garante?
 Cliente: Recibo de sueldo
-Cliente: Si
+Modelo (herramienta): registrar_calificacion {"tiene_recibo_o_garante":true}
+Modelo: ¿Me pasás tu CUIL? Así el asesor puede consultar tu situación en la Central de Deudores del BCRA.
 Cliente: 20-12345678-6
+Modelo (herramienta): verificar_situacion_crediticia {"cuil":"20-12345678-6"}
+Modelo: Gracias, el asesor te arma las opciones cuando vengas. ¿Vas a entregar algún usado?
 Cliente: no, ningun auto
+Modelo (herramienta): registrar_calificacion {"entrega_usado":false}
+Modelo: Dale. ¿Lo decidís por tu cuenta o lo consultás con alguien?
 
 Debe:
-- pedir el CUIL en la respuesta al "Si", sin pasar a otra pregunta
-- después del CUIL, decir que el asesor le arma las opciones y seguir con lo que falta
+- pedir el CUIL en un solo mensaje, diciendo que el asesor puede consultar su situación en la Central de Deudores del BCRA
+- consultar el CUIL apenas lo manda y decir solo que el asesor le arma las opciones
 
 No debe:
-- preguntar por la visita o por quién decide antes de pedir el CUIL
+- pedir permiso aparte, preguntar "sí o no" ni pasar el link de privacidad
 - decirle el resultado de la consulta ni si califica
 
 Control automático:
+- obligatorio: "Central de Deudores"
+- prohibido: "privacidad"
+- prohibido: "autoriz"
+- prohibido: "sí o no"
+- guardado: permisos = 1
+- guardado: cuil = sí
+
+## P11 · "¿Y para qué lo quieren?"
+Regla: agente-credito › El CUIL se consulta con la herramienta
+
+Cliente: Hola ORTEGA AUTOMOTORES! Estoy interesado en el Volkswagen Voyage 2012. ¿Podrían darme más información? (REF #67)
+Modelo (herramienta): ver_auto {"ref":"67"}
+Modelo: ¡Hola! Soy José, asesor de ventas 🙌 El Volkswagen Voyage 2012 está a $10.900.000.\n\n¿Lo pensás pagar de contado o financiado?
+Cliente: Financiado, tengo 5 millones
+Modelo (herramienta): registrar_calificacion {"pago_tipo":"financiado","anticipo":"5 millones"}
+Modelo: Dale. ¿Tenés recibo de sueldo o algún garante?
+Cliente: si, recibo
+Modelo (herramienta): registrar_calificacion {"tiene_recibo_o_garante":true}
+Modelo: ¿Me pasás tu CUIL? Así el asesor puede consultar tu situación en la Central de Deudores del BCRA.
+Cliente: y para que quieren mi cuil? que hacen con mis datos?
+Modelo: Lo ve solo el asesor, para armarte la financiación. Acá está nuestra política de privacidad: https://www.ortegaautomotores.com/privacidad
+Cliente: ah bueno, 20-12345678-6
+Modelo (herramienta): verificar_situacion_crediticia {"cuil":"20-12345678-6"}
+Modelo: Gracias, el asesor te arma las opciones cuando vengas. ¿Vas a entregar algún usado?
+
+Debe:
+- contestar en una línea para qué es y pasar el link de la política de privacidad, solo porque el cliente lo preguntó
+- consultar el CUIL cuando lo manda
+
+No debe:
+- volver a pedir permiso ni preguntar "sí o no"
+
+Control automático:
+- obligatorio: "/privacidad"
+- prohibido: "autoriz"
+- guardado: permisos = 1
+- guardado: cuil = sí
+
+## P12 · "Prefiero no pasarlo"
+Regla: agente-credito › Consentimiento antes de consultar · agente-credito › El CUIL se consulta con la herramienta
+
+Cliente: Hola ORTEGA AUTOMOTORES! Estoy interesado en el Volkswagen Voyage 2012. ¿Podrían darme más información? (REF #67)
+Modelo (herramienta): ver_auto {"ref":"67"}
+Modelo: ¡Hola! Soy José, asesor de ventas 🙌 El Volkswagen Voyage 2012 está a $10.900.000.\n\n¿Lo pensás pagar de contado o financiado?
+Cliente: financiado con 6 millones
+Modelo (herramienta): registrar_calificacion {"pago_tipo":"financiado","anticipo":"6 millones"}
+Modelo: Dale. ¿Tenés recibo de sueldo o algún garante?
+Cliente: tengo garante
+Modelo (herramienta): registrar_calificacion {"tiene_recibo_o_garante":true}
+Modelo: ¿Me pasás tu CUIL? Así el asesor puede consultar tu situación en la Central de Deudores del BCRA.
+Cliente: prefiero no pasarlo
+Modelo (herramienta): registrar_consentimiento {"acepta":false}
+Modelo: Dale, sin problema. ¿Vas a entregar algún usado?
+Cliente: no
+Modelo (herramienta): registrar_calificacion {"entrega_usado":false}
+Modelo: ¿Lo decidís por tu cuenta o lo consultás con alguien?
+
+Debe:
+- guardar el no y seguir con el recorrido sin insistir
+
+No debe:
+- volver a pedir el CUIL ni preguntar por qué no quiere pasarlo
+
+Control automático:
+- prohibido: "por qué"
+- guardado: permisos = 1
+- guardado: cuil = vacío
+
+## P13 · El CUIL junto con lo del recibo, antes del aviso
+Regla: agente-credito › Consentimiento antes de consultar
+
+Cliente: Hola ORTEGA AUTOMOTORES! Estoy interesado en el Volkswagen Voyage 2012. ¿Podrían darme más información? (REF #67)
+Modelo (herramienta): ver_auto {"ref":"67"}
+Modelo: ¡Hola! Soy José, asesor de ventas 🙌 El Volkswagen Voyage 2012 está a $10.900.000.\n\n¿Lo pensás pagar de contado o financiado?
+Cliente: financiado, tengo 4 millones
+Modelo (herramienta): registrar_calificacion {"pago_tipo":"financiado","anticipo":"4 millones"}
+Modelo: Dale. ¿Tenés recibo de sueldo o algún garante?
+Cliente: tengo recibo de sueldo, mi cuil es 20-12345678-6
+Modelo (herramienta): registrar_calificacion {"tiene_recibo_o_garante":true}
+Modelo (herramienta): verificar_situacion_crediticia {"cuil":"20-12345678-6"}
+Modelo: Gracias. Con tu CUIL el asesor puede consultar tu situación en la Central de Deudores del BCRA. Si estás de acuerdo, mandámelo de nuevo.
+Cliente: si
+Modelo (herramienta): verificar_situacion_crediticia {"cuil":"20-12345678-6"}
+Modelo: Dale. Mandame de nuevo el CUIL así el asesor consulta tu situación en la Central de Deudores del BCRA.
+Cliente: ahora no lo tengo a mano, despues te lo paso
+Modelo: Dale, cuando quieras. ¿Vas a entregar algún usado?
+
+Debe:
+- no consultar el CUIL que llegó antes de decirle para qué es
+- decirle para qué es y pedirle que lo vuelva a mandar
+- no consultar con un "si" suelto sin el CUIL
+
+No debe:
+- decirle el resultado de una consulta
+
+Control automático:
+- obligatorio: "Central de Deudores"
+- guardado: permisos = 0
+- guardado: cuil = vacío
+
+## P14 · El CUIL en el primer mensaje, antes de la forma de pago
+Regla: agente-credito › Consentimiento antes de consultar
+
+Cliente: Hola, me interesa el Voyage 2012 que publicaron. Mi cuil es 20-12345678-6 por si lo necesitan
+Modelo (herramienta): buscar_autos {"modelo":"Voyage"}
+Modelo (herramienta): verificar_situacion_crediticia {"cuil":"20-12345678-6"}
+Modelo: ¡Hola! Soy José, asesor de ventas 🙌 El Volkswagen Voyage 2012 está a $10.900.000.\n\n¿Lo pensás pagar de contado o financiado?
+Cliente: Financiado
+Modelo (herramienta): registrar_calificacion {"auto_ref":"67","pago_tipo":"financiado"}
+Modelo: Dale. ¿Con cuánto de anticipo contás?
+Cliente: 6 millones
+Modelo (herramienta): registrar_calificacion {"anticipo":"6 millones"}
+Modelo: ¿Tenés recibo de sueldo o algún garante?
+Cliente: recibo
+Modelo (herramienta): registrar_calificacion {"tiene_recibo_o_garante":true}
+Modelo: Con el CUIL que me pasaste, el asesor puede consultar tu situación en la Central de Deudores del BCRA. Si estás de acuerdo, mandámelo de nuevo.
+Cliente: 20-12345678-6
+Modelo (herramienta): verificar_situacion_crediticia {"cuil":"20-12345678-6"}
+Modelo: Gracias, el asesor te arma las opciones cuando vengas. ¿Vas a entregar algún usado?
+
+Debe:
+- no consultar el CUIL del primer mensaje
+- al llegar al CUIL, decirle para qué es y pedirle que lo vuelva a mandar, sin pedir permiso aparte
+- consultar el CUIL que manda después del aviso
+
+No debe:
+- pedir permiso aparte ni pasar el link de privacidad
+
+Control automático:
+- prohibido: "privacidad"
 - guardado: permisos = 1
 - guardado: cuil = sí
 
@@ -948,7 +1087,7 @@ Control automático:
 - recordatorios: 1
 - pide fotos del usado: 1
 
-## X14 · El recordatorio no sale con el permiso del BCRA ni con una oferta, y sí con "¿qué auto buscás?"
+## X14 · El recordatorio no sale con el pedido del CUIL ni con una oferta, y sí con "¿qué auto buscás?"
 Regla: agente-recordatorio › Qué preguntas se recuerdan
 
 Cliente: Hola ORTEGA AUTOMOTORES! Estoy interesado en el Volkswagen Voyage 2012. ¿Podrían darme más información? (REF #67)
@@ -964,9 +1103,7 @@ Modelo (herramienta): registrar_calificacion {"anticipo":"6 millones"}
 Modelo: ¿Tenés recibo de sueldo o algún garante?
 Cliente: Tengo recibo de sueldo
 Modelo (herramienta): registrar_calificacion {"tiene_recibo_o_garante":true}
-Modelo: Para armarte opciones de financiación que te sirvan, el asesor puede consultar tu situación en la Central de Deudores del BCRA. Tus datos se usan solo para eso: https://www.ortegaautomotores.com/privacidad
-
-¿Me autorizás la consulta? Respondeme sí o no.
+Modelo: ¿Me pasás tu CUIL? Así el asesor puede consultar tu situación en la Central de Deudores del BCRA.
 (pasan 10 minutos)
 Cliente: No
 Modelo (herramienta): registrar_consentimiento {"acepta":false}
@@ -979,12 +1116,12 @@ Modelo: ¡Hola! Contame, ¿qué auto estás buscando ahora?
 Modelo: ¿Ya tenés algún auto en mente?
 
 Debe:
-- no mandar recordatorio cuando la pregunta sin contestar es el permiso del BCRA
+- no mandar recordatorio cuando la pregunta sin contestar es el pedido del CUIL
 - no mandar recordatorio cuando la pregunta sin contestar es una oferta (elegir entre dos autos)
 - mandar un recordatorio cuando, dos días después, deja sin contestar "¿qué auto estás buscando?"
 
 No debe:
-- recordar el permiso del BCRA ni la oferta del Voyage o el Gol Trend
+- recordar el pedido del CUIL ni la oferta del Voyage o el Gol Trend
 
 Control automático:
 - recordatorios: 1

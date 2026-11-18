@@ -118,3 +118,48 @@ Después de las correcciones (Sonnet), Claude verificó:
 - `npm test`: 32 de 32.
 - ESLint sin errores en los archivos tocados.
 - El e2e quedó pendiente: el backend de :4000 no respondía.
+
+## Tarea 5. Simulador (2026-11-18)
+
+### Tests primero (Claude)
+
+- `chats/leer.test.js`:
+  - el documento pasa a 43 chats;
+  - P10 a P14 traen guion, regla de `agente-credito` y controles de `permisos` y `cuil`;
+  - ningún chat tiene el viejo "¿Me autorizás la consulta? Respondeme sí o no.".
+- `chats-simulados.md`:
+  - **P10** reescrito: pide el CUIL directo y el cliente lo manda.
+  - **P11** (nuevo): "¿para qué lo quieren?", con el link solo porque preguntó.
+  - **P12** (nuevo): "prefiero no pasarlo".
+  - **P13** (nuevo): el CUIL junto con lo del recibo, antes del aviso, y después un "si" sin el CUIL. No se
+    consulta.
+  - **P14** (nuevo): el CUIL en el primer mensaje; al llegar el momento, se le pide que lo reenvíe.
+  - **E1** (sin guion, para el Haiku real) y **X14**: adaptados al pedido directo.
+- `escenarios.js` › `financia_bcra`: el cliente simulado pasa el CUIL cuando se lo piden.
+
+### Rondas con Haiku 5.5 simulado (sin ninguna API real)
+
+**Ronda 1:** P10 a P14 y X14, 6 de 6.
+- Lo que devolvieron las herramientas:
+  - P13: las dos llamadas rechazadas, la del CUIL antes del aviso y la del "si" sin el CUIL.
+  - P14: la primera rechazada por "todavía no corresponde"; consulta el CUIL reenviado.
+  - P12 y X14: el "no" guardado.
+
+**Ronda 2:** todos los chats con guion, 19 de 19.
+
+**Ronda 3:** todos de nuevo, 19 de 19, después del ajuste de abajo.
+
+Las tres rondas: 0 intentos de red y US$ 0 de IA. Las rondas quedan en `simulacion/`, que no se sube a git.
+
+### Codex sobre la transcripción de la ronda 1
+
+**Aplicó (media):** en P13, la respuesta al "si" no repetía para qué es. Se ajustó el texto del guion.
+
+**No aplicaron:**
+- **P10:** seguir con la próxima pregunta después de consultar está permitido; lo prohibido es decir el resultado.
+- **X14:** la oferta después del "no" es a propósito: el chat prueba que una oferta no dispara el recordatorio.
+- **P13 y P14:** que los controles miran solo el estado final. Lo intermedio (no consultar ni guardar antes del
+  aviso) lo cubren los tests de `verificacion.test.js`, y la transcripción muestra cada rechazo.
+- **P11:** dos oraciones en un mensaje corto cumplen "en una línea".
+
+**Suite:** 1964 de 1966, con 1 salteado y 1 que falla: el de anclas, como antes.
