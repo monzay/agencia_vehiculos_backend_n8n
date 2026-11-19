@@ -2,12 +2,18 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { TIPOS_VEHICULO, normalizarTipoVehiculo } from "./tipos-vehiculo.js";
 
-test("los tipos de vehículo son auto, camioneta y moto", () => {
-  assert.deepEqual(TIPOS_VEHICULO, ["auto", "camioneta", "moto"]);
+test("los tipos de vehículo son auto, camioneta, camion y moto", () => {
+  assert.deepEqual(TIPOS_VEHICULO, ["auto", "camioneta", "camion", "moto"]);
 });
 
 test("acepta camioneta", () => {
   assert.equal(normalizarTipoVehiculo("camioneta"), "camioneta");
+});
+
+test("acepta camión con o sin tilde", () => {
+  assert.equal(normalizarTipoVehiculo("Camión"), "camion");
+  assert.equal(normalizarTipoVehiculo("camion"), "camion");
+  assert.equal(normalizarTipoVehiculo(" CAMIÓN "), "camion");
 });
 
 test("ignora mayúsculas y espacios", () => {

@@ -46,6 +46,12 @@ test("una marca o un modelo que no son texto o son muy largos no llegan a la bas
   assert.equal(escritos.length, 0);
 });
 
+test("un vehículo de tipo camión se guarda como camion", async (t) => {
+  const escritos = conEscrituras(t);
+  await crearVehiculo({ ...BASICOS, tipo_vehiculo: "Camión" });
+  assert.equal(escritos[0].tipo_vehiculo, "camion");
+});
+
 test("un año con decimales no es válido", async (t) => {
   const escritos = conEscrituras(t);
   await assert.rejects(crearVehiculo({ ...BASICOS, anio: 2015.5 }), (e) => e.status === 400);

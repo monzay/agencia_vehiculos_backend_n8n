@@ -155,7 +155,7 @@ function construirData(body, parcial = false) {
   if (body.dominio !== undefined) data.dominio = normalizarDominio(body.dominio);
   if (body.motor !== undefined) data.motor = normalizarIdentificacion(body.motor, 40);
   if (body.chasis !== undefined) data.chasis = normalizarIdentificacion(body.chasis, 40);
-  // Columnas atómicas (1NF): tipo de vehículo (auto/camioneta/moto) y combustible.
+  // Columnas atómicas (1NF): tipo de vehículo (auto/camioneta/camion/moto) y combustible.
   if (body.tipoVehiculo !== undefined || body.tipo_vehiculo !== undefined) {
     data.tipo_vehiculo = normalizarTipoVehiculo(body.tipoVehiculo ?? body.tipo_vehiculo);
   }

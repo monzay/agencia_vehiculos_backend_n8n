@@ -219,7 +219,7 @@ const HERRAMIENTAS = [
     // sumando todas las herramientas, y esta sola tiene 10. Igual se valida con zod.
     estricta: false,
     esquema: z.strictObject({
-      tipo: z.enum(TIPOS_VEHICULO).nullish().describe("auto, camioneta o moto."),
+      tipo: z.enum(TIPOS_VEHICULO).nullish().describe("auto; camioneta (SUV, pick-up o furgón); camion (camión); moto."),
       condicion: z.enum(["0km", "usado"]).nullish().describe("0km o usado."),
       marca: textoLibre(40).nullish().describe("Marca, por ejemplo Toyota."),
       modelo: textoLibre(60).nullish().describe("Modelo o versión, por ejemplo Hilux o SRV."),

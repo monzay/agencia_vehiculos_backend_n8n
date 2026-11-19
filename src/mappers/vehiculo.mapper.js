@@ -3,7 +3,7 @@
 // La DB guarda:
 //   - tipo (enum): "0km" | "usado"  -> en el front esto es `condicion`
 //   - descripcion: "Auto · gnc" / "Moto" / "Auto · nafta" -> codifica
-//     el tipo de vehiculo (auto/moto) y el combustible
+//     el tipo de vehiculo (auto/camioneta/camion/moto) y el combustible
 //   - fotos_json: ["./vehiculos/archivo.jpg", ...]
 //
 // El front espera:
@@ -88,7 +88,7 @@ export function mapAutoToVehiculo(auto) {
     stock: auto.stock ?? 0, // unidades disponibles
     // En la DB `tipo` es la condicion (0km/usado). El enum de Prisma mapea "0km" -> "km".
     condicion: auto.tipo === "km" ? "0km" : "usado",
-    tipo: tipoVehiculo, // "auto" | "camioneta" | "moto"
+    tipo: tipoVehiculo, // "auto" | "camioneta" | "camion" | "moto"
     combustible,
     precio: precioBase,
     descuento, // null o { id, nombre, tipo, valor, ... }

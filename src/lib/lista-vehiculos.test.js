@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  ESQUEMA_LISTA,
   MAX_ARCHIVOS,
   validarArchivosDeLista,
   normalizarFilas,
@@ -98,6 +99,19 @@ test("de la lista solo quedan los campos del formulario", () => {
       precio_contado: 11000000,
     }),
   ]);
+});
+
+test("una fila con tipo camion se importa como camion", () => {
+  const [camion] = normalizarFilas({ vehiculos: [fila({ modelo: "Atego", tipoVehiculo: "camion" })] });
+  assert.equal(camion.tipoVehiculo, "camion");
+  assert.deepEqual(camion.dudosos, []);
+});
+
+test("el esquema de la lista explica qué es camioneta", () => {
+  const descripcion = ESQUEMA_LISTA.shape.vehiculos.element.shape.tipoVehiculo.description;
+  for (const palabra of ["camioneta", "SUV", "pick-up", "furgón", "camion", "moto"]) {
+    assert.ok(descripcion?.includes(palabra), `falta "${palabra}" en: ${descripcion}`);
+  }
 });
 
 test("un dato fuera de rango queda vacío y marcado como dudoso", () => {

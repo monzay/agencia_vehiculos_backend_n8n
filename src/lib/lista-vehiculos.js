@@ -71,7 +71,7 @@ const FILA = z.object({
   anio: z.number().nullable().describe("Año del modelo."),
   kms: z.number().nullable().describe("Kilómetros recorridos, como número entero."),
   condicion: z.enum(CONDICIONES).nullable().describe("0km o usado, solo si la lista lo indica."),
-  tipoVehiculo: z.enum(TIPOS_VEHICULO).nullable(),
+  tipoVehiculo: z.enum(TIPOS_VEHICULO).nullable().describe("auto; camioneta si es SUV, pick-up o furgón; camion si es un camión; moto."),
   combustible: z.enum(COMBUSTIBLES).nullable().describe("nafta_gnc si anda con los dos."),
   precio: z.number().nullable().describe("Precio financiado o de permuta, en pesos. Si la lista tiene un solo precio, ese."),
   precio_contado: z.number().nullable().describe("Precio al contado en pesos, solo si la lista lo separa del financiado."),

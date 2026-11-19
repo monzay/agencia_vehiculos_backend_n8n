@@ -472,6 +472,21 @@ test("buscar autos de tipo auto incluye los que no tienen tipo cargado", async (
   assert.equal("OR" in where || "tipo_vehiculo" in where, false);
 });
 
+test("buscar_autos con tipo camion filtra solo los camiones", async () => {
+  const db = baseFalsa({ "autos.findMany": [] });
+  await ejecutarHerramienta("buscar_autos", { tipo: "camion", presupuesto_max: null, anio_desde: null, marca: null }, ctx(db));
+  const { where } = ultima(db, "autos", "findMany").args;
+  assert.deepEqual(where.AND, [{ tipo_vehiculo: "camion" }]);
+});
+
+test("la descripción del tipo explica qué es camioneta", () => {
+  const buscar = definicionesParaClaude().find((d) => d.name === "buscar_autos");
+  const descripcion = buscar.input_schema.properties.tipo.description;
+  for (const palabra of ["auto", "camioneta", "camion", "moto", "SUV", "pick-up", "furgón"]) {
+    assert.ok(descripcion.includes(palabra), `falta "${palabra}" en: ${descripcion}`);
+  }
+});
+
 // ── horarios_atencion ──
 
 test("horarios_atencion devuelve los días con su nombre", async () => {
