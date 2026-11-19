@@ -11,5 +11,5 @@
 - [x] 4. Migración `087_tipos_vehiculo_stock.sql` (solo datos, comillas simples por el `sql_mode` ANSI de
   producción). **Criterio:** el escenario "Copia de producción".
 - [x] 5. Revisión del diff (Codex) y `openspec validate --strict`.
-- [ ] 6. Producción, por orden del dueño del 19/11: respaldo de la base, 087, backend y front.
-- [ ] 7. `openspec archive tipos-de-vehiculo`.
+- [x] 6. Producción, por orden del dueño del 19/11: respaldo de la base, 087, backend y front.
+- [x] 7. `openspec archive tipos-de-vehiculo`.
