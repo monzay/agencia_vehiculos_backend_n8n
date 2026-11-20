@@ -26,5 +26,5 @@ Flujo ECC: /plan (este cambio) → /feature-dev (código con Sonnet 5.5 y TDD, a
   resultado en `BITACORA.md`.
 - [x] 7. Revisión del diff (`code-reviewer` de ECC + Codex), verificación de cada hallazgo y
   `openspec validate horario-cortado --strict`.
-- [ ] 8. Producción, solo cuando el dueño lo pida: respaldo de la base, 088, backend y front, en ese orden.
-- [ ] 9. `openspec archive horario-cortado`.
+- [x] 8. Producción, solo cuando el dueño lo pida: respaldo de la base, 088, backend y front, en ese orden.
+- [x] 9. `openspec archive horario-cortado`.

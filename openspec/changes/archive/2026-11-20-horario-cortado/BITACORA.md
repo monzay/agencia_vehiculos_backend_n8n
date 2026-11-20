@@ -58,5 +58,17 @@
     - la herramienta lee las columnas nuevas con `agente_ia`;
     - guardar desde el panel viejo deja todo igual;
     - un horario que se pisa da 400.
-- **Pendiente:** producción (tarea 8), solo cuando el dueño lo pida: respaldo, 088, backend y front, en ese
-  orden. Después, `openspec archive horario-cortado` (tarea 9).
+- **Tarea 8 (producción, por orden del dueño del 20/11: "hace la copia y subi a produccion"):**
+  - Respaldo `backups/prod-antes-088-horario-cortado-2026-11-20_1435.sql` (39 tablas, 697 KB, "Dump
+    completed").
+  - 088 aplicada en Aiven (exit 0). Los horarios tienen la misma huella MD5 antes y después; las columnas y
+    los 7 CHECKs están.
+  - Backend `cf25664` (`main` por fast-forward `d5ab13d..cf25664`), por `git archive` + build + up. Copia
+    en `/opt/agencia/backend.bak.20261120-143830`.
+    - `/health` 200; envio-fallido y PUT de horarios sin sesión dan 401.
+    - Arranque sin errores. `GET /api/horarios` trae `apertura_2`.
+    - Dentro del contenedor, `agente_ia` lee las columnas nuevas y el bot dice lo mismo que antes.
+  - Front `a5cc509` en `main` (`461e89a..a5cc509`). Vercel publicó: "Horario cortado" ya está en el JS de
+    /admin, y la portada de producción muestra los horarios como antes.
+  - No se cargó ningún día cortado en producción: eso lo hace el dueño desde Configuración.
+- **Tarea 9:** `openspec archive horario-cortado`.
