@@ -257,19 +257,44 @@ function nombreDelTramo(dias) {
   return `${nombres[0]} a ${nombres.at(-1)}`;
 }
 
+// Las franjas de una fila de la tabla: una (corrido) o dos (cortado). Cerrado, ninguna.
+function franjasDe(f) {
+  if (!f.abierto) return [];
+  const franjas = [{ abre: f.apertura || null, cierra: f.cierre || null }];
+  if (f.apertura_2 && f.cierre_2) franjas.push({ abre: f.apertura_2, cierra: f.cierre_2 });
+  return franjas;
+}
+
+const textoDeFranjas = (franjas) =>
+  franjas.every((x) => x.abre && x.cierra) ? franjas.map((x) => `de ${x.abre} a ${x.cierra}`).join(" y ") : "abierto";
+
+// El horario de un día en palabras: "de 09:00 a 18:00", "de 08:00 a 13:00 y de 16:00 a 21:00" o "cerrado".
+export function horarioDelDia(fila) {
+  return fila.abierto ? textoDeFranjas(franjasDe(fila)) : "cerrado";
+}
+
 // Los horarios de la tabla escritos en palabras, para que la IA los diga sin consultarlos.
-// Agrupa los días seguidos con el mismo horario y deja como excepción el día suelto del
-// medio que solo cambia la apertura, el cierre o está cerrado. Sin filas, null.
+// Agrupa los días seguidos con las mismas franjas y deja como excepción el día suelto del
+// medio que solo cambia la primera apertura, el último cierre o está cerrado. Sin filas, null.
 export function horariosEnPalabras(filas) {
   const porDia = new Map((filas ?? []).filter((f) => Number.isInteger(f?.dia) && f.dia >= 0 && f.dia <= 6).map((f) => [f.dia, f]));
   const dias = SEMANA.filter((d) => porDia.has(d)).map((d) => {
     const f = porDia.get(d);
-    const abre = f.abierto ? f.apertura || null : null;
-    const cierra = f.abierto ? f.cierre || null : null;
-    return { dia: d, cerrado: !f.abierto, abre, cierra };
+    return { dia: d, cerrado: !f.abierto, franjas: franjasDe(f) };
   });
   if (!dias.length) return null;
-  const clave = (d) => (d.cerrado ? "cerrado" : `${d.abre}|${d.cierra}`);
+  const clave = (d) => (d.cerrado ? "cerrado" : d.franjas.map((x) => `${x.abre}|${x.cierra}`).join("/"));
+  // Excepción de un día suelto respecto del tramo: solo difiere la primera apertura o el último cierre.
+  const excepcion = (m, base) => {
+    if (m.franjas.length !== base.franjas.length) return null;
+    const [primera, ...resto] = m.franjas;
+    const ultima = m.franjas.at(-1);
+    const iguales = (xs, ys) => xs.every((x, j) => x.abre === ys[j].abre && x.cierra === ys[j].cierra);
+    if (primera.cierra === base.franjas[0].cierra && iguales(resto, base.franjas.slice(1))) return `desde las ${primera.abre}`;
+    const inicio = m.franjas.slice(0, -1);
+    if (ultima.abre === base.franjas.at(-1).abre && iguales(inicio, base.franjas.slice(0, -1))) return `hasta las ${ultima.cierra}`;
+    return null;
+  };
   const tramos = [];
   for (const d of dias) {
     const ultimo = tramos.at(-1);
@@ -282,7 +307,7 @@ export function horariosEnPalabras(filas) {
     const [antes, medio, despues] = [tramos[i - 1], tramos[i], tramos[i + 1]];
     if (medio.dias.length !== 1 || clave(antes.ref) !== clave(despues.ref) || antes.ref.cerrado) continue;
     const m = medio.ref;
-    const texto = m.cerrado ? "cerrado" : m.cierra === antes.ref.cierra ? `desde las ${m.abre}` : m.abre === antes.ref.abre ? `hasta las ${m.cierra}` : null;
+    const texto = m.cerrado ? "cerrado" : excepcion(m, antes.ref);
     if (!texto) continue;
     antes.dias.push(...medio.dias, ...despues.dias);
     antes.excepciones.push(`${NOMBRES_DIAS[medio.dias[0]]} ${texto}`);
@@ -292,7 +317,7 @@ export function horariosEnPalabras(filas) {
   const mismoHorario = tramos.length === 1 && tramos[0].dias.length === 7;
   return tramos
     .map((t) => {
-      const horario = t.ref.cerrado ? "cerrado" : t.ref.abre && t.ref.cierra ? `de ${t.ref.abre} a ${t.ref.cierra}` : "abierto";
+      const horario = t.ref.cerrado ? "cerrado" : textoDeFranjas(t.ref.franjas);
       const nombre = mismoHorario ? "todos los días" : nombreDelTramo(t.dias);
       return `${nombre} ${horario}${t.excepciones.length ? ` (${t.excepciones.join(", ")})` : ""}`;
     })

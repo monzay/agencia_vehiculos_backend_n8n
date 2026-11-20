@@ -543,7 +543,12 @@ test("con una visita propuesta y 12 horas o más sin hablar, el contexto avisa q
 
 // ── horarios en palabras y línea de la visita pasada ──
 
-const filaH = (dia, apertura, cierre) => ({ dia, abierto: Boolean(apertura), apertura: apertura ?? null, cierre: cierre ?? null });
+const filaH = (dia, apertura, cierre, apertura_2, cierre_2) => ({
+  dia, abierto: Boolean(apertura), apertura: apertura ?? null, cierre: cierre ?? null, apertura_2: apertura_2 ?? null, cierre_2: cierre_2 ?? null,
+});
+// Semana cortada: lunes a viernes 08-13 y 16-21 (con `miercoles` a gusto), sábado 08-13, domingo cerrado.
+const semanaCortada = (miercoles = filaH(3, "08:00", "13:00", "16:00", "21:00")) =>
+  [filaH(0), filaH(1, "08:00", "13:00", "16:00", "21:00"), filaH(2, "08:00", "13:00", "16:00", "21:00"), miercoles, filaH(4, "08:00", "13:00", "16:00", "21:00"), filaH(5, "08:00", "13:00", "16:00", "21:00"), filaH(6, "08:00", "13:00")];
 const TABLA_AGENCIA = [filaH(0), filaH(1, "08:00", "21:00"), filaH(2, "08:00", "21:00"), filaH(3, "09:00", "21:00"), filaH(4, "08:00", "21:00"), filaH(5, "08:00", "21:00"), filaH(6, "08:00", "13:00")];
 
 test("horariosEnPalabras escribe la tabla de la agencia agrupando días y marcando la excepción", () => {
@@ -561,6 +566,34 @@ test("horariosEnPalabras con todos los días iguales dice todos los días", () =
 test("horariosEnPalabras con un día cerrado en el medio lo marca como excepción", () => {
   const filas = [filaH(0), filaH(1, "08:00", "21:00"), filaH(2, "08:00", "21:00"), filaH(3), filaH(4, "08:00", "21:00"), filaH(5, "08:00", "21:00"), filaH(6)];
   assert.equal(horariosEnPalabras(filas), "lunes a viernes de 08:00 a 21:00 (miércoles cerrado), sábado y domingo cerrado");
+});
+
+test("horariosEnPalabras dice las dos franjas de un horario cortado", () => {
+  assert.equal(
+    horariosEnPalabras(semanaCortada()),
+    "lunes a viernes de 08:00 a 13:00 y de 16:00 a 21:00, sábados de 08:00 a 13:00, domingos cerrado",
+  );
+});
+
+test("horariosEnPalabras no junta un día corrido con días cortados", () => {
+  assert.equal(
+    horariosEnPalabras(semanaCortada(filaH(3, "08:00", "21:00"))),
+    "lunes y martes de 08:00 a 13:00 y de 16:00 a 21:00, miércoles de 08:00 a 21:00, jueves y viernes de 08:00 a 13:00 y de 16:00 a 21:00, sábados de 08:00 a 13:00, domingos cerrado",
+  );
+});
+
+test("horariosEnPalabras pliega un día cerrado en una semana cortada", () => {
+  assert.equal(
+    horariosEnPalabras(semanaCortada(filaH(3))),
+    "lunes a viernes de 08:00 a 13:00 y de 16:00 a 21:00 (miércoles cerrado), sábados de 08:00 a 13:00, domingos cerrado",
+  );
+});
+
+test("horariosEnPalabras pliega un día cortado que solo abre más tarde", () => {
+  assert.equal(
+    horariosEnPalabras(semanaCortada(filaH(3, "09:00", "13:00", "16:00", "21:00"))),
+    "lunes a viernes de 08:00 a 13:00 y de 16:00 a 21:00 (miércoles desde las 09:00), sábados de 08:00 a 13:00, domingos cerrado",
+  );
 });
 
 test("horariosEnPalabras con la tabla vacía da null", () => {

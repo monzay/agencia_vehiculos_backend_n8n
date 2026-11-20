@@ -498,9 +498,17 @@ test("horarios_atencion devuelve los días con su nombre", async () => {
   });
   const r = await ejecutarHerramienta("horarios_atencion", {}, ctx(db));
   assert.deepEqual(r.resultado.horarios, [
-    { dia: "Domingo", abierto: false, apertura: null, cierre: null },
-    { dia: "Lunes", abierto: true, apertura: "09:00", cierre: "18:00" },
+    { dia: "Domingo", abierto: false, horario: "cerrado" },
+    { dia: "Lunes", abierto: true, horario: "de 09:00 a 18:00" },
   ]);
+});
+
+test("horarios_atencion dice las dos franjas de un día cortado", async () => {
+  const db = baseFalsa({
+    "horarios_atencion.findMany": [{ dia: 1, abierto: true, apertura: "08:00", cierre: "13:00", apertura_2: "16:00", cierre_2: "21:00" }],
+  });
+  const r = await ejecutarHerramienta("horarios_atencion", {}, ctx(db));
+  assert.deepEqual(r.resultado.horarios, [{ dia: "Lunes", abierto: true, horario: "de 08:00 a 13:00 y de 16:00 a 21:00" }]);
 });
 
 // ── registrar_calificacion ──

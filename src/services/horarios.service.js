@@ -21,27 +21,48 @@ const mapear = (h) => ({
   abierto: !!h.abierto,
   apertura: h.apertura ?? null,
   cierre: h.cierre ?? null,
+  apertura_2: h.apertura_2 ?? null,
+  cierre_2: h.cierre_2 ?? null,
 });
+
+const hora = (valor) => String(valor ?? "").trim();
 
 // Normaliza y valida un día. Cerrado ⇒ sin horas; abierto ⇒ ambas en HH:MM y
 // apertura anterior al cierre (el compare de strings alcanza: HH:MM con cero a
-// la izquierda ordena igual que la hora).
+// la izquierda ordena igual que la hora). La segunda franja (horario cortado)
+// es opcional, pero completa, y abre después del cierre de la primera.
 function validarDia(item) {
   const dia = Number(item?.dia);
   if (!DIAS.includes(dia)) throw new DatosInvalidos("Día inválido.");
 
   const abierto = item?.abierto === true || item?.abierto === 1 || item?.abierto === "1";
-  if (!abierto) return { dia, abierto: false, apertura: null, cierre: null };
+  if (!abierto) return { dia, abierto: false, apertura: null, cierre: null, apertura_2: null, cierre_2: null };
 
-  const apertura = String(item?.apertura ?? "").trim();
-  const cierre = String(item?.cierre ?? "").trim();
+  const apertura = hora(item?.apertura);
+  const cierre = hora(item?.cierre);
   if (!HORA_RE.test(apertura) || !HORA_RE.test(cierre)) {
     throw new DatosInvalidos(`El horario del ${NOMBRE[dia]} debe ser HH:MM (24 h).`);
   }
   if (apertura >= cierre) {
     throw new DatosInvalidos(`El ${NOMBRE[dia]} la apertura debe ser anterior al cierre.`);
   }
-  return { dia, abierto: true, apertura, cierre };
+
+  const apertura_2 = hora(item?.apertura_2);
+  const cierre_2 = hora(item?.cierre_2);
+  if (!apertura_2 && !cierre_2) return { dia, abierto: true, apertura, cierre, apertura_2: null, cierre_2: null };
+  if (!apertura_2 || !cierre_2) {
+    throw new DatosInvalidos(`El ${NOMBRE[dia]} la segunda franja necesita apertura y cierre.`);
+  }
+  if (!HORA_RE.test(apertura_2) || !HORA_RE.test(cierre_2)) {
+    throw new DatosInvalidos(`El horario de la segunda franja del ${NOMBRE[dia]} debe ser HH:MM (24 h).`);
+  }
+  if (apertura_2 <= cierre) {
+    throw new DatosInvalidos(`El ${NOMBRE[dia]} la segunda franja tiene que empezar después del cierre de la primera.`);
+  }
+  if (apertura_2 >= cierre_2) {
+    throw new DatosInvalidos(`El ${NOMBRE[dia]} la apertura de la segunda franja debe ser anterior a su cierre.`);
+  }
+  return { dia, abierto: true, apertura, cierre, apertura_2, cierre_2 };
 }
 
 export async function obtenerHorarios() {
@@ -64,7 +85,7 @@ export async function guardarHorarios(dias) {
     validos.map((d) =>
       prisma.horarios_atencion.upsert({
         where: { dia: d.dia },
-        update: { abierto: d.abierto, apertura: d.apertura, cierre: d.cierre },
+        update: { abierto: d.abierto, apertura: d.apertura, cierre: d.cierre, apertura_2: d.apertura_2, cierre_2: d.cierre_2 },
         create: d,
       })
     )

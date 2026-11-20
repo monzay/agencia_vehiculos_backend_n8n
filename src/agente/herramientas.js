@@ -4,6 +4,7 @@ import { whereDisponible, selectFicha, autoPublico, fichaConDescripcion, fotosPu
 import { COMBUSTIBLES } from "../lib/combustibles.js";
 import { puntaje, clasificar, pendientes, correspondePedirNombre } from "./calificacion.js";
 import { nombreSeguro } from "./nombre-dicho.js";
+import { horarioDelDia } from "./instrucciones.js";
 import { linkDelCatalogo, codigoDeAuto } from "./origen-web.js";
 import { SIN_VERIFICACION } from "../credito/verificacion.js";
 
@@ -363,12 +364,13 @@ const HERRAMIENTAS = [
   },
   {
     nombre: "horarios_atencion",
-    descripcion: "Horarios de atención de la agencia, día por día. Usala antes de confirmar cuándo puede venir el cliente.",
+    descripcion:
+      "Horarios de atención de la agencia, día por día. Un día puede tener dos franjas (por ejemplo de 08:00 a 13:00 y de 16:00 a 21:00): entre ellas la agencia está cerrada. Usala antes de confirmar cuándo puede venir el cliente.",
     esquema: z.strictObject({}),
     async ejecutar(_, { db }) {
       const filas = await db.horarios_atencion.findMany({ orderBy: { dia: "asc" } });
       return {
-        horarios: filas.map((h) => ({ dia: DIAS[h.dia], abierto: Boolean(h.abierto), apertura: h.apertura ?? null, cierre: h.cierre ?? null })),
+        horarios: filas.map((h) => ({ dia: DIAS[h.dia], abierto: Boolean(h.abierto), horario: horarioDelDia(h) })),
       };
     },
   },
