@@ -42,5 +42,21 @@
   - Con ese arreglo: front 42 de 42 y `next build` pasa. Backend 1983 de 1985: falla solo el control de
     anclas, por las 50 de `importar-lista-por-etapas` (cambio previo sin código); ninguna es de este
     cambio. `openspec validate horario-cortado --strict` da válido.
+- **Chequeo previo a producción (20/11, solo lectura en prod):**
+  - Base de prod: MySQL 8.4.11, `sql_mode` ANSI. Horarios: lunes a viernes de 08:00 a 21:00 (miércoles
+    desde las 09:00), sábado de 08:00 a 13:00 y domingo cerrado. Tiene los 4 CHECKs de la 023, incluido
+    `horarios_coherencia`. `agente_ia` tiene `SELECT` sobre toda la tabla, no por columna, así que lee las
+    columnas nuevas.
+  - Servidor: backend con el código de tipos-de-vehiculo y sin `apertura_2`, 9,9 GB libres, `/health` 200.
+    El Dockerfile corre `prisma generate`. Cada rama es `origin/main` más un solo commit.
+  - Ensayo en un MySQL 8.4.11 descartable (Docker), con el `sql_mode` de prod y la copia real de la tabla:
+    - la 088 entra y no cambia datos;
+    - las reglas aceptan 08-13 y 16-21 y rechazan los 6 casos malos;
+    - el rollback de la 088 deja los datos iguales y se puede volver a aplicar.
+  - Código nuevo contra esa copia:
+    - con los horarios reales, el bot dice exactamente lo mismo que hoy;
+    - la herramienta lee las columnas nuevas con `agente_ia`;
+    - guardar desde el panel viejo deja todo igual;
+    - un horario que se pisa da 400.
 - **Pendiente:** producción (tarea 8), solo cuando el dueño lo pida: respaldo, 088, backend y front, en ese
   orden. Después, `openspec archive horario-cortado` (tarea 9).
